@@ -1,0 +1,4 @@
+flet
+websockets
+watchdog
+pyinstaller
