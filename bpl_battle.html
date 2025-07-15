@@ -99,7 +99,7 @@
       min-width: 17.5%;
     }
     .user_result.bpl {
-      min-width: 35%;
+      min-width: 30%;
     }
 
     .user_result .user_result_title {
@@ -123,18 +123,22 @@
     .user_result .user_result_score.result_1 {
       color: #FAB27B;
       background-image: url("./images/icon.png");
-      background-position: left 30px center;
+      background-position: left 15px center;
       background-repeat: no-repeat;
       background-size: contain;
     }
 
     .user_result.result_right .user_result_score.result_1 {
-      background-position: right 30px center;
+      background-position: right 15px center;
     }
 
     .song_info {
       width: 30%;
       text-align: center;
+    }
+    
+    .song_info.bpl {
+      width: 40%;
     }
 
     .song_info .stage_no {
@@ -143,17 +147,19 @@
     }
 
     .song_info .song_name {
-      font-size: 1.5rem;
-      line-height: 2rem;
+      font-size: 1.4rem;
+      line-height: 1.4rem;
       color: #FFF;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      padding-top:5px;
+      padding-bottom:5px;
     }
 
     .song_info .song_name.arena {
       font-size: 1.2rem;
-      line-height: 1.2;
+      line-height: 1.2rem;
     }
 
     .song_info .difficulty {
@@ -249,7 +255,7 @@
     }
     function renderSongInfo(song, type) {
       return `
-        <div class="song_info">
+        <div class="song_info ${type}">
           <div class="stage_no">${song.stage_no}${indicator(song.stage_no)} STAGE</div>
           <div class="song_name ${type}">${song.song_name}</div>
           <div class="difficulty">
