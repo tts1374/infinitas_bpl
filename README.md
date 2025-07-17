@@ -16,6 +16,15 @@
 
 ---
 
+## 依存ツールについて
+
+本ツールは  
+[INFINITAS打鍵カウンタ（OBS WebSocket版）](https://github.com/dj-kata/inf_daken_counter_obsw) の出力データ（`today_update.xml`）を利用しています。
+
+必ず事前にこちらのツールを導入し、動作する状態にしてからご利用ください。
+
+---
+
 ## 導入方法
 
 1. [リリースページ](https://github.com/tts1374/infinitas_bpl/releases)から、  
@@ -75,4 +84,14 @@
 ### 注意事項
 
 - 本ツールは非公式のファンツールです。  
-- ご利用は自己責任でお願いします。  
+- ご利用は自己責任でお願いします。
+
+## クレジット
+
+本ツールは、以下のツールを利用して動作しています。
+
+- [INFINITAS打鍵カウンタ（OBS WebSocket版）](https://github.com/dj-kata/inf_daken_counter_obsw)
+  
+  作者：かた様 → [https://x.com/cold_planet_](https://x.com/cold_planet_)
+
+ライセンスは **Apache License 2.0** に基づき使用しています。
