@@ -2,7 +2,7 @@ import sqlite3
 import os
 import glob
 
-from utils.common import resource_path
+from utils.common import resource_path, safe_print
 
 MIGRATIONS_DIR = "migrations"
 DB_FILE = "result.db"
@@ -32,7 +32,7 @@ def init_db():
         version = int(filename.split("_")[0][-3:])  # 001 002 の数字を抽出
 
         if version > current_version:
-            print(f"Applying migration {file}...")
+            safe_print(f"Applying migration {file}...")
             with open(file, "r", encoding="utf-8") as f:
                 sql = f.read()
             c.executescript(sql)

@@ -115,7 +115,6 @@ class DBService:
         return c.lastrowid
 
     def get_users(self, room_id):
-        print("[get_users]")
         conn = sqlite3.connect(self.db_file)
         conn.row_factory = sqlite3.Row
         c = conn.cursor()

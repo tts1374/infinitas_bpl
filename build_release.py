@@ -4,6 +4,8 @@ import subprocess
 import shutil
 import sys
 
+from utils.common import safe_print
+
 CONFIG_FILE = "./config/config.py"
 output_dir = "dist/INFINITAS_Online_Battle"
 exe_name = "INFINITAS_Online_Battle"
@@ -12,7 +14,7 @@ def ensure_pyinstaller():
     try:
         import PyInstaller
     except ImportError:
-        print("[Warning] PyInstaller が見つかりません。自動でインストールします。")
+        safe_print("[Warning] PyInstaller が見つかりません。自動でインストールします。")
         subprocess.run([sys.executable, "-m", "pip", "install", "pyinstaller"], check=True)
 
 def set_release_mode(is_release=True):
@@ -25,7 +27,7 @@ def set_release_mode(is_release=True):
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
         f.write(new_content)
 
-    print(f"[Success] config.py を {'リリース' if is_release else '開発'}モードに設定しました。")
+    safe_print(f"[Success] config.py を {'リリース' if is_release else '開発'}モードに設定しました。")
 
 def clean():
     """過去のビルドファイル削除"""
@@ -43,7 +45,7 @@ def build():
         "-m", "PyInstaller",
         "main.spec",
     ]
-    print("ビルドを開始します...")
+    safe_print("ビルドを開始します...")
     subprocess.run(cmd, check=True)
     # 出力フォルダにbpl_battle.htmlをコピー
     shutil.copy("bpl_battle.html", os.path.join(output_dir, "bpl_battle.html"))
@@ -51,7 +53,7 @@ def build():
     shutil.copytree("images", os.path.join(output_dir, "images"), dirs_exist_ok=True)
     # README.mdをコピー
     shutil.copy("README.md", os.path.join(output_dir, "README.md"))
-    print("ビルドが完了しました。dist/ 以下にexeが生成されています。")
+    safe_print("ビルドが完了しました。dist/ 以下にexeが生成されています。")
 
 if __name__ == "__main__":
     try:
