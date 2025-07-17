@@ -49,6 +49,8 @@ def build():
     shutil.copy("bpl_battle.html", os.path.join(output_dir, "bpl_battle.html"))
     # imagesフォルダごとコピー
     shutil.copytree("images", os.path.join(output_dir, "images"), dirs_exist_ok=True)
+    # README.mdをコピー
+    shutil.copy("README.md", os.path.join(output_dir, "README.md"))
     print("ビルドが完了しました。dist/ 以下にexeが生成されています。")
 
 if __name__ == "__main__":
