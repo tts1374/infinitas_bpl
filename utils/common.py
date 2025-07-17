@@ -24,16 +24,17 @@ def get_log_dir():
 
 def safe_print(*args, **kwargs):
     try:
-        # ログファイルに出力（開発時のみ）
-        log_dir = get_log_dir()
-        log_path = os.path.join(log_dir, "debug.log")
-        with open(log_path, "a", encoding="utf-8") as f:
-            print(now_str(), *args, **kwargs, file=f)
+        if not IS_RELEASE:
+            # ログファイルに出力（開発時のみ）
+            log_dir = get_log_dir()
+            log_path = os.path.join(log_dir, "debug.log")
+            with open(log_path, "a", encoding="utf-8") as f:
+                print(now_str(), *args, **kwargs, file=f)
 
-        # 開発時はコンソールにも出力
-        if not getattr(sys, 'frozen', False):
-            if sys.stdout and sys.stdout.isatty():
-                print(now_str(), *args, **kwargs)
+            # 開発時はコンソールにも出力
+            if not getattr(sys, 'frozen', False):
+                if sys.stdout and sys.stdout.isatty():
+                    print(now_str(), *args, **kwargs)
 
     except (io.UnsupportedOperation, AttributeError, PermissionError):
         pass
