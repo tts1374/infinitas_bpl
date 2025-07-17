@@ -14,10 +14,15 @@ def resource_path(relative_path):
 
 def safe_print(*args, **kwargs):
     try:
-        if sys.stdout and not isinstance(sys.stdout, io.TextIOWrapper):
-            # GUIモード（stdoutは無効）
+        # PyInstallerでGUI（--noconsole）実行の場合はprintをスキップ
+        if getattr(sys, 'frozen', False):
+            return
+        # stdoutが実行可能か確認
+        if sys.stdout is None:
+            return
+        if not sys.stdout.isatty():
             return
         print(*args, **kwargs)
+
     except (io.UnsupportedOperation, AttributeError):
-        # 標準出力なし（PyInstaller GUI実行など）
         pass
