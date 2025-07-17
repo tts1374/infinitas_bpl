@@ -10,9 +10,7 @@ a = Analysis(
         ('images/icon.ico', 'images'),
         ('migrations', 'migrations'), 
     ],
-    hiddenimports=[
-        'flet_desktop' 
-    ],
+    hiddenimports=[],
     hookspath=[],
     runtime_hooks=[],
     cipher=block_cipher,
