@@ -12,7 +12,7 @@ def ensure_pyinstaller():
     try:
         import PyInstaller
     except ImportError:
-        print("❗ PyInstaller が見つかりません。自動でインストールします。")
+        print("[Warning] PyInstaller が見つかりません。自動でインストールします。")
         subprocess.run([sys.executable, "-m", "pip", "install", "pyinstaller"], check=True)
 
 def set_release_mode(is_release=True):
@@ -25,7 +25,7 @@ def set_release_mode(is_release=True):
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
         f.write(new_content)
 
-    print(f"✅ config.py を {'リリース' if is_release else '開発'}モードに設定しました。")
+    print(f"[Success] config.py を {'リリース' if is_release else '開発'}モードに設定しました。")
 
 def clean():
     """過去のビルドファイル削除"""
