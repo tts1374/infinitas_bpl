@@ -2,6 +2,7 @@ import os
 import json
 import re
 
+from utils.common import safe_print
 from utils.result_handler import ResultHandler
 from watchdog.observers import Observer
 from services.db_service import DBService
@@ -119,7 +120,7 @@ class BattleHandler:
 
         except Exception as ex:
             # エラーハンドリング（必要に応じて表示）
-            print("[エラー] start_battle:", ex)
+            safe_print("[エラー] start_battle:", ex)
 
             # エラー発生時はボタンを元に戻す
             self.app.start_button.disabled = False
@@ -135,12 +136,12 @@ class BattleHandler:
     async def stop_battle(self, e):
         if self.websocket_handler:
             await self.websocket_handler.disconnect()
-            print("Websocket disconnect")
+            safe_print("Websocket disconnect")
 
         if hasattr(self, "observer"):
             self.observer.stop()
             self.observer.join()
-            print("observer stop")
+            safe_print("observer stop")
 
         self.app.start_button.visible = True
         self.app.start_button.disabled = False
@@ -205,14 +206,14 @@ class BattleHandler:
                 "scorerate": "0"
             }
         }
-        print("[送信データ]")
-        print(json.dumps(result_data, ensure_ascii=False, indent=2))
+        safe_print("[送信データ]")
+        safe_print(json.dumps(result_data, ensure_ascii=False, indent=2))
         await self.websocket_handler.send(result_data)
 
 
     async def handle_result_update(self, content):
         service = ResultService(self.app.settings, self.app.user_token)
         result_data = service.parse_result(content)
-        print("[送信データ]")
-        print(json.dumps(result_data, ensure_ascii=False, indent=2))
+        safe_print("[送信データ]")
+        safe_print(json.dumps(result_data, ensure_ascii=False, indent=2))
         await self.websocket_handler.send(result_data)
