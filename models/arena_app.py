@@ -58,7 +58,7 @@ class ArenaApp:
         # 定員
         self.user_num_select = ft.Dropdown(
             label="定員",
-            options=[ft.dropdown.Option(str(i)) for i in range(2, 4)],
+            options=[ft.dropdown.Option(str(i)) for i in range(2, 5)],
             disabled=False
         )
 
