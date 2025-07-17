@@ -1,0 +1,42 @@
+name: Build and Release EXE
+
+on:
+  push:
+    tags:
+      - 'v*'  # v1.0.0 などタグがpushされたらトリガー
+  release:
+    types: [created]  # リリース作成時にも実行したい場合に有効
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+
+      - name: Run build_release.py
+        run: |
+          python build_release.py
+
+      - name: Archive build artifacts
+        run: |
+          powershell Compress-Archive -Path dist/INFINITAS_Online_Battle/* -DestinationPath dist/INFINITAS_Online_Battle.zip
+
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          files: dist/INFINITAS_Online_Battle.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
