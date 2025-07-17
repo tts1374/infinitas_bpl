@@ -1,5 +1,7 @@
 from watchdog.events import FileSystemEventHandler
 
+from utils.common import safe_print
+
 class ResultHandler(FileSystemEventHandler):
     def __init__(self, battle_handler):
         self.battle_handler = battle_handler
@@ -24,4 +26,4 @@ class ResultHandler(FileSystemEventHandler):
             asyncio.run(self.battle_handler.handle_result_update(content))
 
         except Exception as e:
-            print(f"[watchdog] ファイル読み込みエラー: {e}")
+            safe_print(f"[watchdog] ファイル読み込みエラー: {e}")

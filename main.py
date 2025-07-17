@@ -3,7 +3,7 @@ from db.database import init_db
 from models.arena_app import ArenaApp
 import traceback
 
-from utils.common import resource_path
+from utils.common import resource_path, safe_print
 
 def main(page: ft.Page):
     try:
@@ -20,7 +20,7 @@ def main(page: ft.Page):
             f.write("予期せぬエラーが発生しました:\n")
             traceback.print_exc(file=f)
         # さらにコンソールにも出す（開発時用）
-        print("例外発生！ error.logを確認してください。")
+        safe_print("例外発生！ error.logを確認してください。")
         raise e
 
 
