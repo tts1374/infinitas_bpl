@@ -29,7 +29,7 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    upx=False,
     console=False,  # GUIアプリの場合 False、コンソール表示したい場合は True
     icon='images/icon.ico' # アイコン指定
 )
