@@ -5,6 +5,7 @@ import os
 import json
 import sys
 from handlers.battle_handler import BattleHandler
+from utils.common import safe_print
 
 DB_FILE = "result.db"
 SETTINGS_FILE = "settings.json"
@@ -12,6 +13,7 @@ RESULT_FILE = "result_output.json"
 
 class ArenaApp:
     def __init__(self, page: ft.Page):
+        safe_print("ArenaApp 初期化中")
         self.page = page
         self.page.on_close = self.on_close
         self.result_file_path = None
@@ -208,7 +210,7 @@ class ArenaApp:
         self.page.update()
 
     async def show_error_dialog(self, message):
-        print(f"show_error_dialog: message={message}")
+        safe_print(f"show_error_dialog: message={message}")
 
         dialog = ft.AlertDialog(
             modal=True,
@@ -222,7 +224,7 @@ class ArenaApp:
         self.page.open(dialog)
 
     async def on_skip_song(self, song_id):
-        print(f"スキップ押下: song_id={song_id}")
+        safe_print(f"スキップ押下: song_id={song_id}")
         await self.battle_handler.skip_song(song_id)
 
     def load_settings(self):
@@ -247,11 +249,11 @@ class ArenaApp:
         await self.battle_handler.stop_battle(None)
 
     def on_close(self, e):
-        print("[on_close] start")
+        safe_print("[on_close] start")
         try:
             asyncio.run(self.async_cleanup())
         except Exception as ex:
-            print(f"[on_close] エラー: {ex}")
+            safe_print(f"[on_close] エラー: {ex}")
         finally:
             self.page.window_destroy()
             sys.exit(0)
