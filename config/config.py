@@ -1,4 +1,4 @@
-APP_VERSION = "v0.1.1"
+APP_VERSION = "v0.0.1"
 IS_RELEASE = False
 
 if IS_RELEASE:
