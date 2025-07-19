@@ -1,10 +1,6 @@
-import os
-import flet_desktop
-
 # -*- mode: python ; coding: utf-8 -*-
 
 block_cipher = None
-flet_view_path = os.path.join(flet_desktop.__path__[0], "flet_view.exe")
 
 a = Analysis(
     ['main.py'],
@@ -13,12 +9,8 @@ a = Analysis(
     datas=[
         ('images/icon.ico', 'images'),
         ('migrations', 'migrations'), 
-        (flet_view_path, '.'), 
     ],
-    hiddenimports=[
-        'flet_desktop',
-        'flet_desktop.runtime.windows.flet_view_runner',
-    ],
+    hiddenimports=[],
     hookspath=[],
     runtime_hooks=[],
     cipher=block_cipher,
