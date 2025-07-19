@@ -31,6 +31,23 @@ jobs:
         run: |
           python build_release.py
 
+      - name: Decode Self-Signed Certificate
+        run: |
+          echo "${{ secrets.CODESIGN_PFX }}" | base64 -d > codesign_test.pfx
+
+      - name: Sign EXE with Self-Signed Cert
+        run: |
+          $env:CERT_PASSWORD="${{ secrets.CODESIGN_PASSWORD }}"
+          $timestampUrl = "http://timestamp.digicert.com"
+          $exePath = "dist/INFINITAS_Online_Battle/INFINITAS_Online_Battle.exe"
+          & "C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x64\signtool.exe" sign `
+            /f codesign_test.pfx `
+            /p $env:CERT_PASSWORD `
+            /tr $timestampUrl `
+            /td sha256 `
+            /fd sha256 `
+            $exePath
+            
       - name: Archive build artifacts
         run: |
           powershell Compress-Archive -Path dist/INFINITAS_Online_Battle/* -DestinationPath dist/INFINITAS_Online_Battle.zip
