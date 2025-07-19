@@ -32,7 +32,7 @@ class MainView:
 
         # ルームパス
         self.room_pass = ft.TextField(
-            width=500, max_length=4, label="ルームパスワード", text_align=ft.TextAlign.CENTER,
+            width=500, max_length=32, label="ルームパスワード", text_align=ft.TextAlign.CENTER,
             input_filter=self.validate_room_pass
         )
 
