@@ -18,9 +18,9 @@ class MainView:
         self.page.on_close = self.on_close
         self.result_file_path = None
         self.last_result_content = None
-        self.battle_handler = MainController(self)
+        self.main_controller = MainController(self)
         self.result_table_container = ft.Container()
-        self.page.run_task(self.battle_handler.check_for_update)
+        self.page.run_task(self.main_controller.check_for_update)
         
         # DJNAME（バリデーション付き）
         self.djname_input = ft.TextField(
@@ -31,21 +31,25 @@ class MainView:
         )
 
         # ルームパス
-        self.room_pass1 = ft.TextField(
-            width=100, max_length=4, label="RoomPass1", text_align=ft.TextAlign.CENTER,
-            input_filter=ft.NumbersOnlyInputFilter()
+        self.room_pass = ft.TextField(
+            width=500, max_length=4, label="ルームパスワード", text_align=ft.TextAlign.CENTER,
+            input_filter=self.validate_room_pass
         )
 
-        self.room_pass2 = ft.TextField(
-            width=100, max_length=4, label="RoomPass2", text_align=ft.TextAlign.CENTER,
-            input_filter=ft.NumbersOnlyInputFilter()
+        # ルームパス生成ボタン
+        self.create_room_pass_button = ft.ElevatedButton(
+            "ルームパス生成",
+            on_click=self.on_create_room_pass_button,
+            width=120,
+            bgcolor=ft.Colors.BLUE_400,
+            color=ft.Colors.WHITE,
         )
-        self.room_pass_row = ft.Row([
-            self.room_pass1,
-            ft.Text("-", size=20),
-            self.room_pass2
-        ])
 
+        self.room_pass_row = ft.Row(
+            controls=[self.room_pass, self.create_room_pass_button],
+            spacing=10,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        )
         # モード選択（横並び）
         self.mode_radio = ft.RadioGroup(
             value="1",
@@ -111,8 +115,8 @@ class MainView:
         self.page.add(
             ft.ResponsiveRow(
                 controls=[
-                    ft.Container(self.djname_input, col={"sm": 12, "md": 4}),
-                    ft.Container(self.room_pass_row, col={"sm": 12, "md": 4}),
+                    ft.Container(self.djname_input, col={"sm": 12, "md": 12}),
+                    ft.Container(self.room_pass_row, col={"sm": 12, "md": 12}),
                     ft.Container(mode_usernum_group, col={"sm": 12, "md": 12}),
                     ft.Container(result_file_group, col={"sm": 12, "md": 4}),
                     ft.Container(button_row, col={"sm": 12, "md": 12}),
@@ -125,8 +129,7 @@ class MainView:
 
         # イベントハンドラ登録
         self.djname_input.on_change = self.validate_all_inputs
-        self.room_pass1.on_change = self.validate_all_inputs
-        self.room_pass2.on_change = self.validate_all_inputs
+        self.room_pass.on_change = self.validate_all_inputs
         self.mode_radio.on_change = self.on_mode_change
         self.user_num_select.on_change = self.validate_all_inputs
 
@@ -139,6 +142,19 @@ class MainView:
             self.djname_input.error_text = None
         self.page.update()
 
+    def validate_room_pass(self, e):
+        pattern = r'^[a-zA-Z0-9_-]{4,36}$'
+        if not re.fullmatch(pattern, self.room_pass.value):
+            self.room_pass.error_text = "使用可能文字：a-z A-Z 0-9 -_ 4～36文字"
+        else:
+            self.room_pass.error_text = None
+        self.page.update()
+        
+    # ルームパス生成ボタン押下時
+    def on_create_room_pass_button(self, e):
+        safe_print("ルームパス生成ボタンが呼ばれました")
+        self.main_controller.create_room_pass_button()
+        
     def load_result_table(self):
         if not os.path.exists(RESULT_FILE):
             return
@@ -248,29 +264,29 @@ class MainView:
 
     async def on_skip_song(self, song_id):
         safe_print(f"スキップ押下: song_id={song_id}")
-        await self.battle_handler.skip_song(song_id)
+        await self.main_controller.skip_song(song_id)
 
     def load_settings(self):
-        self.battle_handler.load_settings()
+        self.main_controller.load_settings()
         
     def on_mode_change(self, e):
-        self.battle_handler.on_mode_change()
+        self.main_controller.on_mode_change()
 
     def pick_result_file(self, e: ft.FilePickerResultEvent):
-        self.battle_handler.pick_result_file(e)
+        self.main_controller.pick_result_file(e)
 
     def validate_all_inputs(self, e=None):
-        self.battle_handler.validate_all_inputs()
+        self.main_controller.validate_all_inputs()
 
     async def start_battle(self, e):
-        await self.battle_handler.start_battle(e)
+        await self.main_controller.start_battle(e)
 
     async def stop_battle(self, e):
-        await self.battle_handler.stop_battle(e)
+        await self.main_controller.stop_battle(e)
 
     async def async_cleanup(self):
-        await self.battle_handler.stop_battle(None)
-
+        await self.main_controller.stop_battle(None)
+        
     def on_close(self, e):
         safe_print("[on_close] start")
         try:
