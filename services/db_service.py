@@ -1,5 +1,5 @@
 import sqlite3
-from utils.common import now_str
+from utils.common import now_str, safe_int
 
 class DBService:
     def __init__(self, db_file):
@@ -64,7 +64,7 @@ class DBService:
         c.execute("""INSERT INTO song_result 
             (room_id, song_id, user_id, score, miss_count, lamp, rank, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (room_id, song_id, user_id, int(result["score_cur"]), int(result["bp"]),
+            (room_id, song_id, user_id, safe_int(result["score_cur"]), safe_int(result["bp"], 9999),
             result["lamp"], rank_str, now_str()))
 
         conn.commit()
