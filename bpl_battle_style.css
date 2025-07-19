@@ -1,0 +1,212 @@
+body {
+  font-family: "M PLUS 1", sans-serif;
+  padding: 20px;
+  width: 800px;
+}
+
+.outline {
+  display: inline-block;
+  color: #ffffff;
+  /* 文字の色 */
+  font-size: 3rem;
+  /* 文字のサイズ */
+  letter-spacing: 4px;
+  /* 文字間 */
+  text-shadow: 2px 2px 1px #666666, -2px 2px 1px #666666, 2px -2px 1px #666666,
+    -2px -2px 1px #666666, 2px 0px 1px #666666, 0px 2px 1px #666666,
+    -2px 0px 1px #666666, 0px -2px 1px #666666;
+  /* 文字の影 */
+}
+
+.outline.small {
+  font-size: 1.2rem;
+  line-height: 2.5rem;
+}
+
+.name_area {
+  display: flex;
+  opacity: 0.95;
+}
+
+.name_area .song_item {
+  width: 30%;
+  background-color: #000;
+}
+
+.name_area .name_item {
+  flex: 1;
+}
+
+.name_area .user_0 {
+  text-align: center;
+  background-color: #639bff;
+}
+
+.name_area .user_1 {
+  text-align: center;
+  background-color: #ff4841;
+}
+
+.name_area .user_2 {
+  text-align: center;
+  background-color: #bdcf16;
+}
+
+.name_area .user_3 {
+  text-align: center;
+  background-color: #0fdd3c;
+}
+
+.flex-glow {
+  flex-grow: 1;
+}
+
+ul {
+  padding-left: 0;
+}
+
+li {
+  list-style: none;
+  background-color: rgb(30, 30, 30);
+  margin-top: 10px;
+  padding: 5px;
+  opacity: 0.95;
+  display: flex;
+  justify-content: space-between;
+}
+
+.user_result {
+  text-align: center;
+}
+
+.user_result.arena {
+  min-width: 17.5%;
+}
+.user_result.bpl {
+  min-width: 30%;
+}
+
+.user_result .user_result_title {
+  font-size: 0.6rem;
+  color: #fff;
+}
+
+.user_result .user_result_score {
+  font-size: 2.5rem;
+  color: #fff;
+  line-height: 2.5rem;
+}
+
+.user_result .user_result_bottom {
+  font-size: 0.6rem;
+  color: #fff;
+  line-height: 0.6rem;
+  margin-top: 10px;
+}
+
+.user_result .user_result_score.result_1 {
+  color: #fab27b;
+  background-image: url("./images/icon.png");
+  background-position: left 15px center;
+  background-repeat: no-repeat;
+  background-size: contain;
+}
+
+.user_result.result_right .user_result_score.result_1 {
+  background-position: right 15px center;
+}
+
+.song_info {
+  width: 30%;
+  text-align: center;
+}
+
+.song_info.bpl {
+  width: 40%;
+}
+
+.song_info .stage_no {
+  font-size: 0.6rem;
+  color: #fff;
+}
+
+.song_info .song_name {
+  font-size: 1.4rem;
+  line-height: 1.4rem;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-top: 5px;
+  padding-bottom: 5px;
+}
+
+.song_info .song_name.arena {
+  font-size: 1.2rem;
+  line-height: 1.2rem;
+}
+
+.song_info .difficulty {
+  display: flex;
+  justify-content: center;
+  margin-top: 5px;
+  font-size: 0.8rem;
+}
+
+.song_info .difficulty .play_style {
+  background-color: #fff;
+  color: #000;
+  padding-left: 10px;
+  padding-right: 10px;
+  margin-right: 10px;
+  border-radius: 10px;
+}
+
+.song_info .difficulty .difficulty_LEGGENDARIA {
+  color: #ce8ef9;
+}
+
+.song_info .difficulty .difficulty_HYPER {
+  color: #ffc800;
+}
+
+.song_info .difficulty .difficulty_ANOTHER {
+  color: #fba8c1;
+}
+
+.song_info .difficulty .difficulty_NORMAL {
+  color: #21efef;
+}
+
+.song_info .difficulty .difficulty_BEGINNER {
+  color: #d3e173;
+}
+
+.result_area {
+  display: flex;
+  opacity: 0.95;
+  margin-top: 10px;
+  background-color: rgb(30, 30, 30);
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+.result_area .user {
+  text-align: center;
+}
+
+.result_area .user .label {
+  font-size: 0.6rem;
+  line-height: 0.6rem;
+  color: #fff;
+}
+
+.result_area .user .total_pt {
+  font-size: 2rem;
+  line-height: 2rem;
+  color: #fff;
+}
+
+.result_area .song_item {
+  width: 30%;
+}

@@ -1,21 +1,26 @@
 import os
 import json
 import re
+import uuid
 
+from errors.connection_failed_error import ConnectionFailedError
+from services.update_service import UpdateService
 from utils.common import safe_print
 from utils.result_handler import ResultHandler
 from watchdog.observers import Observer
 from services.db_service import DBService
 from services.result_service import ResultService
-from handlers.websocket_handler import WebSocketHandler
+from services.websocket_service import WebSocketService
 import flet as ft
 
 DB_FILE = "result.db"
 
-class BattleHandler:
+class MainController:
     def __init__(self, app):
         self.app = app
         self.websocket_handler = None
+        
+        self.update_service = UpdateService()
 
     def on_mode_change(self):
         mode = self.app.mode_radio.value
@@ -37,8 +42,7 @@ class BattleHandler:
 
     def validate_all_inputs(self):
         djname_ok = re.fullmatch(r'^[a-zA-Z0-9.\-\*&!?#$]{1,6}$', self.app.djname_input.value or "") is not None
-        room_pass_ok = self.app.room_pass1.value.isdigit() and len(self.app.room_pass1.value) == 4 and \
-                       self.app.room_pass2.value.isdigit() and len(self.app.room_pass2.value) == 4
+        room_pass_ok = re.fullmatch(r'^[a-zA-Z0-9_-]{4,36}$', self.app.room_pass.value or "") is not None
         file_ok = self.app.result_file_path is not None
 
         mode = self.app.mode_radio.value
@@ -55,9 +59,7 @@ class BattleHandler:
                 self.app.settings = json.load(f)
 
             self.app.djname_input.value = self.app.settings.get("djname", "")
-            room_pass = self.app.settings.get("room_pass", "0000-0000").split("-")
-            if len(room_pass) == 2:
-                self.app.room_pass1.value, self.app.room_pass2.value = room_pass
+            self.app.room_pass.value = self.app.settings.get("room_pass", "")
 
             mode_value = str(self.app.settings.get("mode", "1"))
             self.app.mode_radio.value = mode_value
@@ -85,7 +87,7 @@ class BattleHandler:
 
         self.app.settings = {
             "djname": self.app.djname_input.value,
-            "room_pass": f"{self.app.room_pass1.value}-{self.app.room_pass2.value}",
+            "room_pass": self.app.room_pass.value,
             "mode": mode_value,
             "user_num": user_num,
             "result_file": self.app.result_file_path
@@ -106,7 +108,7 @@ class BattleHandler:
             self.app.room_id, self.app.user_token = db.register_room_and_user(self.app.settings)
 
             # WebSocket接続
-            self.websocket_handler = WebSocketHandler(self.app, db)
+            self.websocket_handler = WebSocketService(self.app, db)
             await self.websocket_handler.connect()
 
             # ファイル監視開始
@@ -118,6 +120,10 @@ class BattleHandler:
             self.app.start_button.visible = False
             self.app.stop_button.visible = True
 
+        except ConnectionFailedError as e:
+            await self.app.show_error_dialog(f"{e}")
+            self.app.start_button.disabled = False
+            self.app.start_button.content = ft.Text("対戦開始", size=20)
         except Exception as ex:
             # エラーハンドリング（必要に応じて表示）
             safe_print("[エラー] start_battle:", ex)
@@ -217,3 +223,22 @@ class BattleHandler:
         safe_print("[送信データ]")
         safe_print(json.dumps(result_data, ensure_ascii=False, indent=2))
         await self.websocket_handler.send(result_data)
+    
+    async def check_for_update(self):
+        result, assets = self.update_service.check_update()
+
+        if result.error:
+            await self.app.show_error_dialog(f"アップデート確認エラー: {result.error}")
+            return
+
+        if result.need_update:
+            await self.app.show_message_dialog("アップデート", "新しいバージョンが見つかりました。アップデートします。")
+            safe_print("execute update")
+            err = self.update_service.perform_update(assets)
+            if err:
+                await self.app.show_error_dialog(f"アップデート失敗: {err}")
+    
+    def create_room_pass_button(self):
+        new_uuid = str(uuid.uuid4()).replace("-", "")
+        self.app.room_pass.value = new_uuid
+        self.app.page.update()

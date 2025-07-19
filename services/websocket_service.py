@@ -3,13 +3,14 @@ import asyncio
 import json
 
 from config.config import WEBSOCKET_URL
+from errors.connection_failed_error import ConnectionFailedError
 from services.db_service import DBService
 from services.json_service import JSONService
 import flet as ft
 
 from utils.common import safe_print
 
-class WebSocketHandler:
+class WebSocketService:
     def __init__(self, app, db_service: DBService):
         self.app = app
         self.db_service = db_service
@@ -22,8 +23,12 @@ class WebSocketHandler:
     async def connect(self):
         uri = self.get_ws_uri()
         safe_print(f"[WebSocket 接続先] {uri}")
-        self.websocket = await websockets.connect(uri)
-        self.task = asyncio.create_task(self.receive_loop())
+        try:
+            self.websocket = await websockets.connect(uri)
+            safe_print("websocket get success")
+            self.task = asyncio.create_task(self.receive_loop())
+        except Exception as e:
+            raise ConnectionFailedError("サーバーに接続できませんでした。")
 
     async def disconnect(self):
         if self.websocket:
