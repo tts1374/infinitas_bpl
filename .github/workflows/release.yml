@@ -10,6 +10,8 @@ on:
 jobs:
   build:
     runs-on: windows-latest
+    environment: 
+      name: production
     env:
       PYTHONIOENCODING: utf-8
 
@@ -47,7 +49,7 @@ jobs:
             /td sha256 `
             /fd sha256 `
             $exePath
-            
+
       - name: Archive build artifacts
         run: |
           powershell Compress-Archive -Path dist/INFINITAS_Online_Battle/* -DestinationPath dist/INFINITAS_Online_Battle.zip
