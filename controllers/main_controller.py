@@ -2,13 +2,14 @@ import os
 import json
 import re
 
+from errors.connection_failed_error import ConnectionFailedError
 from services.update_service import UpdateService
 from utils.common import safe_print
 from utils.result_handler import ResultHandler
 from watchdog.observers import Observer
 from services.db_service import DBService
 from services.result_service import ResultService
-from handlers.websocket_handler import WebSocketHandler
+from services.websocket_service import WebSocketService
 import flet as ft
 
 DB_FILE = "result.db"
@@ -109,7 +110,7 @@ class MainController:
             self.app.room_id, self.app.user_token = db.register_room_and_user(self.app.settings)
 
             # WebSocket接続
-            self.websocket_handler = WebSocketHandler(self.app, db)
+            self.websocket_handler = WebSocketService(self.app, db)
             await self.websocket_handler.connect()
 
             # ファイル監視開始
@@ -121,6 +122,10 @@ class MainController:
             self.app.start_button.visible = False
             self.app.stop_button.visible = True
 
+        except ConnectionFailedError as e:
+            await self.app.show_error_dialog(f"{e}")
+            self.app.start_button.disabled = False
+            self.app.start_button.content = ft.Text("対戦開始", size=20)
         except Exception as ex:
             # エラーハンドリング（必要に応じて表示）
             safe_print("[エラー] start_battle:", ex)
