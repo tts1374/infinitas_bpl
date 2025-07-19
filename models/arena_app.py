@@ -20,6 +20,7 @@ class ArenaApp:
         self.last_result_content = None
         self.battle_handler = BattleHandler(self)
         self.result_table_container = ft.Container()
+        self.page.run_task(self.battle_handler.check_for_update)
         
         # DJNAME（バリデーション付き）
         self.djname_input = ft.TextField(
@@ -208,6 +209,28 @@ class ArenaApp:
         )
 
         self.page.update()
+
+    async def show_message_dialog(self, title, message):
+        safe_print(f"show_message_dialog: message={message}")
+
+        fut = asyncio.get_event_loop().create_future()
+
+        def on_ok(e):
+            self.page.close(dialog)
+            if not fut.done():
+                fut.set_result(True)
+
+        dialog = ft.AlertDialog(
+            modal=True,
+            title=ft.Text(title),
+            content=ft.Text(message),
+            actions=[
+                ft.TextButton("OK", on_click=on_ok)
+            ]
+        )
+
+        self.page.open(dialog)
+        await fut
 
     async def show_error_dialog(self, message):
         safe_print(f"show_error_dialog: message={message}")
