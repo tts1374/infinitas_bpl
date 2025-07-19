@@ -33,31 +33,17 @@ jobs:
         run: |
           python build_release.py
 
-      - name: Decode Self-Signed Certificate
-        shell: pwsh
-        run: |
-          $bytes = [System.Convert]::FromBase64String($Env:CODESIGN_PFX)
-          [IO.File]::WriteAllBytes("codesign_test.pfx", $bytes)
-
-      - name: Sign EXE with Self-Signed Cert
-        shell: pwsh
-        run: |
-          $certFile = "codesign_test.pfx"
-          $certPass = $Env:CODESIGN_PASSWORD
-          $timestampUrl = "http://timestamp.digicert.com"
-          $exePath = "dist/INFINITAS_Online_Battle/INFINITAS_Online_Battle.exe"
-
-          $args = @(
-            "sign",
-            "/f", $certFile,
-            "/p", $certPass,
-            "/tr", $timestampUrl,
-            "/td", "sha256",
-            "/fd", "sha256",
-            $exePath
-          )
-
-          & "C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x64\signtool.exe" @args
+      - name: Code sign EXE and DLLs
+        uses: skymatic/code-sign-action@v1
+        with:
+          certificate: '${{ secrets.CODESIGN_PFX }}'
+          password: '${{ secrets.CODESIGN_PASSWORD }}'
+          certificatesha1: '${{ secrets.CERTHASH }}'
+          certificatename: '${{ secrets.CERTNAME }}'
+          description: 'INFINITAS Online Battle'
+          timestampUrl: 'http://timestamp.digicert.com'
+          folder: 'dist/INFINITAS_Online_Battle'
+          recursive: true
 
       - name: Archive build artifacts
         run: |
