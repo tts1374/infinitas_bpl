@@ -1,6 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 block_cipher = None
+flet_view_path = os.path.join(flet_desktop.__path__[0], "flet_view.exe")
 
 a = Analysis(
     ['main.py'],
@@ -9,8 +10,12 @@ a = Analysis(
     datas=[
         ('images/icon.ico', 'images'),
         ('migrations', 'migrations'), 
+        (flet_view_path, '.'), 
     ],
-    hiddenimports=[],
+    hiddenimports=[
+        'flet_desktop',
+        'flet_desktop.runtime.windows.flet_view_runner',
+    ]
     hookspath=[],
     runtime_hooks=[],
     cipher=block_cipher,
@@ -38,7 +43,7 @@ coll = COLLECT(
     a.zipfiles,
     a.datas,
     strip=False,
-    upx=True,
+    upx=False,
     upx_exclude=[],
     name='INFINITAS_Online_Battle'
 )
