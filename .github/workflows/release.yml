@@ -33,18 +33,6 @@ jobs:
         run: |
           python build_release.py
 
-      - name: Code sign EXE and DLLs
-        uses: skymatic/code-sign-action@v1
-        with:
-          certificate: '${{ secrets.CODESIGN_PFX }}'
-          password: '${{ secrets.CODESIGN_PASSWORD }}'
-          certificatesha1: '${{ secrets.CERTHASH }}'
-          certificatename: '${{ secrets.CERTNAME }}'
-          description: 'INFINITAS Online Battle'
-          timestampUrl: 'http://timestamp.digicert.com'
-          folder: 'dist/INFINITAS_Online_Battle'
-          recursive: true
-
       - name: Archive build artifacts
         run: |
           powershell Compress-Archive -Path dist/INFINITAS_Online_Battle/* -DestinationPath dist/INFINITAS_Online_Battle.zip
