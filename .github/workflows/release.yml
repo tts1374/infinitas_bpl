@@ -36,7 +36,8 @@ jobs:
       - name: Decode Self-Signed Certificate
         shell: pwsh
         run: |
-          [System.Convert]::FromBase64String($Env:CODESIGN_PFX) | Set-Content -Encoding Byte -Path codesign_test.pfx
+          $bytes = [System.Convert]::FromBase64String($Env:CODESIGN_PFX)
+          [IO.File]::WriteAllBytes("codesign_test.pfx", $bytes)
 
       - name: Sign EXE with Self-Signed Cert
         shell: pwsh
