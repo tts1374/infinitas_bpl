@@ -15,7 +15,7 @@ a = Analysis(
     hiddenimports=[
         'flet_desktop',
         'flet_desktop.runtime.windows.flet_view_runner',
-    ]
+    ],
     hookspath=[],
     runtime_hooks=[],
     cipher=block_cipher,
