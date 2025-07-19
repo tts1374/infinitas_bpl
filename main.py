@@ -1,6 +1,6 @@
 import flet as ft
 from db.database import init_db
-from models.arena_app import ArenaApp
+from views.main_view import MainView
 import traceback
 
 from utils.common import resource_path, safe_print
@@ -12,7 +12,7 @@ def main(page: ft.Page):
         page.title = "INFINITAS オンライン対戦"
         # ソフトウェアアイコンの設定
         page.window.icon = resource_path("images/icon.ico")
-        app = ArenaApp(page)
+        app = MainView(page)
         app.load_settings()
     except Exception as e:
         # エラーログ出力

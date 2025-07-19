@@ -4,21 +4,21 @@ import asyncio
 import os
 import json
 import sys
-from handlers.battle_handler import BattleHandler
+from controllers.main_controller import MainController
 from utils.common import safe_print
 
 DB_FILE = "result.db"
 SETTINGS_FILE = "settings.json"
 RESULT_FILE = "result_output.json"
 
-class ArenaApp:
+class MainView:
     def __init__(self, page: ft.Page):
-        safe_print("ArenaApp 初期化中")
+        safe_print("MainView 初期化中")
         self.page = page
         self.page.on_close = self.on_close
         self.result_file_path = None
         self.last_result_content = None
-        self.battle_handler = BattleHandler(self)
+        self.battle_handler = MainController(self)
         self.result_table_container = ft.Container()
         self.page.run_task(self.battle_handler.check_for_update)
         

@@ -1,100 +1,82 @@
-import requests
-import tempfile
-import zipfile
-import shutil
 import os
 import sys
 import subprocess
 
+from models.program_update_result import ProgramUpdateResult
+from repositories.api.github_repository import GithubRepository
+from repositories.files.storage_repository import StorageRepository
 from config.config import APP_VERSION
 
-GITHUB_REPO = "tts1374/infinitas_bpl"
-ZIP_NAME = "INFINITAS_Online_Battle.zip"
+class UpdateService:
+    def __init__(self):
+        self.githubRepository = GithubRepository()
+        self.storageRepository = StorageRepository()
 
-class UpdateResult:
-    def __init__(self, need_update=False, error=None):
-        self.need_update = need_update
-        self.error = error
+    def check_update(self):
+        try:
+            data = self.githubRepository.get_latest_release()
+            latest_version = data["tag_name"]
 
-def check_update():
-    try:
-        url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
-        r = requests.get(url)
-        r.raise_for_status()
-        data = r.json()
-        latest_version = data["tag_name"]
+            if latest_version > APP_VERSION:
+                return ProgramUpdateResult(need_update=True), data["assets"]
+            else:
+                return ProgramUpdateResult(need_update=False), None
+        except Exception as e:
+            return ProgramUpdateResult(need_update=False, error=str(e)), None
 
-        if latest_version > APP_VERSION:
-            return UpdateResult(need_update=True), data["assets"]
-        else:
-            return UpdateResult(need_update=False), None
-    except Exception as e:
-        return UpdateResult(need_update=False, error=str(e)), None
+    def perform_update(self, assets):
+        try:
+            asset = next((a for a in assets if a["name"] == self.githubRepository.zip_name), None)
+            if not asset:
+                return f"{self.githubRepository.zip_name} が見つかりません"
 
-def perform_update(assets):
-    try:
-        asset = next((a for a in assets if a["name"] == ZIP_NAME), None)
-        if not asset:
-            return f"{ZIP_NAME} が見つかりません"
+            zip_path = self.githubRepository.download_zip(asset["browser_download_url"])
+            tmp_dir = self.storageRepository.extract_zip(zip_path)
 
-        tmp_dir = tempfile.mkdtemp()
-        zip_path = os.path.join(tmp_dir, ZIP_NAME)
+            if getattr(sys, 'frozen', False):
+                exe_dir = os.path.dirname(sys.executable)
+                exe_path = sys.executable
+            else:
+                exe_dir = os.path.abspath(os.getcwd())
+                exe_path = f"{sys.executable} {os.path.abspath(sys.argv[0])}"
 
-        r = requests.get(asset["browser_download_url"], stream=True)
-        with open(zip_path, "wb") as f:
-            shutil.copyfileobj(r.raw, f)
+            bat_dir = os.environ.get("TEMP", tmp_dir)
+            bat_path = os.path.join(bat_dir, "update_infinitas_bpl.bat")
 
-        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            zip_ref.extractall(tmp_dir)
+            pid = os.getpid()
+            bat_lines = []
+            bat_lines.append("@echo off")
+            bat_lines.append("chcp 65001 >nul")
+            bat_lines.append("echo --- Update Start ---")
+            bat_lines.append("timeout /t 2 >nul")
+            bat_lines.append(f"taskkill /PID {pid} /F >nul 2>nul")
+            bat_lines.append("ping 127.0.0.1 -n 3 >nul")
 
-        # 上書き先は実行ファイルのあるディレクトリ
-        if getattr(sys, 'frozen', False):
-            exe_dir = os.path.dirname(sys.executable)
-        else:
-            exe_dir = os.path.abspath(os.getcwd())  # デバッグ実行用
+            # コピー
+            for root, dirs, files in os.walk(tmp_dir):
+                rel_path = os.path.relpath(root, tmp_dir)
+                target_dir = os.path.join(exe_dir, rel_path)
+                bat_lines.append(f'if not exist "{target_dir}" mkdir "{target_dir}"')
+                for file in files:
+                    src = os.path.join(root, file)
+                    dst = os.path.join(target_dir, file)
+                    bat_lines.append(f'copy /y "{src}" "{dst}" >nul')
 
-        # バッチ生成内容（全ファイル上書き）
-        pid = os.getpid()
-        bat_path = os.path.join(tmp_dir, "update.bat")
+            # 一時ディレクトリ削除
+            bat_lines.append(f'rd /s /q "{tmp_dir}"')
+            bat_lines.append("echo --- Update Complete ---")
 
-        bat_lines = [
-            "@echo off",
-            "chcp 65001 >nul",
-            "timeout /t 2",
-            f"taskkill /f /pid {pid}"
-        ]
+            # 再起動
+            bat_lines.append(f'start "" {exe_path}')
+            bat_lines.append("exit")
 
-        # ファイルコピー
-        for root, dirs, files in os.walk(tmp_dir):
-            rel_path = os.path.relpath(root, tmp_dir)
-            target_dir = os.path.join(exe_dir, rel_path)
-            if not os.path.exists(target_dir):
-                bat_lines.append(f'mkdir "{target_dir}"')
+            with open(bat_path, "w", encoding="utf-8") as f:
+                f.write("\n".join(bat_lines))
 
-            for file in files:
-                if file == "update.bat":
-                    continue  # 自分自身はコピーしない
+            subprocess.Popen(["cmd", "/c", bat_path], creationflags=subprocess.CREATE_NEW_CONSOLE)
+            sys.exit(0)
 
-                src = os.path.join(root, file)
-                dst = os.path.join(target_dir, file)
-                bat_lines.append(f'copy /y "{src}" "{dst}"')
+        except Exception as e:
+            return str(e)
 
-        # 一時ディレクトリ削除（ZIP含む）
-        bat_lines.append(f'rd /s /q "{tmp_dir}"')
-
-        # EXE再起動
-        bat_lines.append(f'start "" "{sys.executable}"')
-        bat_lines.append("exit")
-
-        # バッチ出力
-        with open(bat_path, "w", encoding="shift_jis") as f:
-            f.write("\n".join(bat_lines))
-
-        # バッチ実行 & 終了
-        subprocess.Popen(bat_path, shell=True)
-        sys.exit(0)
-
-    except Exception as e:
-        return str(e)
-
-    return None  # 成功時はエラー無し
+        return None

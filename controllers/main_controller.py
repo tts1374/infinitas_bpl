@@ -2,7 +2,7 @@ import os
 import json
 import re
 
-from services import update_service
+from services.update_service import UpdateService
 from utils.common import safe_print
 from utils.result_handler import ResultHandler
 from watchdog.observers import Observer
@@ -13,10 +13,12 @@ import flet as ft
 
 DB_FILE = "result.db"
 
-class BattleHandler:
+class MainController:
     def __init__(self, app):
         self.app = app
         self.websocket_handler = None
+        
+        self.update_service = UpdateService()
 
     def on_mode_change(self):
         mode = self.app.mode_radio.value
@@ -220,7 +222,7 @@ class BattleHandler:
         await self.websocket_handler.send(result_data)
         
     async def check_for_update(self):
-        result, assets = update_service.check_update()
+        result, assets = self.update_service.check_update()
 
         if result.error:
             await self.app.show_error_dialog(f"アップデート確認エラー: {result.error}")
@@ -229,6 +231,6 @@ class BattleHandler:
         if result.need_update:
             await self.app.show_message_dialog("アップデート", "新しいバージョンが見つかりました。アップデートします。")
             safe_print("execute update")
-            err = update_service.perform_update(assets)
+            err = self.update_service.perform_update(assets)
             if err:
                 await self.app.show_error_dialog(f"アップデート失敗: {err}")
