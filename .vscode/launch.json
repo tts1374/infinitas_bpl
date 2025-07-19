@@ -3,16 +3,24 @@
     "configurations": [
         {
             "name": "通常実行",
-            "type": "python",
+            "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/main.py",
             "console": "integratedTerminal"
         },
         {
             "name": "ビルド用実行",
-            "type": "python",
+            "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/build_release.py",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Webサーバ起動",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "http.server",
+            "args": ["8000"],
             "console": "integratedTerminal"
         }
     ]

@@ -49,6 +49,10 @@ def build():
     subprocess.run(cmd, check=True)
     # 出力フォルダにbpl_battle.htmlをコピー
     shutil.copy("bpl_battle.html", os.path.join(output_dir, "bpl_battle.html"))
+    # 出力フォルダにbpl_battle_style.cssをコピー
+    shutil.copy("bpl_battle_style.css", os.path.join(output_dir, "bpl_battle_style.css"))
+    # 出力フォルダにbpl_battle.htmlをコピー
+    shutil.copy("bpl_battle_script.js", os.path.join(output_dir, "bpl_battle_script.js"))
     # imagesフォルダごとコピー
     shutil.copytree("images", os.path.join(output_dir, "images"), dirs_exist_ok=True)
     # README.mdをコピー
