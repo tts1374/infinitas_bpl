@@ -27,6 +27,7 @@ def clean():
         shutil.rmtree(output_dir)
 
 def build():
+    # ---- mainのビルド -----
     cmd = [
         "flet",
         "pack",
@@ -37,23 +38,46 @@ def build():
         "main.py",                        # メインスクリプト
         "--add-data", "migrations;migrations",
     ]
-    safe_print("flet packでビルドを開始します...")
+    safe_print("INFINITAS_Online_Battle.exe のビルドを開始します...")
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         safe_print("ビルド失敗しました。詳細ログ：")
         safe_print(result.stdout)
         safe_print(result.stderr)
         raise subprocess.CalledProcessError(result.returncode, cmd)
-    else:
-        safe_print(result.stdout)
-        # exe出力後に独立ファイルをコピー
-        shutil.copy("bpl_battle.html", os.path.join(output_dir, "bpl_battle.html"))
-        shutil.copy("bpl_battle_style.css", os.path.join(output_dir, "bpl_battle_style.css"))
-        shutil.copy("bpl_battle_script.js", os.path.join(output_dir, "bpl_battle_script.js"))
-        shutil.copy("icon.ico", os.path.join(output_dir, "icon.ico"))
-        shutil.copy("README.md", os.path.join(output_dir, "README.md"))
-        safe_print(f"ビルドが完了しました。{output_dir} に出力されています。")
     
+    # exe出力後に独立ファイルをコピー
+    shutil.copy("bpl_battle.html", os.path.join(output_dir, "bpl_battle.html"))
+    shutil.copy("bpl_battle_style.css", os.path.join(output_dir, "bpl_battle_style.css"))
+    shutil.copy("bpl_battle_script.js", os.path.join(output_dir, "bpl_battle_script.js"))
+    shutil.copy("icon.ico", os.path.join(output_dir, "icon.ico"))
+    shutil.copy("README.md", os.path.join(output_dir, "README.md"))
+    safe_print("INFINITAS_Online_Battle.exe のビルド完了。")
+    
+    # ----- updaterのビルド -----
+    updater_output_dir = os.path.join(output_dir, "updater")
+    os.makedirs(updater_output_dir, exist_ok=True)
+
+    updater_cmd = [
+        "flet",
+        "pack",
+        "-y",
+        "-n", "updater",
+        "--distpath", updater_output_dir,
+        "updater.py",
+    ]
+    safe_print("updater.exe のビルドを開始します...")
+    result = subprocess.run(updater_cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        safe_print("updater ビルド失敗しました。詳細ログ：")
+        safe_print(result.stdout)
+        safe_print(result.stderr)
+        raise subprocess.CalledProcessError(result.returncode, updater_cmd)
+
+    # updater.exe をメイン実行ファイルと同じ場所にコピー
+    shutil.copy(os.path.join(updater_output_dir, "updater.exe"), os.path.join(output_dir, "updater.exe"))
+
+    safe_print("updater.exe のビルド完了。")
     safe_print(f"ビルドが完了しました。{output_dir} に出力されています。")
 
 if __name__ == "__main__":
