@@ -77,6 +77,9 @@ def build():
     # updater.exe をメイン実行ファイルと同じ場所にコピー
     shutil.copy(os.path.join(updater_output_dir, "updater.exe"), os.path.join(output_dir, "updater.exe"))
 
+    # 不要になったupdaterフォルダを削除
+    shutil.rmtree(updater_output_dir)
+    
     safe_print("updater.exe のビルド完了。")
     safe_print(f"ビルドが完了しました。{output_dir} に出力されています。")
 
