@@ -40,5 +40,6 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         with:
           files: dist/INFINITAS_Online_Battle.zip
+          draft: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

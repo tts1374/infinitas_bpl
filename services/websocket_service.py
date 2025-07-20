@@ -7,7 +7,7 @@ from errors.connection_failed_error import ConnectionFailedError
 from services.db_service import DBService
 from services.json_service import JSONService
 import flet as ft
-
+import traceback
 from utils.common import safe_print
 
 class WebSocketService:
@@ -27,6 +27,11 @@ class WebSocketService:
             self.websocket = await websockets.connect(uri)
             safe_print("websocket get success")
             self.task = asyncio.create_task(self.receive_loop())
+            
+            # エラーログ出力
+            with open("error.log", "w", encoding="utf-8") as f:
+                f.write("予期せぬエラーが発生しました:\n")
+                traceback.print_exc(file=f)
         except Exception as e:
             raise ConnectionFailedError("サーバーに接続できませんでした。")
 

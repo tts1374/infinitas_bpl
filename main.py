@@ -11,7 +11,7 @@ def main(page: ft.Page):
 
         page.title = "INFINITAS オンライン対戦"
         # ソフトウェアアイコンの設定
-        page.window.icon = resource_path("images/icon.ico")
+        page.window.icon = resource_path("icon.ico")
         app = MainView(page)
         app.load_settings()
     except Exception as e:
@@ -24,4 +24,4 @@ def main(page: ft.Page):
         raise e
 
 
-ft.app(target=main)
+ft.app(target=main, assets_dir="assets")
