@@ -8,20 +8,12 @@ from utils.common import safe_print
 
 CONFIG_FILE = "./config/config.py"
 output_dir = "dist/INFINITAS_Online_Battle"
-exe_name = "INFINITAS_Online_Battle"
-
-def ensure_pyinstaller():
-    try:
-        import PyInstaller
-    except ImportError:
-        safe_print("[Warning] PyInstaller が見つかりません。自動でインストールします。")
-        subprocess.run([sys.executable, "-m", "pip", "install", "pyinstaller"], check=True)
 
 def set_release_mode(is_release=True):
     with open(CONFIG_FILE, "r", encoding="utf-8") as f:
         content = f.read()
 
-    # IS_RELEASEの部分を書き換え
+    # IS_RELEASE の部分を書き換え
     new_content = re.sub(r"IS_RELEASE\s*=\s*(True|False)", f"IS_RELEASE = {str(is_release)}", content)
 
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
@@ -31,36 +23,45 @@ def set_release_mode(is_release=True):
 
 def clean():
     """過去のビルドファイル削除"""
-    for folder in ["build", "dist", "__pycache__"]:
-        if os.path.exists(folder):
-            shutil.rmtree(folder)
-    if os.path.exists("INFINITAS_Online_Battle.spec"):
-        os.remove("INFINITAS_Online_Battle.spec")
+    if os.path.exists(output_dir):
+        shutil.rmtree(output_dir)
 
 def build():
-    ensure_pyinstaller()
-    """PyInstallerでビルド実行"""
     cmd = [
-        sys.executable,  # python.exe のパス
-        "-m", "PyInstaller",
-        "main.spec",
+        "flet",
+        "pack",
+        "-y",  # 対話なし
+        "-n", "INFINITAS_Online_Battle",  # exe名指定
+        "--distpath", output_dir,          # 出力先指定
+        "--icon", "icon.ico",      # アイコン
+        "main.py",                        # メインスクリプト
+        "--add-data", "migrations;migrations",
     ]
-    safe_print("ビルドを開始します...")
-    subprocess.run(cmd, check=True)
-    # 出力フォルダにbpl_battle.htmlをコピー
-    shutil.copy("bpl_battle.html", os.path.join(output_dir, "bpl_battle.html"))
-    # imagesフォルダごとコピー
-    shutil.copytree("images", os.path.join(output_dir, "images"), dirs_exist_ok=True)
-    # README.mdをコピー
-    shutil.copy("README.md", os.path.join(output_dir, "README.md"))
-    safe_print("ビルドが完了しました。dist/ 以下にexeが生成されています。")
+    safe_print("flet packでビルドを開始します...")
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        safe_print("ビルド失敗しました。詳細ログ：")
+        safe_print(result.stdout)
+        safe_print(result.stderr)
+        raise subprocess.CalledProcessError(result.returncode, cmd)
+    else:
+        safe_print(result.stdout)
+        # exe出力後に独立ファイルをコピー
+        shutil.copy("bpl_battle.html", os.path.join(output_dir, "bpl_battle.html"))
+        shutil.copy("bpl_battle_style.css", os.path.join(output_dir, "bpl_battle_style.css"))
+        shutil.copy("bpl_battle_script.js", os.path.join(output_dir, "bpl_battle_script.js"))
+        shutil.copy("icon.ico", os.path.join(output_dir, "icon.ico"))
+        shutil.copy("README.md", os.path.join(output_dir, "README.md"))
+        safe_print(f"ビルドが完了しました。{output_dir} に出力されています。")
+    
+    safe_print(f"ビルドが完了しました。{output_dir} に出力されています。")
 
 if __name__ == "__main__":
     try:
         # ① リリースモードに設定
         set_release_mode(True)
 
-        # ② ビルド実行
+        # ② クリーンアップ＆ビルド実行
         clean()
         build()
 

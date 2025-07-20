@@ -38,3 +38,9 @@ def safe_print(*args, **kwargs):
 
     except (io.UnsupportedOperation, AttributeError, PermissionError):
         pass
+
+def safe_int(value, default=0):
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return default

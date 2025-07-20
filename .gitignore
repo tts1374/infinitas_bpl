@@ -209,3 +209,4 @@ __marimo__/
 result.db
 settings.json
 result_output.json
+*.spec
