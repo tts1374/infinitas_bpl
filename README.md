@@ -102,4 +102,8 @@
   
   作者：かた様 → [https://x.com/cold_planet_](https://x.com/cold_planet_)
 
+- デザイン担当：
+  
+  しののめかれん → [https://x.com/sk_Lotus](https://x.com/sk_Lotus)
+  
 ライセンスは **Apache License 2.0** に基づき使用しています。
