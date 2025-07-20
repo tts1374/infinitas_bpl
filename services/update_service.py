@@ -30,50 +30,29 @@ class UpdateService:
             if not asset:
                 return f"{self.githubRepository.zip_name} が見つかりません"
 
+            # ZIPダウンロード
             zip_path = self.githubRepository.download_zip(asset["browser_download_url"])
-            tmp_dir = self.storageRepository.extract_zip(zip_path)
 
             if getattr(sys, 'frozen', False):
                 exe_dir = os.path.dirname(sys.executable)
-                exe_path = sys.executable
+                exe_name = os.path.basename(sys.executable)
             else:
                 exe_dir = os.path.abspath(os.getcwd())
-                exe_path = f"{sys.executable} {os.path.abspath(sys.argv[0])}"
+                exe_name = os.path.basename(sys.argv[0])
 
-            bat_dir = os.environ.get("TEMP", tmp_dir)
-            bat_path = os.path.join(bat_dir, "update_infinitas_bpl.bat")
+            # updater.exe のパス（exeと同じディレクトリに配置する想定）
+            updater_path = os.path.join(exe_dir, "updater.exe")
 
-            pid = os.getpid()
-            bat_lines = []
-            bat_lines.append("@echo off")
-            bat_lines.append("chcp 65001 >nul")
-            bat_lines.append("echo --- Update Start ---")
-            bat_lines.append("timeout /t 2 >nul")
-            bat_lines.append(f"taskkill /PID {pid} /F >nul 2>nul")
-            bat_lines.append("ping 127.0.0.1 -n 3 >nul")
+            # 引数を渡して実行
+            cmd = [
+                updater_path,
+                zip_path,
+                exe_name
+            ]
 
-            # コピー
-            for root, dirs, files in os.walk(tmp_dir):
-                rel_path = os.path.relpath(root, tmp_dir)
-                target_dir = os.path.join(exe_dir, rel_path)
-                bat_lines.append(f'if not exist "{target_dir}" mkdir "{target_dir}"')
-                for file in files:
-                    src = os.path.join(root, file)
-                    dst = os.path.join(target_dir, file)
-                    bat_lines.append(f'copy /y "{src}" "{dst}" >nul')
+            subprocess.Popen(cmd, creationflags=subprocess.CREATE_NEW_CONSOLE)
 
-            # 一時ディレクトリ削除
-            bat_lines.append(f'rd /s /q "{tmp_dir}"')
-            bat_lines.append("echo --- Update Complete ---")
-
-            # 再起動
-            bat_lines.append(f'start "" {exe_path}')
-            bat_lines.append("exit")
-
-            with open(bat_path, "w", encoding="utf-8") as f:
-                f.write("\n".join(bat_lines))
-
-            subprocess.Popen(["cmd", "/c", bat_path], creationflags=subprocess.CREATE_NEW_CONSOLE)
+            # 自分自身は終了
             sys.exit(0)
 
         except Exception as e:
