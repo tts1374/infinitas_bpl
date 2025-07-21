@@ -4,11 +4,11 @@ import shutil
 import os
 
 from config.config import ZIP_NAME
-from repositories.api.i_github_repository import IGithubRepository
+from repositories.api.i_github_client import IGithubClient
 
 GITHUB_REPO = "tts1374/infinitas_bpl"
 
-class GithubRepository(IGithubRepository):
+class GithubClient(IGithubClient):
     def __init__(self):
         self.repo = GITHUB_REPO
         self.zip_name = ZIP_NAME

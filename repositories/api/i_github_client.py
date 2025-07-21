@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 
-class IGithubRepository(ABC):
+class IGithubClient(ABC):
     @abstractmethod
     def get_latest_release(self):
         """

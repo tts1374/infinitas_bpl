@@ -3,20 +3,20 @@ import sys
 import subprocess
 
 from models.program_update_result import ProgramUpdateResult
-from repositories.api.github_repository import GithubRepository
-from repositories.api.i_github_repository import IGithubRepository
+from repositories.api.github_client import GithubClient
+from repositories.api.i_github_client import IGithubClient
 from config.config import APP_VERSION, ZIP_NAME
 from services.i_update_service import IUpdateService
 from utils.common import safe_print
 
 class UpdateService(IUpdateService):
-    def __init__(self, github_reposirory: IGithubRepository):
-        self.github_reposirory = github_reposirory
+    def __init__(self, github_client: IGithubClient):
+        self.github_client = github_client
         self.zip_name = ZIP_NAME
 
     def check_update(self):
         try:
-            data = self.github_reposirory.get_latest_release()
+            data = self.github_client.get_latest_release()
             latest_version = data["tag_name"]
 
             if latest_version > APP_VERSION:
@@ -33,7 +33,7 @@ class UpdateService(IUpdateService):
                 return f"{self.zip_name} が見つかりません"
 
             # ZIPダウンロード
-            zip_path = self.github_reposirory.download_zip(asset["browser_download_url"])
+            zip_path = self.github_client.download_zip(asset["browser_download_url"])
 
             if getattr(sys, 'frozen', False):
                 exe_dir = os.path.dirname(sys.executable)

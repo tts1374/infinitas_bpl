@@ -2,7 +2,7 @@ import flet as ft
 from controllers.app_controller import AppController
 from controllers.main_view_controller import MainViewController
 from factories.i_app_factory import IAppFactory
-from repositories.api.github_repository import GithubRepository
+from repositories.api.github_client import GithubClient
 from repositories.files.settings_file_repository import SettingsFileRepository
 from services.settings_service import SettingsService
 from services.update_service import UpdateService
@@ -19,8 +19,8 @@ class AppFactory(IAppFactory):
         return SettingsService(repository)
     @classmethod
     def create_update_service(cls):
-        github_repository = GithubRepository()
-        return UpdateService(github_repository)
+        github_client = GithubClient()
+        return UpdateService(github_client)
         
     ################################
     ## Controller
