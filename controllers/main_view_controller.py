@@ -7,11 +7,14 @@ from controllers.i_app_controller import IAppController
 from controllers.i_main_view_controller import IMainViewController
 from errors.connection_failed_error import ConnectionFailedError
 from models.settings import Settings
+from repositories.files.file_watcher import FileWatcher
 from utils.common import safe_print
-from services.result_service import ResultService
+from watchdog.observers import Observer
 import flet as ft
-
+import xml.etree.ElementTree as ET
+import json
 from views.main_view import MainView
+import time
 
 DB_FILE = "result.db"
 RESULT_FILE = "result_output.json"
@@ -20,7 +23,7 @@ class MainViewController(IMainViewController):
     def __init__(self, app: MainView, app_controller: IAppController):
         self.app = app
         self.app_controller = app_controller
-        
+        self.last_result_content = None
 
     def on_create(self):
         # アップデートのチェック
@@ -117,8 +120,14 @@ class MainViewController(IMainViewController):
                 user_num=user_num,
                 result_file=self.app.result_file_path
             )
-            await self.app_controller.start_battle(settings, self.load_result_table)
+            self.app.user_token = await self.app_controller.start_battle(settings, self.load_result_table)
             self.app.settings = settings
+            
+            # ファイル監視
+            self.file_watch_service = FileWatcher(self)
+            self.observer = Observer()
+            self.observer.schedule(self.file_watch_service, path=os.path.dirname(self.app.result_file_path), recursive=False)
+            self.observer.start()
             
             self.app.start_button.visible = False
             self.app.stop_button.visible = True
@@ -143,9 +152,11 @@ class MainViewController(IMainViewController):
             self.app.page.update()
 
     async def stop_battle(self, e):
-        if self.api_service:
-            await self.api_service.disconnect()
-            safe_print("Websocket disconnect")
+        if not self.app.stop_button.visible:
+            # 既に停止済みの場合は何もしない
+            return
+        
+        await self.app_controller.stop_battle()
 
         if hasattr(self, "observer"):
             self.observer.stop()
@@ -220,14 +231,6 @@ class MainViewController(IMainViewController):
         safe_print(json.dumps(result_data, ensure_ascii=False, indent=2))
         #await self.api_service.send(result_data)
 
-
-    async def handle_result_update(self, content):
-        service = ResultService(self.app.settings, self.app.user_token)
-        result_data = service.parse_result(content)
-        safe_print("[送信データ]")
-        safe_print(json.dumps(result_data, ensure_ascii=False, indent=2))
-        #await self.api_service.send(result_data)
-
     def generate_room_pass(self):
         new_uuid = str(uuid.uuid4()).replace("-", "")
         self.app.room_pass.value = new_uuid
@@ -297,13 +300,14 @@ class MainViewController(IMainViewController):
             expand=True
         )
 
-        self.result_table_container.content = ft.Container(
+        self.app.result_table_container.content = ft.Container(
             content=ft.Column([data_table], scroll=ft.ScrollMode.AUTO),
             padding=10,
             expand=True
         )
 
-        self.page.update()
+        self.app.page.update()
+    
     ##############################
     ## private
     ##############################
@@ -322,3 +326,20 @@ class MainViewController(IMainViewController):
             if err:
                 await self.app.show_error_dialog(f"アップデート失敗: {err}")
     
+    async def _file_watch_callback(self, content):
+        root = ET.fromstring(content)
+        first_item = root.find('item')
+        if first_item is None:
+            raise ValueError("XMLに<item>がありません")
+
+        result_data = {
+            "mode": self.app.settings.mode,
+            "roomId": self.app.settings.room_pass,
+            "userId": self.app.user_token,
+            "name": self.app.settings.djname,
+            "resultToken": str(uuid.uuid4()).replace("-", "") + str(time.time()),
+            "result": {child.tag: child.text for child in first_item}
+        }
+        safe_print("[送信データ]")
+        safe_print(json.dumps(result_data, ensure_ascii=False, indent=2))
+        await self.app_controller.result_send(result_data)

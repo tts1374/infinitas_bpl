@@ -10,3 +10,6 @@ class RoomRepository(IRoomRepository):
         self.session.add(room)
         self.session.flush()  # id取得のため
         return room.room_id
+
+    def get_by_id(self, room_id) -> Room:
+        return self.session.query(Room).filter(Room.room_id == room_id).first()

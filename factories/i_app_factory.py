@@ -11,7 +11,9 @@ from repositories.db.i_user_repository import IUserRepository
 from repositories.files.i_output_file_repository import IOutputFileRepository
 from repositories.files.i_settings_file_repository import ISettingsFileRepository
 from usecases.i_load_settings_usecase import ILoadSettingsUsecase
-from usecases.i_start_battle_usecase import IStartBattleUseCase
+from usecases.i_result_send_usecase import IResultSendUsecase
+from usecases.i_start_battle_usecase import IStartBattleUsecase
+from usecases.i_stop_battle_usecase import IStopBattleUsecase
 
 class IAppFactory(ABC):
     ################################
@@ -60,9 +62,14 @@ class IAppFactory(ABC):
     @abstractmethod
     def create_load_settings_usecase(cls) -> ILoadSettingsUsecase:
         pass
-    
     @abstractmethod
-    def create_start_battle_usecase(cls, settings: Settings) -> IStartBattleUseCase:
+    def create_start_battle_usecase(cls, settings: Settings) -> IStartBattleUsecase:
+        pass
+    @abstractmethod
+    def create_stop_battle_usecase(cls) -> IStopBattleUsecase:
+        pass
+    @abstractmethod
+    def create_result_send_usecase(cls) -> IResultSendUsecase:
         pass
     
     ################################

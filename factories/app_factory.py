@@ -12,11 +12,15 @@ from repositories.files.output_file_repository import OutputFileRepository
 from repositories.files.settings_file_repository import SettingsFileRepository
 from usecases.load_settings_usecase import LoadSettingsUsecase
 from services.update_service import UpdateService
-from usecases.start_battle_usecase import StartBattleUseCase
+from usecases.result_send_usecase import ResultSendUsecase
+from usecases.start_battle_usecase import StartBattleUsecase
+from usecases.stop_battle_usecase import StopBattleUsecase
 from views.main_view import MainView
 
 
 class AppFactory(IAppFactory):
+    _websocket_client = None
+     
     ################################
     ## SQL Session
     ################################
@@ -32,7 +36,9 @@ class AppFactory(IAppFactory):
         return GithubClient()
     @classmethod
     def create_websocket_client(cls):
-        return WebsocketClient()
+        if cls._websocket_client is None:
+            cls._websocket_client = WebsocketClient()
+        return cls._websocket_client
     @classmethod
     def create_settings_file_repository(cls):
         return SettingsFileRepository()
@@ -70,7 +76,7 @@ class AppFactory(IAppFactory):
         room_repository = cls.create_room_repository(session)
         user_repository = cls.create_user_repository(session)
         websocket_client = cls.create_websocket_client()
-        return StartBattleUseCase(
+        return StartBattleUsecase(
             settings_file_repository, 
             output_file_repository, 
             session, 
@@ -78,6 +84,14 @@ class AppFactory(IAppFactory):
             user_repository, 
             websocket_client
         )
+    @classmethod
+    def create_stop_battle_usecase(cls):
+        websocket_client = cls.create_websocket_client()
+        return StopBattleUsecase(websocket_client)
+    @classmethod
+    def create_result_send_usecase(cls):
+        websocket_client = cls.create_websocket_client()
+        return ResultSendUsecase(websocket_client)
     
     ################################
     ## Controller
@@ -86,8 +100,10 @@ class AppFactory(IAppFactory):
     def create_app_controller(cls):
         load_settings_usecase = cls.create_load_settings_usecase()
         start_battle_usecase = cls.create_start_battle_usecase()
+        stop_battle_usecase = cls.create_stop_battle_usecase()
+        result_send_usecase = cls.create_result_send_usecase()
         update_service = cls.create_update_service()
-        return AppController(load_settings_usecase, start_battle_usecase, update_service)
+        return AppController(load_settings_usecase, start_battle_usecase, stop_battle_usecase, result_send_usecase, update_service)
     
     @classmethod
     def create_main_view_controller(cls, app):

@@ -5,12 +5,13 @@ class SongResultRepository:
     def __init__(self, session):
         self.session = session
 
-    def insert(self, room_id, song_id, user_id, result):
+    def insert(self, room_id, song_id, user_id, result_token, result):
         rank_str = f"{result['rank']}({result['rankdiff']})"
         song_result = SongResult(
             room_id=room_id,
             song_id=song_id,
             user_id=user_id,
+            result_token=result_token,
             score=safe_int(result["score_cur"]),
             miss_count=safe_int(result["bp"], 9999),
             lamp=result["lamp"],

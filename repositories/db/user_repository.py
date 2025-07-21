@@ -7,10 +7,10 @@ class UserRepository(IUserRepository):
     def __init__(self, session):
         self.session = session
 
-    def _get_by_room_and_token(self, room_id: int, user_token: str):
+    def get_by_room_and_token(self, room_id: int, user_token: str):
         return self.session.query(User).filter_by(room_id=room_id, user_token=user_token).first()
 
-    def create(self, room_id: int, user_token: str, user_name: str) -> User:
+    def create(self, room_id: int, user_token: str, user_name: str) -> str:
         user = User(
             room_id=room_id,
             user_token=user_token,
@@ -19,13 +19,21 @@ class UserRepository(IUserRepository):
         )
         self.session.add(user)
         self.session.flush()  # user.id取得用
-        return user
+        return user.user_token
 
     def get_or_create(self, room_id: int, user_token: str, user_name: str) -> User:
         user = self._get_by_room_and_token(room_id, user_token)
         if user:
             return user
-        return self.create(room_id, user_token, user_name)
+        user = User(
+            room_id=room_id,
+            user_token=user_token,
+            user_name=user_name,
+            created_at=now_str()
+        )
+        self.session.add(user)
+        self.session.flush()
+        return user
 
     def count_by_room(self, room_id: int) -> int:
         return self.session.query(User).filter_by(room_id=room_id).count()

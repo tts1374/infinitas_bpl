@@ -1,9 +1,11 @@
 
 
 from itertools import groupby
+import os
 import uuid
 from db.database import SessionLocal
 from models.settings import Settings
+from models.user import User
 from repositories.api.i_websocket_client import IWebsocketClient
 from repositories.db.i_room_repository import IRoomRepository
 from repositories.db.i_song_repository import ISongRepository
@@ -13,11 +15,14 @@ from repositories.db.room_repository import RoomRepository
 from repositories.db.song_repository import SongRepository
 from repositories.db.song_result_repository import SongResultRepository
 from repositories.db.user_repository import UserRepository
+from repositories.files.file_watcher import FileWatcher
 from repositories.files.i_output_file_repository import IOutputFileRepository
 from repositories.files.i_settings_file_repository import ISettingsFileRepository
-from usecases.i_start_battle_usecase import IStartBattleUseCase
+from usecases.i_start_battle_usecase import IStartBattleUsecase
 
-class StartBattleUseCase(IStartBattleUseCase):
+from utils.common import safe_print
+
+class StartBattleUsecase(IStartBattleUsecase):
     def __init__(
         self, 
         settings_file_repository: ISettingsFileRepository, 
@@ -37,7 +42,7 @@ class StartBattleUseCase(IStartBattleUseCase):
         self.settings = None
         self.room_id = None
 
-    async def execute(self, settings: Settings, app_on_message_callback):
+    async def execute(self, settings: Settings, app_on_message_callback) -> str:
         self.settings = settings
         self.app_on_message_callback = app_on_message_callback
         # 設定ファイルの保存
@@ -58,9 +63,11 @@ class StartBattleUseCase(IStartBattleUseCase):
             )
             
             # Websocketに接続
-            await self.websocket_clinet.connect(settings.room_pass, settings.mode, self.on_message_callback)
+            await self.websocket_clinet.connect(settings.room_pass, settings.mode, self._on_message_callback)
 
             self.session.commit()
+            
+            return user_token
 
         except Exception as e:
             self.session.rollback()
@@ -68,10 +75,11 @@ class StartBattleUseCase(IStartBattleUseCase):
 
         finally:
             self.session.close()
-    
-    async def on_message_callback(self, data):
+        
+    async def _on_message_callback(self, data):
         try:
             with SessionLocal() as session:
+                print("[Create User]")
                 # Repositoryインスタンス生成
                 room_repo = RoomRepository(session)
                 user_repo = UserRepository(session)
@@ -79,8 +87,8 @@ class StartBattleUseCase(IStartBattleUseCase):
                 song_result_repo = SongResultRepository(session)
                 
                 # roomの定員をroom_repositoryから取得
-                user_num = room_repo.get_user_num(self.room_id)
-                if user_num is None:
+                room = room_repo.get_by_id(self.room_id)
+                if room is None:
                     raise Exception("部屋情報が見つかりません")
 
                 current_user_count = user_repo.count_by_room(self.room_id)
@@ -90,7 +98,7 @@ class StartBattleUseCase(IStartBattleUseCase):
                 user = user_repo.get_by_room_and_token(self.room_id, user_token)
 
                 if not user:
-                    if current_user_count >= user_num:
+                    if current_user_count >= room.user_num:
                         raise Exception("定員オーバーです。対戦を行う場合は部屋の再作成を行ってください。")
                     user = user_repo.create(self.room_id, user_token, user_name)
 
@@ -115,12 +123,13 @@ class StartBattleUseCase(IStartBattleUseCase):
                 song = song_repo.get_or_create(self.room_id, level, song_name, play_style, difficulty, notes)
 
                 # 結果登録
-                song_result_repo.insert(self.room_id, song.song_id, user.user_id, result)
+                result_token = data["resultToken"]
+                song_result_repo.insert(self.room_id, song.song_id, user.user_id, result_token, result)
 
                 session.commit()
                 
                 output = {
-                    "mode": self.settings["mode"],
+                    "mode": self.settings.mode,
                     "users": [],
                     "songs": []
                 }
@@ -145,10 +154,10 @@ class StartBattleUseCase(IStartBattleUseCase):
                         "results": []
                     }
 
-                    results = self.db_service.get_song_results(song["song_id"])
+                    results = song_result_repo.list_by_song_id(song["song_id"])
 
                     # 順位ソート用キー
-                    if self.settings["mode"] in [1, 2]:
+                    if self.settings.mode in [1, 2]:
                         sort_key = lambda x: x["score"]
                     else:
                         sort_key = lambda x: -x["miss_count"]
@@ -159,9 +168,9 @@ class StartBattleUseCase(IStartBattleUseCase):
                     # pt計算
                     pt_dict = {}  # user_id -> pt
 
-                    if len(results) >= self.settings["user_num"]:
+                    if len(results) >= self.settings.user_num:
                         rank = 0
-                        pt_value = 2 if self.settings["mode"] in [1, 3] else 1
+                        pt_value = 2 if self.settings.mode in [1, 3] else 1
 
                         # groupbyで同点グループにまとめる
                         for score_value, group in groupby(sorted_results, key=sort_key):
@@ -171,9 +180,9 @@ class StartBattleUseCase(IStartBattleUseCase):
                                 pt_dict[user["user_id"]] = pt_value
 
                             # ptは順位で減らす（同点は同じpt）
-                            if self.settings["mode"] in [1, 3]:
+                            if self.settings.mode in [1, 3]:
                                 pt_value = max(pt_value - 1, 0)  # 最小0
-                            elif self.settings["mode"] in [2, 4]:
+                            elif self.settings.mode in [2, 4]:
                                 pt_value = 0  # 1位だけ1pt
                             # 次の順位へ（rankを使う場合は += len(same_rank_users))
 
@@ -202,5 +211,9 @@ class StartBattleUseCase(IStartBattleUseCase):
             # ログ出力
             print("[Result JSON]", output)
         except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+
+            logger.error("", stack_info=True)
             print("[Error] on_message_callback:", e)
             raise Exception(str(e))

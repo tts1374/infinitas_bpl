@@ -5,8 +5,6 @@ import json
 from config.config import WEBSOCKET_URL
 from errors.connection_failed_error import ConnectionFailedError
 from repositories.api.i_websocket_client import IWebsocketClient
-from services.db_service import DBService
-from services.json_service import JSONService
 import traceback
 from utils.common import safe_print
 
@@ -35,8 +33,11 @@ class WebsocketClient(IWebsocketClient):
         safe_print("[WebSocket 切断開始]")
         if self.websocket:
             await self.websocket.close()
+            self.websocket = None
+
         if self.task:
             self.task.cancel()
+            self.task = None
         safe_print("[WebSocket 切断完了]")
 
     async def send(self, data):

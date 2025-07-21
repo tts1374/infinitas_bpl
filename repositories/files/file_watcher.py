@@ -2,7 +2,7 @@ from watchdog.events import FileSystemEventHandler
 
 from utils.common import safe_print
 
-class ResultHandler(FileSystemEventHandler):
+class FileWatcher(FileSystemEventHandler):
     def __init__(self, main_view_controller):
         self.main_view_controller = main_view_controller
 
@@ -23,7 +23,7 @@ class ResultHandler(FileSystemEventHandler):
 
             # BattleHandler経由でリザルト処理を呼ぶ
             import asyncio
-            asyncio.run(self.main_view_controller.handle_result_update(content))
+            asyncio.run(self.main_view_controller._file_watch_callback(content))
 
         except Exception as e:
             safe_print(f"[watchdog] ファイル読み込みエラー: {e}")

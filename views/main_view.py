@@ -13,9 +13,10 @@ class MainView:
         
         safe_print("MainView 初期化中")
         self.page = page
-        self.page.on_close = self.on_close
         self.result_file_path = None
         self.last_result_content = None
+        page.window.prevent_close = True
+        page.window.on_event = self.window_event
         
         self.result_table_container = ft.Container()
         
@@ -207,12 +208,13 @@ class MainView:
     async def async_cleanup(self):
         await self.controller.stop_battle(None)
         
-    def on_close(self, e):
-        safe_print("[on_close] start")
-        try:
-            asyncio.run(self.async_cleanup())
-        except Exception as ex:
-            safe_print(f"[on_close] エラー: {ex}")
-        finally:
-            self.page.window_destroy()
-            sys.exit(0)
+    async def window_event(self, e):
+        if e.data == "close":
+            safe_print("[on_close] start")
+            try:
+                await self.controller.stop_battle(None)
+            except Exception as ex:
+                safe_print(f"[on_close] エラー: {ex}")
+            finally:
+                safe_print("[on_close] close")
+                self.page.window.destroy()

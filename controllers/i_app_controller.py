@@ -3,6 +3,7 @@ from typing import Optional
 
 from models.program_update_result import ProgramUpdateResult
 from models.settings import Settings
+from models.user import User
 
 class IAppController(ABC):
     @abstractmethod
@@ -21,7 +22,11 @@ class IAppController(ABC):
         アップデート処理を行う
         """
     
-    async def start_battle(self, settings: Settings, on_message_callback):
+    async def start_battle(self, settings: Settings, on_message_callback) -> str:
         """
         試合開始処理
+        """
+    async def stop_battle(self):
+        """
+        試合終了処理
         """

@@ -4,7 +4,7 @@ from models.user import User
 
 class IUserRepository(ABC):
     @abstractmethod
-    def create(self, room_id: int, user_token: str, user_name: str) -> User:
+    def create(self, room_id: int, user_token: str, user_name: str) -> str:
         """
         ユーザ登録
         """
@@ -22,4 +22,9 @@ class IUserRepository(ABC):
     def list_by_room_id(self, room_id: int) -> list[dict]:
         """
         部屋IDよりリスト取得
+        """
+    @abstractmethod
+    def get_by_room_and_token(self, room_id: int, user_token: str):
+        """
+        部屋ID, ユーザトークンより1件取得
         """
