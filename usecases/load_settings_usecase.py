@@ -1,11 +1,11 @@
 
 from models.settings import Settings
 from repositories.files.i_settings_file_repository import ISettingsFileRepository
-from services.i_settings_service import ISettingsService
+from usecases.i_load_settings_usecase import ILoadSettingsUsecase
 
-class SettingsService(ISettingsService):
+class LoadSettingsUsecase(ILoadSettingsUsecase):
     def __init__(self, repository: ISettingsFileRepository):
         self.repository = repository
 
-    def load_settings(self) -> Settings:
+    def execute(self) -> Settings:
         return self.repository.load()

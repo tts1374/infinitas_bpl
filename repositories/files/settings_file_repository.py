@@ -6,6 +6,10 @@ from repositories.files.i_settings_file_repository import ISettingsFileRepositor
 class SettingsFileRepository(ISettingsFileRepository):
     SETTINGS_PATH = "settings.json"
 
+    def save(self, settings: Settings):
+        with open(self.SETTINGS_PATH, "w", encoding="utf-8") as f:
+            json.dump(settings.__dict__, f, ensure_ascii=False, indent=4)
+            
     def load(self) -> Settings:
         if not os.path.exists(self.SETTINGS_PATH):
             return Settings()

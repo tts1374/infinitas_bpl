@@ -1,5 +1,5 @@
 import flet as ft
-from repositories.db.migrations import init_db
+from repositories.db.migrations import run_migrations
 from factories.app_factory import AppFactory
 from views.main_view import MainView
 import traceback
@@ -8,7 +8,7 @@ from utils.common import resource_path, safe_print
 
 def main(page: ft.Page):
     try:
-        init_db()
+        run_migrations()
 
         page.title = "INFINITAS オンライン対戦"
         # ソフトウェアアイコンの設定

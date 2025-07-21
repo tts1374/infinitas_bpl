@@ -2,10 +2,9 @@ from abc import ABC, abstractmethod
 
 from models.settings import Settings
 
-class ISettingsService(ABC):
+class ILoadSettingsUsecase(ABC):
     @abstractmethod
-    def load_settings(self) -> Settings:
+    def execute(self) -> Settings:
         """
         設定ファイルから保存した入力項目を取得する
         """
-        pass

@@ -10,16 +10,18 @@ class IAppController(ABC):
         """
         設定ファイルから保存した入力項目を取得する
         """
-        pass
     
     def check_update(self) -> ProgramUpdateResult:
         """
         アップデートがあるか確認する
         """
-        pass
 
     def perform_update(self, assets) -> Optional[str]:
         """
         アップデート処理を行う
         """
-        pass
+    
+    async def start_battle(self, settings: Settings, on_message_callback):
+        """
+        試合開始処理
+        """

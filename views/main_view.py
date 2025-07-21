@@ -7,10 +7,6 @@ import sys
 from factories.i_app_factory import IAppFactory
 from utils.common import safe_print
 
-DB_FILE = "result.db"
-SETTINGS_FILE = "settings.json"
-RESULT_FILE = "result_output.json"
-
 class MainView:
     def __init__(self, page: ft.Page, factory: IAppFactory):
         self.controller = factory.create_main_view_controller(self)
@@ -150,76 +146,6 @@ class MainView:
         safe_print("ルームパス生成ボタンが呼ばれました")
         self.controller.generate_room_pass()
         
-    def load_result_table(self):
-        if not os.path.exists(RESULT_FILE):
-            return
-
-        with open(RESULT_FILE, "r", encoding="utf-8") as f:
-            result = json.load(f)
-
-        if not result.get("users") or not result.get("songs"):
-            return
-        
-        headers = ["No.", "曲名"] + [user["user_name"] for user in result["users"]] + ["スキップ"]
-        # 初期化
-        data_rows = []
-
-        for song in result["songs"]:
-            row_cells = []
-            row_cells.append(ft.DataCell(ft.Text(str(song.get("stage_no", song["song_id"])))))
-            row_cells.append(ft.DataCell(ft.Text(f"{song['song_name']}\n({song['play_style']} {song['difficulty']})")))
-
-            for user in result["users"]:
-                user_result = next((r for r in song["results"] if r["user_id"] == user["user_id"]), None)
-                if user_result:
-                    if result["mode"] in [1,2]:
-                        score = user_result["score"]
-                        if len(result["users"]) > 1 and len(song["results"]) == len(result["users"]):
-                            pt = user_result["pt"]
-                            cell_text = f"{score}\n{('〇' if pt == 1 else '×') if result['mode']==2 else str(pt)+'pt'}"
-                        else:
-                            cell_text = f"{score}"
-                    else:
-                        miss = user_result["miss_count"]
-                        if len(result["users"]) > 1 and len(song["results"]) == len(result["users"]):
-                            pt = user_result["pt"]
-                            cell_text = f"{miss}\n{('〇' if pt == 1 else '×') if result['mode']==4 else str(pt)+'pt'}"
-                        else:
-                            cell_text = f"{miss}"
-                    row_cells.append(ft.DataCell(ft.Text(cell_text)))
-                else:
-                    row_cells.append(ft.DataCell(ft.Text("-")))
-
-            # スキップボタン
-            if any(r["user_id"] == result["users"][0]["user_id"] for r in song["results"]):
-                row_cells.append(ft.DataCell(ft.Text("")))
-            else:
-                skip_button = ft.FilledButton(
-                    text="スキップ",
-                    bgcolor=ft.Colors.RED,
-                    color=ft.Colors.WHITE,
-                    on_click=lambda e, song_id=song["song_id"]: self.page.run_task(self.on_skip_song, song_id)
-                )
-                row_cells.append(ft.DataCell(skip_button))
-
-            # DataRow にまとめる
-            data_rows.append(ft.DataRow(cells=row_cells))
-
-
-        data_table = ft.DataTable(
-            columns=[ft.DataColumn(ft.Text(h)) for h in headers],
-            rows=data_rows,
-            column_spacing=20,
-            expand=True
-        )
-
-        self.result_table_container.content = ft.Container(
-            content=ft.Column([data_table], scroll=ft.ScrollMode.AUTO),
-            padding=10,
-            expand=True
-        )
-
-        self.page.update()
 
     # メッセージダイアログの表示
     async def show_message_dialog(self, title, message):

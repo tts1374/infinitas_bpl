@@ -6,17 +6,15 @@ import uuid
 from controllers.i_app_controller import IAppController
 from controllers.i_main_view_controller import IMainViewController
 from errors.connection_failed_error import ConnectionFailedError
-from services.update_service import UpdateService
+from models.settings import Settings
 from utils.common import safe_print
-from utils.result_handler import ResultHandler
-from watchdog.observers import Observer
-from services.db_service import DBService
 from services.result_service import ResultService
 import flet as ft
 
 from views.main_view import MainView
 
 DB_FILE = "result.db"
+RESULT_FILE = "result_output.json"
 
 class MainViewController(IMainViewController):
     def __init__(self, app: MainView, app_controller: IAppController):
@@ -102,27 +100,26 @@ class MainViewController(IMainViewController):
         self.app.page.update()
 
     async def start_battle(self, e):
-        self._save_settings()
-
         # UI更新：多重起動防止とProgressRing表示
         self.app.start_button.disabled = True
         self.app.start_button.content = ft.ProgressRing(width=30, height=30, stroke_width=4)
         self.app.page.update()
-
+        
         try:
-            db = DBService(DB_FILE)
-            self.app.room_id, self.app.user_token = db.register_room_and_user(self.app.settings)
+            # 設定ファイル保存
+            mode_value = int(self.app.mode_radio.value)
+            user_num = 2 if mode_value in [2, 4] else int(self.app.user_num_select.value)
 
-            # WebSocket接続
-            self.api_service = ApiService(self.app, db)
-            await self.api_service.connect()
-
-            # ファイル監視開始
-            self.file_watch_service = ResultHandler(self)
-            self.observer = Observer()
-            self.observer.schedule(self.file_watch_service, path=os.path.dirname(self.app.result_file_path), recursive=False)
-            self.observer.start()
-
+            settings = Settings(
+                djname=self.app.djname_input.value,
+                room_pass=self.app.room_pass.value,
+                mode=mode_value,
+                user_num=user_num,
+                result_file=self.app.result_file_path
+            )
+            await self.app_controller.start_battle(settings, self.load_result_table)
+            self.app.settings = settings
+            
             self.app.start_button.visible = False
             self.app.stop_button.visible = True
 
@@ -164,8 +161,9 @@ class MainViewController(IMainViewController):
         self.app.page.update()
 
     async def skip_song(self, song_id): 
-        db = DBService(DB_FILE)
-        song = db.get_song_by_id(song_id)
+        #db = DBService(DB_FILE)
+        #song = db.get_song_by_id(song_id)
+        song = []
 
         # 難易度変換マップ
         diff_map = {
@@ -220,7 +218,7 @@ class MainViewController(IMainViewController):
         }
         safe_print("[送信データ]")
         safe_print(json.dumps(result_data, ensure_ascii=False, indent=2))
-        await self.api_service.send(result_data)
+        #await self.api_service.send(result_data)
 
 
     async def handle_result_update(self, content):
@@ -228,13 +226,84 @@ class MainViewController(IMainViewController):
         result_data = service.parse_result(content)
         safe_print("[送信データ]")
         safe_print(json.dumps(result_data, ensure_ascii=False, indent=2))
-        await self.api_service.send(result_data)
+        #await self.api_service.send(result_data)
 
     def generate_room_pass(self):
         new_uuid = str(uuid.uuid4()).replace("-", "")
         self.app.room_pass.value = new_uuid
         self.app.page.update()
         
+    
+    def load_result_table(self):
+        if not os.path.exists(RESULT_FILE):
+            return
+
+        with open(RESULT_FILE, "r", encoding="utf-8") as f:
+            result = json.load(f)
+
+        if not result.get("users") or not result.get("songs"):
+            return
+        
+        headers = ["No.", "曲名"] + [user["user_name"] for user in result["users"]] + ["スキップ"]
+        # 初期化
+        data_rows = []
+
+        for song in result["songs"]:
+            row_cells = []
+            row_cells.append(ft.DataCell(ft.Text(str(song.get("stage_no", song["song_id"])))))
+            row_cells.append(ft.DataCell(ft.Text(f"{song['song_name']}\n({song['play_style']} {song['difficulty']})")))
+
+            for user in result["users"]:
+                user_result = next((r for r in song["results"] if r["user_id"] == user["user_id"]), None)
+                if user_result:
+                    if result["mode"] in [1,2]:
+                        score = user_result["score"]
+                        if len(result["users"]) > 1 and len(song["results"]) == len(result["users"]):
+                            pt = user_result["pt"]
+                            cell_text = f"{score}\n{('〇' if pt == 1 else '×') if result['mode']==2 else str(pt)+'pt'}"
+                        else:
+                            cell_text = f"{score}"
+                    else:
+                        miss = user_result["miss_count"]
+                        if len(result["users"]) > 1 and len(song["results"]) == len(result["users"]):
+                            pt = user_result["pt"]
+                            cell_text = f"{miss}\n{('〇' if pt == 1 else '×') if result['mode']==4 else str(pt)+'pt'}"
+                        else:
+                            cell_text = f"{miss}"
+                    row_cells.append(ft.DataCell(ft.Text(cell_text)))
+                else:
+                    row_cells.append(ft.DataCell(ft.Text("-")))
+
+            # スキップボタン
+            if any(r["user_id"] == result["users"][0]["user_id"] for r in song["results"]):
+                row_cells.append(ft.DataCell(ft.Text("")))
+            else:
+                skip_button = ft.FilledButton(
+                    text="スキップ",
+                    bgcolor=ft.Colors.RED,
+                    color=ft.Colors.WHITE,
+                    on_click=lambda e, song_id=song["song_id"]: self.page.run_task(self.on_skip_song, song_id)
+                )
+                row_cells.append(ft.DataCell(skip_button))
+
+            # DataRow にまとめる
+            data_rows.append(ft.DataRow(cells=row_cells))
+
+
+        data_table = ft.DataTable(
+            columns=[ft.DataColumn(ft.Text(h)) for h in headers],
+            rows=data_rows,
+            column_spacing=20,
+            expand=True
+        )
+
+        self.result_table_container.content = ft.Container(
+            content=ft.Column([data_table], scroll=ft.ScrollMode.AUTO),
+            padding=10,
+            expand=True
+        )
+
+        self.page.update()
     ##############################
     ## private
     ##############################
@@ -253,16 +322,3 @@ class MainViewController(IMainViewController):
             if err:
                 await self.app.show_error_dialog(f"アップデート失敗: {err}")
     
-    def _save_settings(self):
-        mode_value = int(self.app.mode_radio.value)
-        user_num = 2 if mode_value in [2, 4] else int(self.app.user_num_select.value)
-
-        self.app.settings = {
-            "djname": self.app.djname_input.value,
-            "room_pass": self.app.room_pass.value,
-            "mode": mode_value,
-            "user_num": user_num,
-            "result_file": self.app.result_file_path
-        }
-        with open("settings.json", "w", encoding="utf-8") as f:
-            json.dump(self.app.settings, f, ensure_ascii=False, indent=4)
