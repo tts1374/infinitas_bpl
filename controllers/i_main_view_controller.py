@@ -9,21 +9,35 @@ class IMainViewController(ABC):
         pass
     
     @abstractmethod
-    def on_mode_change(self):
+    def validate_djname(self):
+        """
+            DJNAMEが変更された際のUI処理
+        """
+        pass
+    
+    @abstractmethod
+    def validate_room_pass(self):
+        """
+            ルームパスが変更された際のUI処理
+        """
+        pass
+    
+    @abstractmethod
+    def change_mode(self):
         """
             対戦モードが変更された際のUI処理
         """
         pass
     
     @abstractmethod
-    def pick_result_file(self, e):
+    def select_result_file(self, e):
         """
             ファイル選択でファイルが選択された際のUI処理
         """
         pass
     
     @abstractmethod
-    def validate_all_inputs(self):
+    def validate_inputs(self):
         """
             入力可能な入力値が変更された際のUI処理
         """
@@ -44,7 +58,7 @@ class IMainViewController(ABC):
         pass
     
     @abstractmethod
-    def create_room_pass_button(self):
+    def generate_room_pass(self):
         """
             ルームパス生成ボタン押下時の処理
         """

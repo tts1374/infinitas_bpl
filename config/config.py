@@ -1,4 +1,4 @@
-APP_VERSION = "v0.1.1"
+APP_VERSION = "v0.1.2"
 IS_RELEASE = False
 DB_FILE = "result.db"
 

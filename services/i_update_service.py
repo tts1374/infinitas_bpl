@@ -2,24 +2,17 @@ from abc import ABC, abstractmethod
 from typing import Optional
 
 from models.program_update_result import ProgramUpdateResult
-from models.settings import Settings
 
-class IAppController(ABC):
+class IUpdateService(ABC):
     @abstractmethod
-    def load_settings(self) -> Settings:
+    def check_update(self) -> ProgramUpdateResult:
         """
-        設定ファイルから保存した入力項目を取得する
+        プログラムの更新があるかチェックする
         """
         pass
     
-    def check_update(self) -> ProgramUpdateResult:
-        """
-        アップデートがあるか確認する
-        """
-        pass
-
     def perform_update(self, assets) -> Optional[str]:
         """
-        アップデート処理を行う
+        プログラムの更新を行う
         """
         pass

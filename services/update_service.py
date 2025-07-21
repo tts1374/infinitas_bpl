@@ -4,17 +4,18 @@ import subprocess
 
 from models.program_update_result import ProgramUpdateResult
 from repositories.api.github_repository import GithubRepository
-from repositories.files.storage_repository import StorageRepository
+from repositories.api.i_github_repository import IGithubRepository
 from config.config import APP_VERSION
+from services.i_update_service import IUpdateService
+from utils.common import safe_print
 
-class UpdateService:
-    def __init__(self):
-        self.githubRepository = GithubRepository()
-        self.storageRepository = StorageRepository()
+class UpdateService(IUpdateService):
+    def __init__(self, github_reposirory: IGithubRepository):
+        self.github_reposirory = github_reposirory
 
     def check_update(self):
         try:
-            data = self.githubRepository.get_latest_release()
+            data = self.github_reposirory.get_latest_release()
             latest_version = data["tag_name"]
 
             if latest_version > APP_VERSION:
@@ -26,12 +27,12 @@ class UpdateService:
 
     def perform_update(self, assets):
         try:
-            asset = next((a for a in assets if a["name"] == self.githubRepository.zip_name), None)
+            asset = next((a for a in assets if a["name"] == self.github_reposirory.zip_name), None)
             if not asset:
-                return f"{self.githubRepository.zip_name} が見つかりません"
+                return f"{self.github_reposirory.zip_name} が見つかりません"
 
             # ZIPダウンロード
-            zip_path = self.githubRepository.download_zip(asset["browser_download_url"])
+            zip_path = self.github_reposirory.download_zip(asset["browser_download_url"])
 
             if getattr(sys, 'frozen', False):
                 exe_dir = os.path.dirname(sys.executable)

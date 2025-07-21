@@ -22,7 +22,6 @@ class MainView:
         self.last_result_content = None
         
         self.result_table_container = ft.Container()
-        self.page.run_task(self.controller.check_for_update)
         
         # DJNAME（バリデーション付き）
         self.djname_input = ft.TextField(
@@ -140,25 +139,16 @@ class MainView:
 
     # DJNAMEバリデーション
     def validate_djname(self, e):
-        pattern = r'^[a-zA-Z0-9.\-*&!?#$]*$'
-        if not re.fullmatch(pattern, self.djname_input.value):
-            self.djname_input.error_text = "使用可能文字：a-z A-Z 0-9 .- *&!?#$"
-        else:
-            self.djname_input.error_text = None
-        self.page.update()
+        self.controller.validate_djname()
 
+    # RoomPassバリデーション
     def validate_room_pass(self, e):
-        pattern = r'^[a-zA-Z0-9_-]{4,36}$'
-        if not re.fullmatch(pattern, self.room_pass.value):
-            self.room_pass.error_text = "使用可能文字：a-z A-Z 0-9 -_ 4～36文字"
-        else:
-            self.room_pass.error_text = None
-        self.page.update()
+        self.controller.validate_room_pass()
         
     # ルームパス生成ボタン押下時
     def on_create_room_pass_button(self, e):
         safe_print("ルームパス生成ボタンが呼ばれました")
-        self.controller.create_room_pass_button()
+        self.controller.generate_room_pass()
         
     def load_result_table(self):
         if not os.path.exists(RESULT_FILE):
@@ -231,6 +221,7 @@ class MainView:
 
         self.page.update()
 
+    # メッセージダイアログの表示
     async def show_message_dialog(self, title, message):
         safe_print(f"show_message_dialog: message={message}")
 
@@ -253,6 +244,7 @@ class MainView:
         self.page.open(dialog)
         await fut
 
+    # エラーダイアログの表示
     async def show_error_dialog(self, message):
         safe_print(f"show_error_dialog: message={message}")
 
@@ -270,18 +262,15 @@ class MainView:
     async def on_skip_song(self, song_id):
         safe_print(f"スキップ押下: song_id={song_id}")
         await self.controller.skip_song(song_id)
-
-    def load_settings(self):
-        self.controller.load_settings()
         
     def on_mode_change(self, e):
-        self.controller.on_mode_change()
+        self.controller.change_mode()
 
     def pick_result_file(self, e: ft.FilePickerResultEvent):
-        self.controller.pick_result_file(e)
+        self.controller.select_result_file(e)
 
     def validate_all_inputs(self, e=None):
-        self.controller.validate_all_inputs()
+        self.controller.validate_inputs()
 
     async def start_battle(self, e):
         await self.controller.start_battle(e)

@@ -12,7 +12,6 @@ from utils.result_handler import ResultHandler
 from watchdog.observers import Observer
 from services.db_service import DBService
 from services.result_service import ResultService
-from services.api_service import ApiService
 import flet as ft
 
 from views.main_view import MainView
@@ -22,12 +21,13 @@ DB_FILE = "result.db"
 class MainViewController(IMainViewController):
     def __init__(self, app: MainView, app_controller: IAppController):
         self.app = app
-        self.api_service = None
         self.app_controller = app_controller
         
-        self.update_service = UpdateService()
 
     def on_create(self):
+        # アップデートのチェック
+        self.app.page.run_task(self._check_for_update)
+        
         # 設定のロード
         settings = self.app_controller.load_settings()
 
@@ -44,14 +44,33 @@ class MainViewController(IMainViewController):
 
         if settings.result_file:
             file_name = os.path.basename(settings.result_file)
+            self.app.result_file_path = settings.result_file
             self.app.result_file_label.value = f"リザルトファイル：{file_name}"
         else:
             self.app.result_file_label.value = "リザルトファイル：未選択"
 
-        self.app.validate_all_inputs()
+        self.validate_inputs()
         self.app.page.update()
-            
-    def on_mode_change(self):
+
+    # DJNAMEバリデーション
+    def validate_djname(self, e):
+        pattern = r'^[a-zA-Z0-9.\-*&!?#$]*$'
+        if not re.fullmatch(pattern, self.app.djname_input.value):
+            self.app.djname_input.error_text = "使用可能文字：a-z A-Z 0-9 .- *&!?#$"
+        else:
+            self.app.djname_input.error_text = None
+        self.app.page.update()
+
+    # RoomPassバリデーション
+    def validate_room_pass(self, e):
+        pattern = r'^[a-zA-Z0-9_-]{4,36}$'
+        if not re.fullmatch(pattern, self.app.room_pass.value):
+            self.app.room_pass.error_text = "使用可能文字：a-z A-Z 0-9 -_ 4～36文字"
+        else:
+            self.app.room_pass.error_text = None
+        self.app.page.update()
+
+    def change_mode(self):
         mode = self.app.mode_radio.value
         if mode in ["1", "3"]:
             self.app.user_num_select.disabled = False
@@ -59,7 +78,7 @@ class MainViewController(IMainViewController):
             self.app.user_num_select.disabled = True
         self.app.page.update()
 
-    def pick_result_file(self, e):
+    def select_result_file(self, e):
         if e.files:
             self.app.result_file_path = e.files[0].path
             file_name = os.path.basename(self.app.result_file_path)
@@ -67,9 +86,9 @@ class MainViewController(IMainViewController):
         else:
             self.app.result_file_path = None
             self.app.result_file_label.value = "リザルトファイル：未選択"
-        self.validate_all_inputs()
+        self.validate_inputs()
 
-    def validate_all_inputs(self):
+    def validate_inputs(self):
         djname_ok = re.fullmatch(r'^[a-zA-Z0-9.\-\*&!?#$]{1,6}$', self.app.djname_input.value or "") is not None
         room_pass_ok = re.fullmatch(r'^[a-zA-Z0-9_-]{4,36}$', self.app.room_pass.value or "") is not None
         file_ok = self.app.result_file_path is not None
@@ -82,24 +101,8 @@ class MainViewController(IMainViewController):
         self.app.start_button.disabled = not can_start
         self.app.page.update()
 
-    
-
-    def save_settings(self):
-        mode_value = int(self.app.mode_radio.value)
-        user_num = 2 if mode_value in [2, 4] else int(self.app.user_num_select.value)
-
-        self.app.settings = {
-            "djname": self.app.djname_input.value,
-            "room_pass": self.app.room_pass.value,
-            "mode": mode_value,
-            "user_num": user_num,
-            "result_file": self.app.result_file_path
-        }
-        with open("settings.json", "w", encoding="utf-8") as f:
-            json.dump(self.app.settings, f, ensure_ascii=False, indent=4)
-
     async def start_battle(self, e):
-        self.save_settings()
+        self._save_settings()
 
         # UI更新：多重起動防止とProgressRing表示
         self.app.start_button.disabled = True
@@ -226,9 +229,18 @@ class MainViewController(IMainViewController):
         safe_print("[送信データ]")
         safe_print(json.dumps(result_data, ensure_ascii=False, indent=2))
         await self.api_service.send(result_data)
-    
-    async def check_for_update(self):
-        result, assets = self.update_service.check_update()
+
+    def generate_room_pass(self):
+        new_uuid = str(uuid.uuid4()).replace("-", "")
+        self.app.room_pass.value = new_uuid
+        self.app.page.update()
+        
+    ##############################
+    ## private
+    ##############################
+    async def _check_for_update(self):
+        safe_print("アップデートのチェック")
+        result, assets = self.app_controller.check_update()
 
         if result.error:
             await self.app.show_error_dialog(f"アップデート確認エラー: {result.error}")
@@ -237,11 +249,20 @@ class MainViewController(IMainViewController):
         if result.need_update:
             await self.app.show_message_dialog("アップデート", "新しいバージョンが見つかりました。アップデートします。")
             safe_print("execute update")
-            err = self.update_service.perform_update(assets)
+            err = self.app_controller.perform_update(assets)
             if err:
                 await self.app.show_error_dialog(f"アップデート失敗: {err}")
     
-    def create_room_pass_button(self):
-        new_uuid = str(uuid.uuid4()).replace("-", "")
-        self.app.room_pass.value = new_uuid
-        self.app.page.update()
+    def _save_settings(self):
+        mode_value = int(self.app.mode_radio.value)
+        user_num = 2 if mode_value in [2, 4] else int(self.app.user_num_select.value)
+
+        self.app.settings = {
+            "djname": self.app.djname_input.value,
+            "room_pass": self.app.room_pass.value,
+            "mode": mode_value,
+            "user_num": user_num,
+            "result_file": self.app.result_file_path
+        }
+        with open("settings.json", "w", encoding="utf-8") as f:
+            json.dump(self.app.settings, f, ensure_ascii=False, indent=4)

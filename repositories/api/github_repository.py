@@ -1,13 +1,14 @@
 import requests
 import tempfile
-import zipfile
 import shutil
 import os
+
+from repositories.api.i_github_repository import IGithubRepository
 
 GITHUB_REPO = "tts1374/infinitas_bpl"
 ZIP_NAME = "INFINITAS_Online_Battle.zip"
 
-class GithubRepository:
+class GithubRepository(IGithubRepository):
     def __init__(self):
         self.repo = GITHUB_REPO
         self.zip_name = ZIP_NAME
