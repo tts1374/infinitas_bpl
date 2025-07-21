@@ -3,10 +3,10 @@ import tempfile
 import shutil
 import os
 
+from config.config import ZIP_NAME
 from repositories.api.i_github_repository import IGithubRepository
 
 GITHUB_REPO = "tts1374/infinitas_bpl"
-ZIP_NAME = "INFINITAS_Online_Battle.zip"
 
 class GithubRepository(IGithubRepository):
     def __init__(self):

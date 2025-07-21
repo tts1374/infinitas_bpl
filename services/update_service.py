@@ -5,13 +5,14 @@ import subprocess
 from models.program_update_result import ProgramUpdateResult
 from repositories.api.github_repository import GithubRepository
 from repositories.api.i_github_repository import IGithubRepository
-from config.config import APP_VERSION
+from config.config import APP_VERSION, ZIP_NAME
 from services.i_update_service import IUpdateService
 from utils.common import safe_print
 
 class UpdateService(IUpdateService):
     def __init__(self, github_reposirory: IGithubRepository):
         self.github_reposirory = github_reposirory
+        self.zip_name = ZIP_NAME
 
     def check_update(self):
         try:
@@ -27,9 +28,9 @@ class UpdateService(IUpdateService):
 
     def perform_update(self, assets):
         try:
-            asset = next((a for a in assets if a["name"] == self.github_reposirory.zip_name), None)
+            asset = next((a for a in assets if a["name"] == self.zip_name), None)
             if not asset:
-                return f"{self.github_reposirory.zip_name} が見つかりません"
+                return f"{self.zip_name} が見つかりません"
 
             # ZIPダウンロード
             zip_path = self.github_reposirory.download_zip(asset["browser_download_url"])
@@ -40,7 +41,7 @@ class UpdateService(IUpdateService):
             else:
                 exe_dir = os.path.abspath(os.getcwd())
                 exe_name = os.path.basename(sys.argv[0])
-
+            
             # updater.exe のパス（exeと同じディレクトリに配置する想定）
             updater_path = os.path.join(exe_dir, "updater.exe")
 
