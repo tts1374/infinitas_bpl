@@ -4,7 +4,7 @@ import asyncio
 import os
 import json
 import sys
-from controllers.main_controller import MainController
+from factories.i_app_factory import IAppFactory
 from utils.common import safe_print
 
 DB_FILE = "result.db"
@@ -12,15 +12,17 @@ SETTINGS_FILE = "settings.json"
 RESULT_FILE = "result_output.json"
 
 class MainView:
-    def __init__(self, page: ft.Page):
+    def __init__(self, page: ft.Page, factory: IAppFactory):
+        self.controller = factory.create_main_view_controller(self)
+        
         safe_print("MainView 初期化中")
         self.page = page
         self.page.on_close = self.on_close
         self.result_file_path = None
         self.last_result_content = None
-        self.main_controller = MainController(self)
+        
         self.result_table_container = ft.Container()
-        self.page.run_task(self.main_controller.check_for_update)
+        self.page.run_task(self.controller.check_for_update)
         
         # DJNAME（バリデーション付き）
         self.djname_input = ft.TextField(
@@ -132,6 +134,9 @@ class MainView:
         self.room_pass.on_change = self.validate_all_inputs
         self.mode_radio.on_change = self.on_mode_change
         self.user_num_select.on_change = self.validate_all_inputs
+        
+        # 初期処理の実行
+        self.controller.on_create()
 
     # DJNAMEバリデーション
     def validate_djname(self, e):
@@ -153,7 +158,7 @@ class MainView:
     # ルームパス生成ボタン押下時
     def on_create_room_pass_button(self, e):
         safe_print("ルームパス生成ボタンが呼ばれました")
-        self.main_controller.create_room_pass_button()
+        self.controller.create_room_pass_button()
         
     def load_result_table(self):
         if not os.path.exists(RESULT_FILE):
@@ -264,28 +269,28 @@ class MainView:
 
     async def on_skip_song(self, song_id):
         safe_print(f"スキップ押下: song_id={song_id}")
-        await self.main_controller.skip_song(song_id)
+        await self.controller.skip_song(song_id)
 
     def load_settings(self):
-        self.main_controller.load_settings()
+        self.controller.load_settings()
         
     def on_mode_change(self, e):
-        self.main_controller.on_mode_change()
+        self.controller.on_mode_change()
 
     def pick_result_file(self, e: ft.FilePickerResultEvent):
-        self.main_controller.pick_result_file(e)
+        self.controller.pick_result_file(e)
 
     def validate_all_inputs(self, e=None):
-        self.main_controller.validate_all_inputs()
+        self.controller.validate_all_inputs()
 
     async def start_battle(self, e):
-        await self.main_controller.start_battle(e)
+        await self.controller.start_battle(e)
 
     async def stop_battle(self, e):
-        await self.main_controller.stop_battle(e)
+        await self.controller.stop_battle(e)
 
     async def async_cleanup(self):
-        await self.main_controller.stop_battle(None)
+        await self.controller.stop_battle(None)
         
     def on_close(self, e):
         safe_print("[on_close] start")

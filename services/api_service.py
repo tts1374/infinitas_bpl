@@ -10,7 +10,7 @@ import flet as ft
 import traceback
 from utils.common import safe_print
 
-class WebSocketService:
+class ApiService:
     def __init__(self, app, db_service: DBService):
         self.app = app
         self.db_service = db_service

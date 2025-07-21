@@ -3,6 +3,8 @@ import json
 import re
 import uuid
 
+from controllers.i_app_controller import IAppController
+from controllers.i_main_view_controller import IMainViewController
 from errors.connection_failed_error import ConnectionFailedError
 from services.update_service import UpdateService
 from utils.common import safe_print
@@ -10,18 +12,45 @@ from utils.result_handler import ResultHandler
 from watchdog.observers import Observer
 from services.db_service import DBService
 from services.result_service import ResultService
-from services.websocket_service import WebSocketService
+from services.api_service import ApiService
 import flet as ft
+
+from views.main_view import MainView
 
 DB_FILE = "result.db"
 
-class MainController:
-    def __init__(self, app):
+class MainViewController(IMainViewController):
+    def __init__(self, app: MainView, app_controller: IAppController):
         self.app = app
-        self.websocket_handler = None
+        self.api_service = None
+        self.app_controller = app_controller
         
         self.update_service = UpdateService()
 
+    def on_create(self):
+        # 設定のロード
+        settings = self.app_controller.load_settings()
+
+        self.app.djname_input.value = settings.djname
+        self.app.room_pass.value = settings.room_pass
+        self.app.mode_radio.value = settings.mode
+
+        if settings.mode in ["2", "4"]:
+            self.app.user_num_select.disabled = True
+            self.app.user_num_select.value = "2"
+        else:
+            self.app.user_num_select.disabled = False
+            self.app.user_num_select.value = settings.user_num
+
+        if settings.result_file:
+            file_name = os.path.basename(settings.result_file)
+            self.app.result_file_label.value = f"リザルトファイル：{file_name}"
+        else:
+            self.app.result_file_label.value = "リザルトファイル：未選択"
+
+        self.app.validate_all_inputs()
+        self.app.page.update()
+            
     def on_mode_change(self):
         mode = self.app.mode_radio.value
         if mode in ["1", "3"]:
@@ -53,33 +82,7 @@ class MainController:
         self.app.start_button.disabled = not can_start
         self.app.page.update()
 
-    def load_settings(self):
-        if os.path.exists("settings.json"):
-            with open("settings.json", "r", encoding="utf-8") as f:
-                self.app.settings = json.load(f)
-
-            self.app.djname_input.value = self.app.settings.get("djname", "")
-            self.app.room_pass.value = self.app.settings.get("room_pass", "")
-
-            mode_value = str(self.app.settings.get("mode", "1"))
-            self.app.mode_radio.value = mode_value
-
-            if mode_value in ["2", "4"]:
-                self.app.user_num_select.disabled = True
-                self.app.user_num_select.value = "2"
-            else:
-                self.app.user_num_select.disabled = False
-                self.app.user_num_select.value = str(self.app.settings.get("user_num", "2"))
-
-            self.app.result_file_path = self.app.settings.get("result_file")
-            if self.app.result_file_path:
-                file_name = os.path.basename(self.app.result_file_path)
-                self.app.result_file_label.value = f"リザルトファイル：{file_name}"
-            else:
-                self.app.result_file_label.value = "リザルトファイル：未選択"
-
-            self.validate_all_inputs()
-            self.app.page.update()
+    
 
     def save_settings(self):
         mode_value = int(self.app.mode_radio.value)
@@ -108,13 +111,13 @@ class MainController:
             self.app.room_id, self.app.user_token = db.register_room_and_user(self.app.settings)
 
             # WebSocket接続
-            self.websocket_handler = WebSocketService(self.app, db)
-            await self.websocket_handler.connect()
+            self.api_service = ApiService(self.app, db)
+            await self.api_service.connect()
 
             # ファイル監視開始
-            self.result_handler = ResultHandler(self)
+            self.file_watch_service = ResultHandler(self)
             self.observer = Observer()
-            self.observer.schedule(self.result_handler, path=os.path.dirname(self.app.result_file_path), recursive=False)
+            self.observer.schedule(self.file_watch_service, path=os.path.dirname(self.app.result_file_path), recursive=False)
             self.observer.start()
 
             self.app.start_button.visible = False
@@ -140,8 +143,8 @@ class MainController:
             self.app.page.update()
 
     async def stop_battle(self, e):
-        if self.websocket_handler:
-            await self.websocket_handler.disconnect()
+        if self.api_service:
+            await self.api_service.disconnect()
             safe_print("Websocket disconnect")
 
         if hasattr(self, "observer"):
@@ -214,7 +217,7 @@ class MainController:
         }
         safe_print("[送信データ]")
         safe_print(json.dumps(result_data, ensure_ascii=False, indent=2))
-        await self.websocket_handler.send(result_data)
+        await self.api_service.send(result_data)
 
 
     async def handle_result_update(self, content):
@@ -222,7 +225,7 @@ class MainController:
         result_data = service.parse_result(content)
         safe_print("[送信データ]")
         safe_print(json.dumps(result_data, ensure_ascii=False, indent=2))
-        await self.websocket_handler.send(result_data)
+        await self.api_service.send(result_data)
     
     async def check_for_update(self):
         result, assets = self.update_service.check_update()
