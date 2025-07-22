@@ -8,10 +8,12 @@ from repositories.api.i_github_client import IGithubClient
 from repositories.api.i_websocket_client import IWebsocketClient
 from repositories.db.i_room_repository import IRoomRepository
 from repositories.db.i_song_repository import ISongRepository
+from repositories.db.i_song_result_repository import ISongResultRepository
 from repositories.db.i_user_repository import IUserRepository
 from repositories.files.i_output_file_repository import IOutputFileRepository
 from repositories.files.i_settings_file_repository import ISettingsFileRepository
 from services.i_update_service import IUpdateService
+from usecases.i_battle_result_handler import IBattleResultHandler
 from usecases.i_load_settings_usecase import ILoadSettingsUsecase
 from usecases.i_result_send_usecase import IResultSendUsecase
 from usecases.i_skip_song_usecase import ISkipSongUsecase
@@ -50,6 +52,9 @@ class IAppFactory(ABC):
     @abstractmethod
     def create_song_repository(cls, session) -> ISongRepository:
         pass
+    @abstractmethod
+    def create_song_result_repository(cls, session) -> ISongResultRepository:
+        pass
     
     
     ################################
@@ -66,7 +71,10 @@ class IAppFactory(ABC):
     def create_load_settings_usecase(cls) -> ILoadSettingsUsecase:
         pass
     @abstractmethod
-    def create_start_battle_usecase(cls, settings: Settings) -> IStartBattleUsecase:
+    def create_battle_result_handler(cls) -> IBattleResultHandler:
+        pass
+    @abstractmethod
+    def create_start_battle_usecase(cls) -> IStartBattleUsecase:
         pass
     @abstractmethod
     def create_stop_battle_usecase(cls) -> IStopBattleUsecase:
@@ -77,6 +85,7 @@ class IAppFactory(ABC):
     @abstractmethod
     def create_skip_song_usecase(cls) -> ISkipSongUsecase:
         pass
+        
     
     ################################
     ## Controller

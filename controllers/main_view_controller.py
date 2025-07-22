@@ -177,6 +177,7 @@ class MainViewController(IMainViewController):
     def generate_room_pass(self):
         new_uuid = str(uuid.uuid4()).replace("-", "")
         self.app.room_pass.value = new_uuid
+        self.validate_inputs()
         self.app.page.update()
     
     ##############################

@@ -230,6 +230,7 @@ class MainView:
             safe_print("[on_close] close")
             self.page.window.prevent_close = False
             self.page.window.close()
+            
     
     def load_result_table(self, result):
         headers = ["No.", "曲名"] + [user["user_name"] for user in result["users"]] + ["スキップ"]

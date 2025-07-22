@@ -1,7 +1,8 @@
 from models.song_result import SongResult
+from repositories.db.i_song_result_repository import ISongResultRepository
 from utils.common import now_str, safe_int
 
-class SongResultRepository:
+class SongResultRepository(ISongResultRepository):
     def __init__(self, session):
         self.session = session
 

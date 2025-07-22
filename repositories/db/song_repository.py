@@ -1,19 +1,12 @@
+from sqlalchemy import and_, exists
 from models.song import Song
+from models.song_result import SongResult
+from repositories.db.i_song_repository import ISongRepository
 from utils.common import now_str
 
-class SongRepository:
+class SongRepository(ISongRepository):
     def __init__(self, session):
         self.session = session
-
-    def _get_by_unique_key(self, room_id, level, song_name, play_style, difficulty, notes):
-        return self.session.query(Song).filter_by(
-            room_id=room_id,
-            level=level,
-            song_name=song_name,
-            play_style=play_style,
-            difficulty=difficulty,
-            notes=notes
-        ).first()
 
     def _count_by_room(self, room_id):
         return self.session.query(Song).filter_by(room_id=room_id).count()
@@ -34,8 +27,15 @@ class SongRepository:
         self.session.flush()
         return song
 
-    def get_or_create(self, room_id, level, song_name, play_style, difficulty, notes):
-        song = self._get_by_unique_key(room_id, level, song_name, play_style, difficulty, notes)
+    def get_or_create(self, room_id, level, song_name, play_style, difficulty, notes, user_id):
+        song = self.session.query(Song).filter_by(
+            room_id=room_id,
+            level=level,
+            song_name=song_name,
+            play_style=play_style,
+            difficulty=difficulty,
+            notes=notes
+        ).filter(~exists().where(and_(SongResult.song_id == Song.song_id, SongResult.user_id == user_id))).first()
         if song:
             return song
         return self.create(room_id, level, song_name, play_style, difficulty, notes)

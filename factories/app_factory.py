@@ -8,9 +8,11 @@ from repositories.api.github_client import GithubClient
 from repositories.api.websocket_client import WebsocketClient
 from repositories.db.room_repository import RoomRepository
 from repositories.db.song_repository import SongRepository
+from repositories.db.song_result_repository import SongResultRepository
 from repositories.db.user_repository import UserRepository
 from repositories.files.output_file_repository import OutputFileRepository
 from repositories.files.settings_file_repository import SettingsFileRepository
+from usecases.battle_result_handler import BattleResultHandler
 from usecases.load_settings_usecase import LoadSettingsUsecase
 from services.update_service import UpdateService
 from usecases.result_send_usecase import ResultSendUsecase
@@ -56,6 +58,9 @@ class AppFactory(IAppFactory):
     @classmethod
     def create_song_repository(cls, session):
         return SongRepository(session)
+    @classmethod
+    def create_song_result_repository(cls, session):
+        return SongResultRepository(session)
     
     
     ################################
@@ -74,20 +79,37 @@ class AppFactory(IAppFactory):
         repository = cls.create_settings_file_repository()
         return LoadSettingsUsecase(repository)
     @classmethod
-    def create_start_battle_usecase(cls):
+    def create_battle_result_handler(cls):
         session = cls.create_session()
-        settings_file_repository = cls.create_settings_file_repository()
         output_file_repository = cls.create_output_file_repository()
         room_repository = cls.create_room_repository(session)
         user_repository = cls.create_user_repository(session)
+        song_repository = cls.create_song_repository(session)
+        song_result_repository = cls.create_song_result_repository(session)
+        return BattleResultHandler(
+            output_file_repository,
+            session,
+            room_repository,
+            user_repository,
+            song_repository,
+            song_result_repository
+        )
+        
+    @classmethod
+    def create_start_battle_usecase(cls):
+        session = cls.create_session()
+        settings_file_repository = cls.create_settings_file_repository()
+        room_repository = cls.create_room_repository(session)
+        user_repository = cls.create_user_repository(session)
         websocket_client = cls.create_websocket_client()
+        battle_result_handler = cls.create_battle_result_handler()
         return StartBattleUsecase(
             settings_file_repository, 
-            output_file_repository, 
             session, 
             room_repository, 
             user_repository, 
-            websocket_client
+            websocket_client,
+            battle_result_handler
         )
     @classmethod
     def create_stop_battle_usecase(cls):

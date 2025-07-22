@@ -5,19 +5,14 @@ from models.user import User
 
 class ISongRepository(ABC):
     @abstractmethod
-    def create(self, room_id: int, user_token: str, user_name: str) -> Song:
+    def create(self, room_id, level, song_name, play_style, difficulty, notes) -> Song:
         """
         ユーザ登録
         """
     @abstractmethod
-    def get_or_create(self, room_id: int, user_token: str, user_name: str) -> Song:
+    def get_or_create(self, room_id, level, song_name, play_style, difficulty, notes, user_id) -> Song:
         """
-        ユーザ登録(すでに存在する場合は該当ユーザを返却)
-        """
-    @abstractmethod
-    def count_by_room(self, room_id: int) -> int:
-        """
-        部屋内のユーザー数取得
+        曲登録(すでに存在する場合は該当ユーザを返却)
         """
     @abstractmethod   
     def get_by_id(self, song_id: int) -> Song:
