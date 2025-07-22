@@ -2,6 +2,7 @@
 
 from itertools import groupby
 import os
+from typing import Tuple
 import uuid
 from db.database import SessionLocal
 from models.settings import Settings
@@ -36,7 +37,7 @@ class StartBattleUsecase(IStartBattleUsecase):
         self.settings = None
         self.room_id = None
 
-    async def execute(self, settings: Settings, app_on_message_callback) -> str:
+    async def execute(self, settings: Settings, app_on_message_callback) -> Tuple[int, str]:
         self.settings = settings
         self.app_on_message_callback = app_on_message_callback
         # 設定ファイルの保存
@@ -50,7 +51,7 @@ class StartBattleUsecase(IStartBattleUsecase):
                 user_num= settings.user_num
             )
 
-            user_token = self.user_repository.create(
+            self.user_token = self.user_repository.create(
                 room_id=self.room_id,
                 user_token=str(uuid.uuid4()),
                 user_name=settings.djname
@@ -69,7 +70,7 @@ class StartBattleUsecase(IStartBattleUsecase):
             # 出力ファイルの初期化
             self.output_file_repository.clear()
             
-            return user_token
+            return self.room_id, self.user_token
 
         except Exception as e:
             self.session.rollback()

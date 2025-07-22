@@ -23,7 +23,15 @@ class SongResultRepository(ISongResultRepository):
         self.session.flush()
         return song_result
 
-    def list_by_song_id(self, song_id: int) -> list[dict]:
+    def get(self, room_id: int, song_id: int, user_id: int) -> SongResult:
+        song_result = self.session.query(SongResult).filter(
+            SongResult.room_id == room_id, 
+            SongResult.song_id == song_id,
+            SongResult.user_id == user_id,
+            ).first()
+        return song_result
+            
+    def list_by_song_id(self, room_id: int, song_id: int) -> list[dict]:
         results = (
             self.session.query(
                 SongResult.user_id,
@@ -32,7 +40,7 @@ class SongResultRepository(ISongResultRepository):
                 SongResult.lamp,
                 SongResult.rank,
             )
-            .filter(SongResult.song_id == song_id)
+            .filter(SongResult.room_id == room_id, SongResult.song_id == song_id)
             .order_by(SongResult.user_id)
             .all()
         )
@@ -46,3 +54,9 @@ class SongResultRepository(ISongResultRepository):
             }
             for r in results
         ]
+
+    def delete(self, room_id: int, song_id: int):
+        self.session.query(SongResult).filter_by(
+            room_id=room_id,
+            song_id=song_id
+        ).delete()

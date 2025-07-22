@@ -9,8 +9,7 @@ class IRoomRepository(ABC):
         部屋登録
         """
     @abstractmethod
-    def get_by_id(self, room_id) -> Room:
+    def get_by_id(self, room_id: int) -> Room:
         """
         IDより1件取得
         """
-    

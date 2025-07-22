@@ -24,7 +24,7 @@ class IUserRepository(ABC):
         部屋IDよりリスト取得
         """
     @abstractmethod
-    def get_by_room_and_token(self, room_id: int, user_token: str):
+    def get_by_room_and_token(self, room_id: int, user_token: str) -> User:
         """
         部屋ID, ユーザトークンより1件取得
         """

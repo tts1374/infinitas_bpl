@@ -40,8 +40,8 @@ class SongRepository(ISongRepository):
             return song
         return self.create(room_id, level, song_name, play_style, difficulty, notes)
 
-    def get_by_id(self, song_id) -> Song:
-        return self.session.query(Song).filter(Song.song_id == song_id).first()
+    def get_by_id(self, room_id: int, song_id: int) -> Song:
+        return self.session.query(Song).filter(Song.room_id == room_id, Song.song_id == song_id).first()
     
     def list_by_room_id(self, room_id: int) -> list[dict]:
         songs = (
@@ -70,3 +70,15 @@ class SongRepository(ISongRepository):
             }
             for s in songs
         ]
+        
+    def get_by_result_token(self, room_id: int, result_token:str) -> Song:
+        song = self.session.query(Song).filter_by(
+            room_id=room_id,
+        ).filter(exists().where(and_(SongResult.song_id == Song.song_id, SongResult.result_token == result_token))).first()
+        return song
+
+    def delete(self, room_id: int, song_id: int):
+        self.session.query(Song).filter_by(
+            room_id=room_id,
+            song_id=song_id
+        ).delete()

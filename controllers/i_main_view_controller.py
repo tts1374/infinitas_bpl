@@ -69,3 +69,8 @@ class IMainViewController(ABC):
         """
             スキップボタン押下時の処理
         """
+    @abstractmethod
+    async def delete_song(self, song_id): 
+        """
+            削除ボタン押下時の処理
+        """

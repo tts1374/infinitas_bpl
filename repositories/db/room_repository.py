@@ -11,5 +11,6 @@ class RoomRepository(IRoomRepository):
         self.session.flush()  # id取得のため
         return room.room_id
 
+        return self.session.query(Room).filter(Room.room_pass == room_pass).first()
     def get_by_id(self, room_id) -> Room:
         return self.session.query(Room).filter(Room.room_id == room_id).first()

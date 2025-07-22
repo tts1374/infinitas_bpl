@@ -15,7 +15,7 @@ class ISongRepository(ABC):
         曲登録(すでに存在する場合は該当ユーザを返却)
         """
     @abstractmethod   
-    def get_by_id(self, song_id: int) -> Song:
+    def get_by_id(self, room_id: int, song_id: int) -> Song:
         """
         曲IDより1件取得
         """ 
@@ -24,3 +24,13 @@ class ISongRepository(ABC):
         """
         部屋IDよりリスト取得
         """
+    @abstractmethod   
+    def get_by_result_token(self, room_id: int, result_token:str) -> Song:
+        """
+        対戦結果トークンに紐づく曲より1件取得
+        """ 
+    
+    def delete(self, room_id:int, song_id:int):
+        """
+        song_idより対象の削除
+        """ 

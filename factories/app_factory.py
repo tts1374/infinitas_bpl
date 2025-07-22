@@ -14,6 +14,7 @@ from repositories.files.output_file_repository import OutputFileRepository
 from repositories.files.settings_file_repository import SettingsFileRepository
 from usecases.battle_result_handler import BattleResultHandler
 from services.update_service import UpdateService
+from usecases.delete_song_usecase import DeleteSongUsecase
 from usecases.result_send_usecase import ResultSendUsecase
 from usecases.skip_song_usecase import SkipSongUsecase
 from usecases.start_battle_usecase import StartBattleUsecase
@@ -114,8 +115,18 @@ class AppFactory(IAppFactory):
     def create_skip_song_usecase(cls):
         session = cls.create_session()
         websocket_client = cls.create_websocket_client()
+        room_repository = cls.create_room_repository(session)
         song_repository = cls.create_song_repository(session)
-        return SkipSongUsecase(song_repository, websocket_client)
+        return SkipSongUsecase(room_repository, song_repository, websocket_client)
+    
+    @classmethod
+    def create_delete_song_usecase(cls):
+        session = cls.create_session()
+        websocket_client = cls.create_websocket_client()
+        room_repository = cls.create_room_repository(session)
+        user_repository = cls.create_user_repository(session)
+        song_result_repository = cls.create_song_result_repository(session)
+        return DeleteSongUsecase(room_repository, user_repository, song_result_repository, websocket_client)
     
     ################################
     ## Application
@@ -125,6 +136,7 @@ class AppFactory(IAppFactory):
         start_battle_usecase = cls.create_start_battle_usecase()
         result_send_usecase = cls.create_result_send_usecase()
         skip_song_usecase = cls.create_skip_song_usecase()
+        delete_song_usecase = cls.create_delete_song_usecase()
         update_service = cls.create_update_service()
         settings_file_repository = cls.create_settings_file_repository()
         output_file_repository = cls.create_output_file_repository()
@@ -132,7 +144,8 @@ class AppFactory(IAppFactory):
         return MainAppService(
             start_battle_usecase=start_battle_usecase,             
             result_send_usecase=result_send_usecase, 
-            skip_song_usecase=skip_song_usecase, 
+            skip_song_usecase=skip_song_usecase,
+            delete_song_usecase=delete_song_usecase, 
             update_service=update_service,
             settings_file_repository=settings_file_repository,
             output_file_repository=output_file_repository,

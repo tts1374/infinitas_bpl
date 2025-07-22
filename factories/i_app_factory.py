@@ -14,6 +14,7 @@ from repositories.files.i_output_file_repository import IOutputFileRepository
 from repositories.files.i_settings_file_repository import ISettingsFileRepository
 from services.i_update_service import IUpdateService
 from usecases.i_battle_result_handler import IBattleResultHandler
+from usecases.i_delete_song_usecase import IDeleteSongUsecase
 from usecases.i_result_send_usecase import IResultSendUsecase
 from usecases.i_skip_song_usecase import ISkipSongUsecase
 from usecases.i_start_battle_usecase import IStartBattleUsecase
@@ -76,6 +77,9 @@ class IAppFactory(ABC):
         pass
     @abstractmethod
     def create_skip_song_usecase(cls) -> ISkipSongUsecase:
+        pass
+    @abstractmethod
+    def create_delete_song_usecase(cls) -> IDeleteSongUsecase:
         pass
         
     ################################

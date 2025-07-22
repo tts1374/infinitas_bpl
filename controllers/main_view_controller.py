@@ -124,7 +124,7 @@ class MainViewController(IMainViewController):
                 result_file=self.app.result_file_path
             )
             # websocketに接続
-            self.app.user_token = await self.main_app_serivce.start_battle(settings, self._load_result_table)
+            self.app.room_id, self.app.user_token = await self.main_app_serivce.start_battle(settings, self._load_result_table)
             self.app.settings = settings
             
             # ファイル監視
@@ -177,13 +177,18 @@ class MainViewController(IMainViewController):
         self.app.page.update()
 
     async def skip_song(self, song_id): 
-        await self.main_app_serivce.skip_song(self.app.user_token, self.app.settings, song_id)
+        await self.main_app_serivce.skip_song(self.app.room_id, self.app.user_token, self.app.settings, song_id)
 
+    async def delete_song(self, song_id: int):
+        await self.main_app_serivce.delete_song(self.app.room_id, self.app.user_token, self.app.settings, song_id)
+        
     def generate_room_pass(self):
         new_uuid = str(uuid.uuid4()).replace("-", "")
         self.app.room_pass.value = new_uuid
         self.validate_inputs()
         self.app.page.update()
+        
+    
     
     ##############################
     ## private
