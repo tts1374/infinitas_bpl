@@ -109,6 +109,7 @@ class MainViewController(IMainViewController):
         # UI更新：多重起動防止とProgressRing表示
         self.app.start_button.disabled = True
         self.app.start_button.content = ft.ProgressRing(width=30, height=30, stroke_width=4)
+        self._input_disable()
         self.app.page.update()
         
         try:
@@ -138,6 +139,7 @@ class MainViewController(IMainViewController):
 
         except ConnectionFailedError as e:
             await self.app.show_error_dialog(f"{e}")
+            self._input_enable()
             self.app.start_button.disabled = False
             self.app.start_button.content = ft.Text("対戦開始", size=20)
         except Exception as ex:
@@ -145,6 +147,7 @@ class MainViewController(IMainViewController):
             safe_print("[エラー] start_battle:", ex)
 
             # エラー発生時はボタンを元に戻す
+            self._input_enable()
             self.app.start_button.disabled = False
             self.app.start_button.content = ft.Text("対戦開始", size=20)
 
@@ -168,6 +171,7 @@ class MainViewController(IMainViewController):
             self.observer.join()
             safe_print("observer stop")
 
+        self._input_enable()
         self.app.start_button.visible = True
         self.app.start_button.disabled = False
         self.app.start_button.content = ft.Text("対戦開始", size=20)
@@ -193,6 +197,29 @@ class MainViewController(IMainViewController):
     ##############################
     ## private
     ##############################
+    def _input_disable(self):
+        self.app.djname_input.disabled = True
+        self.app.room_pass.disabled = True
+        self.app.mode_radio.disabled = True
+        self.app.user_num_select.disabled = True
+        self.app.create_room_pass_button.disabled = True
+        self.app.result_file_select_btn.disabled = True
+        
+    def _input_enable(self):
+        # 入力・選択・押下を可能にする
+        self.app.djname_input.disabled = False
+        self.app.room_pass.disabled = False
+        self.app.mode_radio.disabled = False
+
+        mode = self.app.mode_radio.value
+        if mode in ["2", "4"]:
+            self.app.user_num_select.disabled = True
+        else:
+            self.app.user_num_select.disabled = False
+
+        self.app.create_room_pass_button.disabled = False
+        self.app.result_file_select_btn.disabled = False
+
     async def _check_for_update(self):
         safe_print("アップデートのチェック")
         result, assets = self.main_app_serivce.check_update()
