@@ -313,14 +313,17 @@ class MainView:
                 row_cells.append(ft.DataCell(skip_button))
 
             # 削除ボタン
-            delete_button = ft.FilledButton(
-                text="削除",
-                bgcolor=ft.Colors.RED,
-                color=ft.Colors.WHITE,
-                on_click=lambda e, song_id=song["song_id"]: self.page.run_task(self._on_delete_song_confirm, song_id)
-            )
-            row_cells.append(ft.DataCell(delete_button))
-
+            if any(r["user_id"] == result["users"][0]["user_id"] for r in song["results"]):
+                delete_button = ft.FilledButton(
+                    text="削除",
+                    bgcolor=ft.Colors.RED,
+                    color=ft.Colors.WHITE,
+                    on_click=lambda e, song_id=song["song_id"]: self.page.run_task(self._on_delete_song_confirm, song_id)
+                )
+                row_cells.append(ft.DataCell(delete_button))
+            else :
+                row_cells.append(ft.DataCell(ft.Text("")))
+            
             data_rows.append(ft.DataRow(cells=row_cells))
 
         data_table = ft.DataTable(
