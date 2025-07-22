@@ -2,12 +2,12 @@ from watchdog.events import FileSystemEventHandler
 
 from utils.common import safe_print
 
-class ResultHandler(FileSystemEventHandler):
-    def __init__(self, battle_handler):
-        self.battle_handler = battle_handler
+class FileWatcher(FileSystemEventHandler):
+    def __init__(self, main_view_controller):
+        self.main_view_controller = main_view_controller
 
     def on_modified(self, event):
-        app = self.battle_handler.app
+        app = self.main_view_controller.app
 
         if event.src_path != app.result_file_path:
             return
@@ -23,7 +23,7 @@ class ResultHandler(FileSystemEventHandler):
 
             # BattleHandler経由でリザルト処理を呼ぶ
             import asyncio
-            asyncio.run(self.battle_handler.handle_result_update(content))
+            asyncio.run(self.main_view_controller._file_watch_callback(content))
 
         except Exception as e:
             safe_print(f"[watchdog] ファイル読み込みエラー: {e}")

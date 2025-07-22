@@ -1,5 +1,6 @@
 import flet as ft
-from db.database import init_db
+from repositories.db.migrations import run_migrations
+from factories.app_factory import AppFactory
 from views.main_view import MainView
 import traceback
 
@@ -7,13 +8,14 @@ from utils.common import resource_path, safe_print
 
 def main(page: ft.Page):
     try:
-        init_db()
+        run_migrations()
 
         page.title = "INFINITAS オンライン対戦"
         # ソフトウェアアイコンの設定
         page.window.icon = resource_path("icon.ico")
-        app = MainView(page)
-        app.load_settings()
+        
+        factory = AppFactory()
+        MainView(page, factory)
     except Exception as e:
         # エラーログ出力
         with open("error.log", "w", encoding="utf-8") as f:

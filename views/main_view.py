@@ -1,26 +1,30 @@
+from typing import Optional
 import flet as ft
 import re
 import asyncio
 import os
 import json
 import sys
-from controllers.main_controller import MainController
+from factories.i_app_factory import IAppFactory
+from models.settings import Settings
 from utils.common import safe_print
 
-DB_FILE = "result.db"
-SETTINGS_FILE = "settings.json"
-RESULT_FILE = "result_output.json"
-
 class MainView:
-    def __init__(self, page: ft.Page):
+    def __init__(self, page: ft.Page, factory: IAppFactory):
+        self.controller = factory.create_main_view_controller(self)
+        
         safe_print("MainView 初期化中")
         self.page = page
-        self.page.on_close = self.on_close
         self.result_file_path = None
         self.last_result_content = None
-        self.main_controller = MainController(self)
+        self.settings : Optional[Settings] = None
+        self.room_id: Optional[int] = None
+        self.user_token : Optional[str] = None
+        
+        page.window.prevent_close = True
+        page.window.on_event = self.window_event
+        
         self.result_table_container = ft.Container()
-        self.page.run_task(self.main_controller.check_for_update)
         
         # DJNAME（バリデーション付き）
         self.djname_input = ft.TextField(
@@ -132,41 +136,142 @@ class MainView:
         self.room_pass.on_change = self.validate_all_inputs
         self.mode_radio.on_change = self.on_mode_change
         self.user_num_select.on_change = self.validate_all_inputs
+        
+        # 初期処理の実行
+        self.controller.on_create()
 
     # DJNAMEバリデーション
     def validate_djname(self, e):
-        pattern = r'^[a-zA-Z0-9.\-*&!?#$]*$'
-        if not re.fullmatch(pattern, self.djname_input.value):
-            self.djname_input.error_text = "使用可能文字：a-z A-Z 0-9 .- *&!?#$"
-        else:
-            self.djname_input.error_text = None
-        self.page.update()
+        self.controller.validate_djname()
 
+    # RoomPassバリデーション
     def validate_room_pass(self, e):
-        pattern = r'^[a-zA-Z0-9_-]{4,36}$'
-        if not re.fullmatch(pattern, self.room_pass.value):
-            self.room_pass.error_text = "使用可能文字：a-z A-Z 0-9 -_ 4～36文字"
-        else:
-            self.room_pass.error_text = None
-        self.page.update()
+        self.controller.validate_room_pass()
         
     # ルームパス生成ボタン押下時
     def on_create_room_pass_button(self, e):
         safe_print("ルームパス生成ボタンが呼ばれました")
-        self.main_controller.create_room_pass_button()
+        self.controller.generate_room_pass()
         
-    def load_result_table(self):
-        if not os.path.exists(RESULT_FILE):
-            return
 
-        with open(RESULT_FILE, "r", encoding="utf-8") as f:
-            result = json.load(f)
+    # メッセージダイアログの表示
+    async def show_message_dialog(self, title, message):
+        safe_print(f"show_message_dialog: message={message}")
 
+        fut = asyncio.get_event_loop().create_future()
+
+        def on_ok(e):
+            self.page.close(dialog)
+            if not fut.done():
+                fut.set_result(True)
+
+        dialog = ft.AlertDialog(
+            modal=True,
+            title=ft.Text(title),
+            content=ft.Text(message),
+            actions=[
+                ft.TextButton("OK", on_click=on_ok)
+            ]
+        )
+
+        self.page.open(dialog)
+        await fut
+
+    # エラーダイアログの表示
+    async def show_error_dialog(self, message):
+        safe_print(f"show_error_dialog: message={message}")
+
+        dialog = ft.AlertDialog(
+            modal=True,
+            title=ft.Text("エラー"),
+            content=ft.Text(message),
+            actions=[
+                ft.TextButton("OK", on_click=lambda e: self.page.close(dialog))
+            ]
+        )
+
+        self.page.open(dialog)
+        
+    # 確認ダイアログの表示
+    async def show_confirm_dialog(self, title, message, on_ok_callback):
+        safe_print(f"show_confirm_dialog: message={message}")
+
+        fut = asyncio.get_event_loop().create_future()
+
+        def on_ok(e):
+            self.page.close(dialog)
+            if not fut.done():
+                fut.set_result(True)
+            if on_ok_callback:
+                self.page.run_task(on_ok_callback)
+
+        def on_cancel(e):
+            self.page.close(dialog)
+            if not fut.done():
+                fut.set_result(False)
+
+        dialog = ft.AlertDialog(
+            modal=True,
+            title=ft.Text(title),
+            content=ft.Text(message),
+            actions=[
+                ft.TextButton("キャンセル", on_click=on_cancel),
+                ft.FilledButton("OK", bgcolor=ft.Colors.RED, color=ft.Colors.WHITE, on_click=on_ok)
+            ]
+        )
+
+        self.page.open(dialog)
+        await fut
+    
+    async def on_skip_song(self, song_id):
+        safe_print(f"スキップ押下: song_id={song_id}")
+        await self.controller.skip_song(song_id)
+        
+    def on_mode_change(self, e):
+        self.controller.change_mode()
+
+    def pick_result_file(self, e: ft.FilePickerResultEvent):
+        self.controller.select_result_file(e)
+
+    def validate_all_inputs(self, e=None):
+        self.controller.validate_inputs()
+
+    async def start_battle(self, e):
+        await self.controller.start_battle(e)
+
+    async def stop_battle(self, e):
+        await self.controller.stop_battle(e)
+
+    async def async_cleanup(self):
+        await self.controller.stop_battle(None)
+        
+    async def window_event(self, e):
+        if e.data == "close":
+            await self.on_close()
+    
+    async def on_close(self):
+        safe_print("[on_close] start")
+        try:
+            await self.controller.stop_battle(None)
+            
+            for task in asyncio.all_tasks():
+                safe_print(f"残タスク: {task}")
+        except Exception as ex:
+            safe_print(f"[on_close] エラー: {ex}")
+        finally:
+            safe_print("[on_close] close")
+            self.page.window.prevent_close = False
+            self.page.window.close()
+            
+    
+    def load_result_table(self, result):
         if not result.get("users") or not result.get("songs"):
+            self.result_table_container.content = None
+            self.page.update()
             return
-        
-        headers = ["No.", "曲名"] + [user["user_name"] for user in result["users"]] + ["スキップ"]
-        # 初期化
+
+        headers = ["No.", "曲名"] + [user["user_name"] for user in result["users"]] + ["スキップ", "削除"]
+
         data_rows = []
 
         for song in result["songs"]:
@@ -201,15 +306,25 @@ class MainView:
             else:
                 skip_button = ft.FilledButton(
                     text="スキップ",
-                    bgcolor=ft.Colors.RED,
-                    color=ft.Colors.WHITE,
+                    bgcolor=ft.Colors.AMBER,  # 黄色
+                    color=ft.Colors.BLACK,
                     on_click=lambda e, song_id=song["song_id"]: self.page.run_task(self.on_skip_song, song_id)
                 )
                 row_cells.append(ft.DataCell(skip_button))
 
-            # DataRow にまとめる
+            # 削除ボタン
+            if any(r["user_id"] == result["users"][0]["user_id"] for r in song["results"]):
+                delete_button = ft.FilledButton(
+                    text="削除",
+                    bgcolor=ft.Colors.RED,
+                    color=ft.Colors.WHITE,
+                    on_click=lambda e, song_id=song["song_id"]: self.page.run_task(self._on_delete_song_confirm, song_id)
+                )
+                row_cells.append(ft.DataCell(delete_button))
+            else :
+                row_cells.append(ft.DataCell(ft.Text("")))
+            
             data_rows.append(ft.DataRow(cells=row_cells))
-
 
         data_table = ft.DataTable(
             columns=[ft.DataColumn(ft.Text(h)) for h in headers],
@@ -226,73 +341,13 @@ class MainView:
 
         self.page.update()
 
-    async def show_message_dialog(self, title, message):
-        safe_print(f"show_message_dialog: message={message}")
+    async def _on_delete_song_confirm(self, song_id):
+        async def on_ok():
+            safe_print(f"削除確定: song_id={song_id}")
+            await self.controller.delete_song(song_id)
 
-        fut = asyncio.get_event_loop().create_future()
-
-        def on_ok(e):
-            self.page.close(dialog)
-            if not fut.done():
-                fut.set_result(True)
-
-        dialog = ft.AlertDialog(
-            modal=True,
-            title=ft.Text(title),
-            content=ft.Text(message),
-            actions=[
-                ft.TextButton("OK", on_click=on_ok)
-            ]
+        await self.show_confirm_dialog(
+            "削除確認",
+            "本当にこの対戦を削除しますか？",
+            on_ok_callback=on_ok
         )
-
-        self.page.open(dialog)
-        await fut
-
-    async def show_error_dialog(self, message):
-        safe_print(f"show_error_dialog: message={message}")
-
-        dialog = ft.AlertDialog(
-            modal=True,
-            title=ft.Text("エラー"),
-            content=ft.Text(message),
-            actions=[
-                ft.TextButton("OK", on_click=lambda e: self.page.close(dialog))
-            ]
-        )
-
-        self.page.open(dialog)
-
-    async def on_skip_song(self, song_id):
-        safe_print(f"スキップ押下: song_id={song_id}")
-        await self.main_controller.skip_song(song_id)
-
-    def load_settings(self):
-        self.main_controller.load_settings()
-        
-    def on_mode_change(self, e):
-        self.main_controller.on_mode_change()
-
-    def pick_result_file(self, e: ft.FilePickerResultEvent):
-        self.main_controller.pick_result_file(e)
-
-    def validate_all_inputs(self, e=None):
-        self.main_controller.validate_all_inputs()
-
-    async def start_battle(self, e):
-        await self.main_controller.start_battle(e)
-
-    async def stop_battle(self, e):
-        await self.main_controller.stop_battle(e)
-
-    async def async_cleanup(self):
-        await self.main_controller.stop_battle(None)
-        
-    def on_close(self, e):
-        safe_print("[on_close] start")
-        try:
-            asyncio.run(self.async_cleanup())
-        except Exception as ex:
-            safe_print(f"[on_close] エラー: {ex}")
-        finally:
-            self.page.window_destroy()
-            sys.exit(0)
