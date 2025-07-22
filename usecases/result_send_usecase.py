@@ -4,8 +4,6 @@ import time
 import uuid
 from models.settings import Settings
 from repositories.api.i_websocket_client import IWebsocketClient
-from repositories.files.i_settings_file_repository import ISettingsFileRepository
-from usecases.i_load_settings_usecase import ILoadSettingsUsecase
 from usecases.i_result_send_usecase import IResultSendUsecase
 from utils.common import safe_print
 import xml.etree.ElementTree as ET

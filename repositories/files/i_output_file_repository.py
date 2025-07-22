@@ -9,3 +9,8 @@ class IOutputFileRepository(ABC):
         結果出力ファイル加工データを保存する
         """
     
+    @abstractmethod
+    def clear(self):
+        """
+        結果出力ファイル加工データをクリアする
+        """

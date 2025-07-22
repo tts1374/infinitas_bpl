@@ -1,33 +1,36 @@
-from controllers.i_app_controller import IAppController
+from application.i_main_app_service import IMainAppSerivce
 from models.settings import Settings
 from models.user import User
-from usecases.i_load_settings_usecase import ILoadSettingsUsecase
+from repositories.api.i_websocket_client import IWebsocketClient
+from repositories.files.i_output_file_repository import IOutputFileRepository
+from repositories.files.i_settings_file_repository import ISettingsFileRepository
 from services.i_update_service import IUpdateService
 from usecases.i_result_send_usecase import IResultSendUsecase
 from usecases.i_skip_song_usecase import ISkipSongUsecase
 from usecases.i_start_battle_usecase import IStartBattleUsecase
-from usecases.i_stop_battle_usecase import IStopBattleUsecase
 from utils.common import safe_print
 
-class AppController(IAppController):
+class MainAppService(IMainAppSerivce):
     def __init__(
-        self, 
-        load_settings_usecase: ILoadSettingsUsecase, 
+        self,  
         start_battle_usecase: IStartBattleUsecase,
-        stop_battle_usecase: IStopBattleUsecase, 
         result_send_usecase: IResultSendUsecase,
         skip_song_usecase: ISkipSongUsecase,
-        update_service: IUpdateService
+        update_service: IUpdateService,
+        settings_file_repository: ISettingsFileRepository,
+        output_file_repository: IOutputFileRepository,
+        websocket_client: IWebsocketClient
     ):
-        self.load_settings_usecase = load_settings_usecase
+        self.settings_file_repository = settings_file_repository
+        self.output_file_repository = output_file_repository
         self.start_battle_usecase = start_battle_usecase
-        self.stop_battle_usecase = stop_battle_usecase
+        self.websocket_clinet = websocket_client
         self.result_send_usecase = result_send_usecase
         self.skip_song_usecase = skip_song_usecase
         self.update_service = update_service
 
     def load_settings(self):
-        return self.load_settings_usecase.execute()
+        return self.settings_file_repository.load()
     
     def check_update(self):
         return self.update_service.check_update()
@@ -39,10 +42,15 @@ class AppController(IAppController):
         return await self.start_battle_usecase.execute(settings, on_message_callback)
     
     async def stop_battle(self):
-        await self.stop_battle_usecase.execute()
-        
+        if self.websocket_clinet:
+            await self.websocket_clinet.disconnect()
+            safe_print("Websocket disconnect")
+                    
     async def result_send(self, user_token, settings, content):
         await self.result_send_usecase.execute(user_token, settings, content)
         
     async def skip_song(self, user_token: str, settings:Settings, song_id: int):
         await self.skip_song_usecase.execute(user_token, settings, song_id)
+    
+    def initialize_output_file(self):
+        self.output_file_repository.clear()

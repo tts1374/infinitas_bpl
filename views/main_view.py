@@ -233,6 +233,11 @@ class MainView:
             
     
     def load_result_table(self, result):
+        # ユーザーリストまたは曲リストが空の場合はテーブルをクリア
+        if not result.get("users") or not result.get("songs"):
+            self.result_table_container.content = None
+            self.page.update()
+            return
         headers = ["No.", "曲名"] + [user["user_name"] for user in result["users"]] + ["スキップ"]
         # 初期化
         data_rows = []

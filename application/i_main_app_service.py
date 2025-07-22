@@ -5,7 +5,7 @@ from models.program_update_result import ProgramUpdateResult
 from models.settings import Settings
 from models.user import User
 
-class IAppController(ABC):
+class IMainAppSerivce(ABC):
     @abstractmethod
     def load_settings(self) -> Settings:
         """
@@ -40,4 +40,10 @@ class IAppController(ABC):
     async def skip_song(self, user_token: str, settings:Settings, song_id: int):
         """
         スキップ処理
+        """
+        
+    @abstractmethod
+    def initialize_output_file(self):
+        """
+        出力ファイルの初期化処理
         """

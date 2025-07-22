@@ -9,6 +9,7 @@ from models.user import User
 from repositories.api.i_websocket_client import IWebsocketClient
 from repositories.db.i_room_repository import IRoomRepository
 from repositories.db.i_user_repository import IUserRepository
+from repositories.files.i_output_file_repository import IOutputFileRepository
 from repositories.files.i_settings_file_repository import ISettingsFileRepository
 from usecases.i_battle_result_handler import IBattleResultHandler
 from usecases.i_start_battle_usecase import IStartBattleUsecase
@@ -17,6 +18,7 @@ class StartBattleUsecase(IStartBattleUsecase):
     def __init__(
         self, 
         settings_file_repository: ISettingsFileRepository, 
+        output_file_repository: IOutputFileRepository,
         session, 
         room_repository: IRoomRepository, 
         user_repository: IUserRepository,
@@ -24,6 +26,7 @@ class StartBattleUsecase(IStartBattleUsecase):
         battle_result_handler: IBattleResultHandler
     ):
         self.settings_file_repository = settings_file_repository
+        self.output_file_repository = output_file_repository
         self.session = session
         self.room_repository = room_repository
         self.user_repository = user_repository
@@ -62,6 +65,9 @@ class StartBattleUsecase(IStartBattleUsecase):
             )
 
             self.session.commit()
+            
+            # 出力ファイルの初期化
+            self.output_file_repository.clear()
             
             return user_token
 

@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 import flet as ft
 
-from controllers.i_app_controller import IAppController
+from application.i_main_app_service import IMainAppSerivce
 from controllers.i_main_view_controller import IMainViewController
 from models.settings import Settings
 from repositories.api.i_github_client import IGithubClient
@@ -14,11 +14,9 @@ from repositories.files.i_output_file_repository import IOutputFileRepository
 from repositories.files.i_settings_file_repository import ISettingsFileRepository
 from services.i_update_service import IUpdateService
 from usecases.i_battle_result_handler import IBattleResultHandler
-from usecases.i_load_settings_usecase import ILoadSettingsUsecase
 from usecases.i_result_send_usecase import IResultSendUsecase
 from usecases.i_skip_song_usecase import ISkipSongUsecase
 from usecases.i_start_battle_usecase import IStartBattleUsecase
-from usecases.i_stop_battle_usecase import IStopBattleUsecase
 
 class IAppFactory(ABC):
     ################################
@@ -68,16 +66,10 @@ class IAppFactory(ABC):
     ## Usecase
     ################################
     @abstractmethod
-    def create_load_settings_usecase(cls) -> ILoadSettingsUsecase:
-        pass
-    @abstractmethod
     def create_battle_result_handler(cls) -> IBattleResultHandler:
         pass
     @abstractmethod
     def create_start_battle_usecase(cls) -> IStartBattleUsecase:
-        pass
-    @abstractmethod
-    def create_stop_battle_usecase(cls) -> IStopBattleUsecase:
         pass
     @abstractmethod
     def create_result_send_usecase(cls) -> IResultSendUsecase:
@@ -86,14 +78,16 @@ class IAppFactory(ABC):
     def create_skip_song_usecase(cls) -> ISkipSongUsecase:
         pass
         
+    ################################
+    ## Application
+    ################################
+    @abstractmethod
+    def create_main_app_service(self) -> IMainAppSerivce:
+        pass
     
     ################################
     ## Controller
     ################################
-    @abstractmethod
-    def create_app_controller(self) -> IAppController:
-        pass
-
     @abstractmethod
     def create_main_view_controller(self, app) -> IMainViewController:
         pass

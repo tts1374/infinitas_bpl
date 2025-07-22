@@ -5,10 +5,7 @@ import uuid
 from models.settings import Settings
 from repositories.api.i_websocket_client import IWebsocketClient
 from repositories.db.i_song_repository import ISongRepository
-from repositories.files.i_settings_file_repository import ISettingsFileRepository
-from usecases.i_load_settings_usecase import ILoadSettingsUsecase
 from usecases.i_skip_song_usecase import ISkipSongUsecase
-from usecases.i_stop_battle_usecase import IStopBattleUsecase
 from utils.common import safe_print
 
 class SkipSongUsecase(ISkipSongUsecase):

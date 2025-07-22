@@ -4,7 +4,7 @@ import json
 import re
 import uuid
 
-from controllers.i_app_controller import IAppController
+from application.i_main_app_service import IMainAppSerivce
 from controllers.i_main_view_controller import IMainViewController
 from errors.connection_failed_error import ConnectionFailedError
 from models.settings import Settings
@@ -20,17 +20,20 @@ DB_FILE = "result.db"
 RESULT_FILE = "result_output.json"
 
 class MainViewController(IMainViewController):
-    def __init__(self, app: MainView, app_controller: IAppController):
+    def __init__(self, app: MainView, main_app_serivce: IMainAppSerivce):
         self.app = app
-        self.app_controller = app_controller
+        self.main_app_serivce = main_app_serivce
         self.last_result_content = None
 
     def on_create(self):
         # アップデートのチェック
         self.app.page.run_task(self._check_for_update)
         
+        # 出力ファイルのクリア
+        self.main_app_serivce.initialize_output_file()
+        
         # 設定のロード
-        settings = self.app_controller.load_settings()
+        settings = self.main_app_serivce.load_settings()
 
         self.app.djname_input.value = settings.djname
         self.app.room_pass.value = settings.room_pass
@@ -120,7 +123,8 @@ class MainViewController(IMainViewController):
                 user_num=user_num,
                 result_file=self.app.result_file_path
             )
-            self.app.user_token = await self.app_controller.start_battle(settings, self._load_result_table)
+            # websocketに接続
+            self.app.user_token = await self.main_app_serivce.start_battle(settings, self._load_result_table)
             self.app.settings = settings
             
             # ファイル監視
@@ -150,14 +154,15 @@ class MainViewController(IMainViewController):
 
         finally:
             self.app.page.update()
+            self._load_result_table()
 
     async def stop_battle(self, e):
         if not self.app.stop_button.visible:
             # 既に停止済みの場合は何もしない
             return
-        
-        await self.app_controller.stop_battle()
-
+        # Websocketの停止
+        await self.main_app_serivce.stop_battle()
+        # ファイル監視の停止
         if hasattr(self, "observer"):
             self.observer.stop()
             self.observer.join()
@@ -172,7 +177,7 @@ class MainViewController(IMainViewController):
         self.app.page.update()
 
     async def skip_song(self, song_id): 
-        await self.app_controller.skip_song(self.app.user_token, self.app.settings, song_id)
+        await self.main_app_serivce.skip_song(self.app.user_token, self.app.settings, song_id)
 
     def generate_room_pass(self):
         new_uuid = str(uuid.uuid4()).replace("-", "")
@@ -185,7 +190,7 @@ class MainViewController(IMainViewController):
     ##############################
     async def _check_for_update(self):
         safe_print("アップデートのチェック")
-        result, assets = self.app_controller.check_update()
+        result, assets = self.main_app_serivce.check_update()
 
         if result.error:
             await self.app.show_error_dialog(f"アップデート確認エラー: {result.error}")
@@ -194,7 +199,7 @@ class MainViewController(IMainViewController):
         if result.need_update:
             await self.app.show_message_dialog("アップデート", "新しいバージョンが見つかりました。アップデートします。")
             safe_print("execute update")
-            err = self.app_controller.perform_update(assets, self.app.page.run_task(self._close))
+            err = self.main_app_serivce.perform_update(assets, self.app.page.run_task(self._close))
             if err:
                 await self.app.show_error_dialog(f"アップデート失敗: {err}")
     
@@ -202,7 +207,7 @@ class MainViewController(IMainViewController):
         self.app.on_close()
     
     async def _file_watch_callback(self, content):
-        await self.app_controller.result_send(self.app.user_token, self.app.settings, content)
+        await self.main_app_serivce.result_send(self.app.user_token, self.app.settings, content)
         
     def _load_result_table(self):
         if not os.path.exists(RESULT_FILE):
@@ -210,7 +215,5 @@ class MainViewController(IMainViewController):
 
         with open(RESULT_FILE, "r", encoding="utf-8") as f:
             result = json.load(f)
-
-        if not result.get("users") or not result.get("songs"):
-            return
+            
         self.app.load_result_table(result)
