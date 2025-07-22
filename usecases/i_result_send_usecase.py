@@ -4,7 +4,7 @@ from models.settings import Settings
 
 class IResultSendUsecase(ABC):
     @abstractmethod
-    def execute(self):
+    def execute(self, user_token: str, settings: Settings, contents):
         """
         リザルト結果を送信する
         """

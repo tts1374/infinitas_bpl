@@ -11,22 +11,33 @@ class IAppController(ABC):
         """
         設定ファイルから保存した入力項目を取得する
         """
-    
+    @abstractmethod
     def check_update(self) -> ProgramUpdateResult:
         """
         アップデートがあるか確認する
         """
-
-    def perform_update(self, assets) -> Optional[str]:
+    @abstractmethod
+    def perform_update(self, assets, callback) -> Optional[str]:
         """
         アップデート処理を行う
         """
-    
+    @abstractmethod
     async def start_battle(self, settings: Settings, on_message_callback) -> str:
         """
         試合開始処理
         """
+    @abstractmethod
     async def stop_battle(self):
         """
         試合終了処理
+        """
+    @abstractmethod
+    async def result_send(self, user_token:str, settings: Settings, content):
+        """
+        リザルト送信
+        """
+    @abstractmethod
+    async def skip_song(self, user_token: str, settings:Settings, song_id: int):
+        """
+        スキップ処理
         """

@@ -22,7 +22,7 @@ class UserRepository(IUserRepository):
         return user.user_token
 
     def get_or_create(self, room_id: int, user_token: str, user_name: str) -> User:
-        user = self._get_by_room_and_token(room_id, user_token)
+        user = self.get_by_room_and_token(room_id, user_token)
         if user:
             return user
         user = User(

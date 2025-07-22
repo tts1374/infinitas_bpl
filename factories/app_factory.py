@@ -7,12 +7,14 @@ from models.settings import Settings
 from repositories.api.github_client import GithubClient
 from repositories.api.websocket_client import WebsocketClient
 from repositories.db.room_repository import RoomRepository
+from repositories.db.song_repository import SongRepository
 from repositories.db.user_repository import UserRepository
 from repositories.files.output_file_repository import OutputFileRepository
 from repositories.files.settings_file_repository import SettingsFileRepository
 from usecases.load_settings_usecase import LoadSettingsUsecase
 from services.update_service import UpdateService
 from usecases.result_send_usecase import ResultSendUsecase
+from usecases.skip_song_usecase import SkipSongUsecase
 from usecases.start_battle_usecase import StartBattleUsecase
 from usecases.stop_battle_usecase import StopBattleUsecase
 from views.main_view import MainView
@@ -51,6 +53,9 @@ class AppFactory(IAppFactory):
     @classmethod
     def create_user_repository(cls, session):
         return UserRepository(session)
+    @classmethod
+    def create_song_repository(cls, session):
+        return SongRepository(session)
     
     
     ################################
@@ -92,6 +97,12 @@ class AppFactory(IAppFactory):
     def create_result_send_usecase(cls):
         websocket_client = cls.create_websocket_client()
         return ResultSendUsecase(websocket_client)
+    @classmethod
+    def create_skip_song_usecase(cls):
+        session = cls.create_session()
+        websocket_client = cls.create_websocket_client()
+        song_repository = cls.create_song_repository(session)
+        return SkipSongUsecase(song_repository, websocket_client)
     
     ################################
     ## Controller
@@ -102,8 +113,16 @@ class AppFactory(IAppFactory):
         start_battle_usecase = cls.create_start_battle_usecase()
         stop_battle_usecase = cls.create_stop_battle_usecase()
         result_send_usecase = cls.create_result_send_usecase()
+        skip_song_usecase = cls.create_skip_song_usecase()
         update_service = cls.create_update_service()
-        return AppController(load_settings_usecase, start_battle_usecase, stop_battle_usecase, result_send_usecase, update_service)
+        return AppController(
+            load_settings_usecase, 
+            start_battle_usecase, 
+            stop_battle_usecase, 
+            result_send_usecase, 
+            skip_song_usecase, 
+            update_service
+        )
     
     @classmethod
     def create_main_view_controller(cls, app):

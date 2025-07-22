@@ -7,11 +7,14 @@ from models.settings import Settings
 from repositories.api.i_github_client import IGithubClient
 from repositories.api.i_websocket_client import IWebsocketClient
 from repositories.db.i_room_repository import IRoomRepository
+from repositories.db.i_song_repository import ISongRepository
 from repositories.db.i_user_repository import IUserRepository
 from repositories.files.i_output_file_repository import IOutputFileRepository
 from repositories.files.i_settings_file_repository import ISettingsFileRepository
+from services.i_update_service import IUpdateService
 from usecases.i_load_settings_usecase import ILoadSettingsUsecase
 from usecases.i_result_send_usecase import IResultSendUsecase
+from usecases.i_skip_song_usecase import ISkipSongUsecase
 from usecases.i_start_battle_usecase import IStartBattleUsecase
 from usecases.i_stop_battle_usecase import IStopBattleUsecase
 
@@ -44,18 +47,18 @@ class IAppFactory(ABC):
     @abstractmethod
     def create_user_repository(cls, session) -> IUserRepository:
         pass
+    @abstractmethod
+    def create_song_repository(cls, session) -> ISongRepository:
+        pass
     
     
     ################################
     ## Service
     ################################
     @abstractmethod
-    def create_load_settings_usecase(self) -> ILoadSettingsUsecase:
+    def create_update_service(self) -> IUpdateService:
         pass
-    @abstractmethod
-    def create_load_settings_usecase(self) -> ILoadSettingsUsecase:
-        pass
-
+    
     ################################
     ## Usecase
     ################################
@@ -70,6 +73,9 @@ class IAppFactory(ABC):
         pass
     @abstractmethod
     def create_result_send_usecase(cls) -> IResultSendUsecase:
+        pass
+    @abstractmethod
+    def create_skip_song_usecase(cls) -> ISkipSongUsecase:
         pass
     
     ################################

@@ -9,10 +9,8 @@ class IUpdateService(ABC):
         """
         プログラムの更新があるかチェックする
         """
-        pass
-    
-    def perform_update(self, assets) -> Optional[str]:
+    @abstractmethod
+    def perform_update(self, assets, callback) -> Optional[str]:
         """
         プログラムの更新を行う
         """
-        pass

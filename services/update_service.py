@@ -26,7 +26,7 @@ class UpdateService(IUpdateService):
         except Exception as e:
             return ProgramUpdateResult(need_update=False, error=str(e)), None
 
-    def perform_update(self, assets):
+    def perform_update(self, assets, callback):
         try:
             asset = next((a for a in assets if a["name"] == self.zip_name), None)
             if not asset:
@@ -55,7 +55,7 @@ class UpdateService(IUpdateService):
             subprocess.Popen(cmd, creationflags=subprocess.CREATE_NEW_CONSOLE)
 
             # 自分自身は終了
-            sys.exit(0)
+            callback()
 
         except Exception as e:
             return str(e)

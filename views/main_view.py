@@ -1,3 +1,4 @@
+from typing import Optional
 import flet as ft
 import re
 import asyncio
@@ -5,6 +6,7 @@ import os
 import json
 import sys
 from factories.i_app_factory import IAppFactory
+from models.settings import Settings
 from utils.common import safe_print
 
 class MainView:
@@ -15,6 +17,9 @@ class MainView:
         self.page = page
         self.result_file_path = None
         self.last_result_content = None
+        self.settings : Optional[Settings] = None
+        self.user_token : Optional[str] = None
+        
         page.window.prevent_close = True
         page.window.on_event = self.window_event
         
@@ -210,11 +215,80 @@ class MainView:
         
     async def window_event(self, e):
         if e.data == "close":
-            safe_print("[on_close] start")
-            try:
-                await self.controller.stop_battle(None)
-            except Exception as ex:
-                safe_print(f"[on_close] エラー: {ex}")
-            finally:
-                safe_print("[on_close] close")
-                self.page.window.destroy()
+            await self.on_close()
+    
+    async def on_close(self):
+        safe_print("[on_close] start")
+        try:
+            await self.controller.stop_battle(None)
+            
+            for task in asyncio.all_tasks():
+                safe_print(f"残タスク: {task}")
+        except Exception as ex:
+            safe_print(f"[on_close] エラー: {ex}")
+        finally:
+            safe_print("[on_close] close")
+            self.page.window.prevent_close = False
+            self.page.window.close()
+    
+    def load_result_table(self, result):
+        headers = ["No.", "曲名"] + [user["user_name"] for user in result["users"]] + ["スキップ"]
+        # 初期化
+        data_rows = []
+
+        for song in result["songs"]:
+            row_cells = []
+            row_cells.append(ft.DataCell(ft.Text(str(song.get("stage_no", song["song_id"])))))
+            row_cells.append(ft.DataCell(ft.Text(f"{song['song_name']}\n({song['play_style']} {song['difficulty']})")))
+
+            for user in result["users"]:
+                user_result = next((r for r in song["results"] if r["user_id"] == user["user_id"]), None)
+                if user_result:
+                    if result["mode"] in [1,2]:
+                        score = user_result["score"]
+                        if len(result["users"]) > 1 and len(song["results"]) == len(result["users"]):
+                            pt = user_result["pt"]
+                            cell_text = f"{score}\n{('〇' if pt == 1 else '×') if result['mode']==2 else str(pt)+'pt'}"
+                        else:
+                            cell_text = f"{score}"
+                    else:
+                        miss = user_result["miss_count"]
+                        if len(result["users"]) > 1 and len(song["results"]) == len(result["users"]):
+                            pt = user_result["pt"]
+                            cell_text = f"{miss}\n{('〇' if pt == 1 else '×') if result['mode']==4 else str(pt)+'pt'}"
+                        else:
+                            cell_text = f"{miss}"
+                    row_cells.append(ft.DataCell(ft.Text(cell_text)))
+                else:
+                    row_cells.append(ft.DataCell(ft.Text("-")))
+
+            # スキップボタン
+            if any(r["user_id"] == result["users"][0]["user_id"] for r in song["results"]):
+                row_cells.append(ft.DataCell(ft.Text("")))
+            else:
+                skip_button = ft.FilledButton(
+                    text="スキップ",
+                    bgcolor=ft.Colors.RED,
+                    color=ft.Colors.WHITE,
+                    on_click=lambda e, song_id=song["song_id"]: self.page.run_task(self.on_skip_song, song_id)
+                )
+                row_cells.append(ft.DataCell(skip_button))
+
+            # DataRow にまとめる
+            data_rows.append(ft.DataRow(cells=row_cells))
+
+
+        data_table = ft.DataTable(
+            columns=[ft.DataColumn(ft.Text(h)) for h in headers],
+            rows=data_rows,
+            column_spacing=20,
+            expand=True
+        )
+
+        self.result_table_container.content = ft.Container(
+            content=ft.Column([data_table], scroll=ft.ScrollMode.AUTO),
+            padding=10,
+            expand=True
+        )
+
+        self.page.update()

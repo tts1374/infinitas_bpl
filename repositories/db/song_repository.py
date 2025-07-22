@@ -40,6 +40,9 @@ class SongRepository:
             return song
         return self.create(room_id, level, song_name, play_style, difficulty, notes)
 
+    def get_by_id(self, song_id) -> Song:
+        return self.session.query(Song).filter(Song.song_id == song_id).first()
+    
     def list_by_room_id(self, room_id: int) -> list[dict]:
         songs = (
             self.session.query(

@@ -87,13 +87,12 @@ def build():
 
 if __name__ == "__main__":
     try:
-        # ① リリースモードに設定
-        set_release_mode(True)
+        # ① デバッグモードに設定
+        set_release_mode(False)
 
         # ② クリーンアップ＆ビルド実行
         clean()
         build()
 
     finally:
-        # ③ 開発モードに戻す
-        set_release_mode(False)
+        pass

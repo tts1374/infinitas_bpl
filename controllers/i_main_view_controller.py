@@ -63,3 +63,9 @@ class IMainViewController(ABC):
             ルームパス生成ボタン押下時の処理
         """
         pass
+    
+    @abstractmethod
+    async def skip_song(self, song_id): 
+        """
+            スキップボタン押下時の処理
+        """

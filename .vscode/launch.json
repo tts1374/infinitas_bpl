@@ -9,10 +9,17 @@
             "console": "integratedTerminal"
         },
         {
-            "name": "ビルド用実行",
+            "name": "ビルド用実行(本番)",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/build_release.py",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "ビルド用実行(開発)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/build_debug.py",
             "console": "integratedTerminal"
         },
         {

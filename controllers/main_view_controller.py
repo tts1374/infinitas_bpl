@@ -1,3 +1,4 @@
+import asyncio
 import os
 import json
 import re
@@ -11,10 +12,9 @@ from repositories.files.file_watcher import FileWatcher
 from utils.common import safe_print
 from watchdog.observers import Observer
 import flet as ft
-import xml.etree.ElementTree as ET
+
 import json
 from views.main_view import MainView
-import time
 
 DB_FILE = "result.db"
 RESULT_FILE = "result_output.json"
@@ -120,7 +120,7 @@ class MainViewController(IMainViewController):
                 user_num=user_num,
                 result_file=self.app.result_file_path
             )
-            self.app.user_token = await self.app_controller.start_battle(settings, self.load_result_table)
+            self.app.user_token = await self.app_controller.start_battle(settings, self._load_result_table)
             self.app.settings = settings
             
             # ファイル監視
@@ -172,140 +172,11 @@ class MainViewController(IMainViewController):
         self.app.page.update()
 
     async def skip_song(self, song_id): 
-        #db = DBService(DB_FILE)
-        #song = db.get_song_by_id(song_id)
-        song = []
-
-        # 難易度変換マップ
-        diff_map = {
-            "BEGINNER": "B",
-            "NORMAL": "N",
-            "HYPER": "H",
-            "ANOTHER": "A",
-            "LEGGENDARIA": "L"
-        }
-
-        # play_style変換
-        if song["play_style"] == "DB":
-            converted_playstyle = "DP"
-        else:
-            converted_playstyle = song["play_style"]
-
-        # difficulty変換
-        converted_difficulty = f"{converted_playstyle}{diff_map.get(song['difficulty'], '?')}"
-
-        # opt変換
-        converted_opt = "BATTLE" if song["play_style"] == "DB" else ""
-
-        result_data = {
-            "mode": self.app.settings['mode'],
-            "roomId": self.app.settings['room_pass'],
-            "userId": self.app.user_token,
-            "name": self.app.settings['djname'],
-            "result": {
-                "lv": str(song["level"]),
-                "title": song["song_name"],
-                "difficulty": converted_difficulty,
-                "dp_unofficial_lv": None,
-                "sp_12hard": None,
-                "sp_12clear": None,
-                "lamp": "FAILED",
-                "score": "0",
-                "opt": converted_opt,
-                "bp": "9999",
-                "bpi": "??",
-                "notes": str(song["notes"]),
-                "score_cur": "0",
-                "score_pre": "0",
-                "lamp_pre": "FAILED",
-                "bp_pre": "0",
-                "rank_pre": "F",
-                "rank": "F",
-                "rankdiff": "F+0",
-                "rankdiff0": "F",
-                "rankdiff1": "+0",
-                "scorerate": "0"
-            }
-        }
-        safe_print("[送信データ]")
-        safe_print(json.dumps(result_data, ensure_ascii=False, indent=2))
-        #await self.api_service.send(result_data)
+        await self.app_controller.skip_song(self.app.user_token, self.app.settings, song_id)
 
     def generate_room_pass(self):
         new_uuid = str(uuid.uuid4()).replace("-", "")
         self.app.room_pass.value = new_uuid
-        self.app.page.update()
-        
-    
-    def load_result_table(self):
-        if not os.path.exists(RESULT_FILE):
-            return
-
-        with open(RESULT_FILE, "r", encoding="utf-8") as f:
-            result = json.load(f)
-
-        if not result.get("users") or not result.get("songs"):
-            return
-        
-        headers = ["No.", "曲名"] + [user["user_name"] for user in result["users"]] + ["スキップ"]
-        # 初期化
-        data_rows = []
-
-        for song in result["songs"]:
-            row_cells = []
-            row_cells.append(ft.DataCell(ft.Text(str(song.get("stage_no", song["song_id"])))))
-            row_cells.append(ft.DataCell(ft.Text(f"{song['song_name']}\n({song['play_style']} {song['difficulty']})")))
-
-            for user in result["users"]:
-                user_result = next((r for r in song["results"] if r["user_id"] == user["user_id"]), None)
-                if user_result:
-                    if result["mode"] in [1,2]:
-                        score = user_result["score"]
-                        if len(result["users"]) > 1 and len(song["results"]) == len(result["users"]):
-                            pt = user_result["pt"]
-                            cell_text = f"{score}\n{('〇' if pt == 1 else '×') if result['mode']==2 else str(pt)+'pt'}"
-                        else:
-                            cell_text = f"{score}"
-                    else:
-                        miss = user_result["miss_count"]
-                        if len(result["users"]) > 1 and len(song["results"]) == len(result["users"]):
-                            pt = user_result["pt"]
-                            cell_text = f"{miss}\n{('〇' if pt == 1 else '×') if result['mode']==4 else str(pt)+'pt'}"
-                        else:
-                            cell_text = f"{miss}"
-                    row_cells.append(ft.DataCell(ft.Text(cell_text)))
-                else:
-                    row_cells.append(ft.DataCell(ft.Text("-")))
-
-            # スキップボタン
-            if any(r["user_id"] == result["users"][0]["user_id"] for r in song["results"]):
-                row_cells.append(ft.DataCell(ft.Text("")))
-            else:
-                skip_button = ft.FilledButton(
-                    text="スキップ",
-                    bgcolor=ft.Colors.RED,
-                    color=ft.Colors.WHITE,
-                    on_click=lambda e, song_id=song["song_id"]: self.page.run_task(self.on_skip_song, song_id)
-                )
-                row_cells.append(ft.DataCell(skip_button))
-
-            # DataRow にまとめる
-            data_rows.append(ft.DataRow(cells=row_cells))
-
-
-        data_table = ft.DataTable(
-            columns=[ft.DataColumn(ft.Text(h)) for h in headers],
-            rows=data_rows,
-            column_spacing=20,
-            expand=True
-        )
-
-        self.app.result_table_container.content = ft.Container(
-            content=ft.Column([data_table], scroll=ft.ScrollMode.AUTO),
-            padding=10,
-            expand=True
-        )
-
         self.app.page.update()
     
     ##############################
@@ -322,24 +193,23 @@ class MainViewController(IMainViewController):
         if result.need_update:
             await self.app.show_message_dialog("アップデート", "新しいバージョンが見つかりました。アップデートします。")
             safe_print("execute update")
-            err = self.app_controller.perform_update(assets)
+            err = self.app_controller.perform_update(assets, self.app.page.run_task(self._close))
             if err:
                 await self.app.show_error_dialog(f"アップデート失敗: {err}")
     
+    async def _close(self):
+        self.app.on_close()
+    
     async def _file_watch_callback(self, content):
-        root = ET.fromstring(content)
-        first_item = root.find('item')
-        if first_item is None:
-            raise ValueError("XMLに<item>がありません")
+        await self.app_controller.result_send(self.app.user_token, self.app.settings, content)
+        
+    def _load_result_table(self):
+        if not os.path.exists(RESULT_FILE):
+            return
 
-        result_data = {
-            "mode": self.app.settings.mode,
-            "roomId": self.app.settings.room_pass,
-            "userId": self.app.user_token,
-            "name": self.app.settings.djname,
-            "resultToken": str(uuid.uuid4()).replace("-", "") + str(time.time()),
-            "result": {child.tag: child.text for child in first_item}
-        }
-        safe_print("[送信データ]")
-        safe_print(json.dumps(result_data, ensure_ascii=False, indent=2))
-        await self.app_controller.result_send(result_data)
+        with open(RESULT_FILE, "r", encoding="utf-8") as f:
+            result = json.load(f)
+
+        if not result.get("users") or not result.get("songs"):
+            return
+        self.app.load_result_table(result)

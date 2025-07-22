@@ -20,8 +20,6 @@ from repositories.files.i_output_file_repository import IOutputFileRepository
 from repositories.files.i_settings_file_repository import ISettingsFileRepository
 from usecases.i_start_battle_usecase import IStartBattleUsecase
 
-from utils.common import safe_print
-
 class StartBattleUsecase(IStartBattleUsecase):
     def __init__(
         self, 
@@ -86,21 +84,23 @@ class StartBattleUsecase(IStartBattleUsecase):
                 song_repo = SongRepository(session)
                 song_result_repo = SongResultRepository(session)
                 
-                # roomの定員をroom_repositoryから取得
-                room = room_repo.get_by_id(self.room_id)
-                if room is None:
-                    raise Exception("部屋情報が見つかりません")
+                
 
-                current_user_count = user_repo.count_by_room(self.room_id)
-
+                # User取得
                 user_token = data["userId"]
                 user_name = data["name"]
                 user = user_repo.get_by_room_and_token(self.room_id, user_token)
-
                 if not user:
+                    # roomの定員をroom_repositoryから取得
+                    room = room_repo.get_by_id(self.room_id)
+                    if room is None:
+                        raise Exception("部屋情報が見つかりません")
+                    # 定員以上の登録しようとしている場合はエラー
+                    current_user_count = user_repo.count_by_room(self.room_id)
                     if current_user_count >= room.user_num:
                         raise Exception("定員オーバーです。対戦を行う場合は部屋の再作成を行ってください。")
-                    user = user_repo.create(self.room_id, user_token, user_name)
+                    # ユーザ登録
+                    user = user_repo.get_or_create(self.room_id, user_token, user_name)
 
                 # 曲情報パース
                 result = data["result"]
@@ -211,9 +211,5 @@ class StartBattleUsecase(IStartBattleUsecase):
             # ログ出力
             print("[Result JSON]", output)
         except Exception as e:
-            import logging
-            logger = logging.getLogger(__name__)
-
-            logger.error("", stack_info=True)
             print("[Error] on_message_callback:", e)
             raise Exception(str(e))

@@ -1,15 +1,16 @@
 from abc import ABC, abstractmethod
 
+from models.song import Song
 from models.user import User
 
 class ISongRepository(ABC):
     @abstractmethod
-    def create(self, room_id: int, user_token: str, user_name: str) -> User:
+    def create(self, room_id: int, user_token: str, user_name: str) -> Song:
         """
         ユーザ登録
         """
     @abstractmethod
-    def get_or_create(self, room_id: int, user_token: str, user_name: str) -> User:
+    def get_or_create(self, room_id: int, user_token: str, user_name: str) -> Song:
         """
         ユーザ登録(すでに存在する場合は該当ユーザを返却)
         """
@@ -18,7 +19,11 @@ class ISongRepository(ABC):
         """
         部屋内のユーザー数取得
         """
-        
+    @abstractmethod   
+    def get_by_id(self, song_id: int) -> Song:
+        """
+        曲IDより1件取得
+        """ 
     @abstractmethod   
     def list_by_room_id(self, room_id: int) -> list[dict]:
         """
