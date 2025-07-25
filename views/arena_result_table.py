@@ -1,4 +1,5 @@
 import flet as ft
+from config.config import BATTLE_MODE_ARENA
 
 DIFFICULTY_COLOR_MAP = {
     "BEGINNER": "#d3e173",
@@ -23,7 +24,7 @@ class ArenaResultTable:
         self.users = result_data.get("users", [])
         self.user_ids = [u["user_id"] for u in self.users]
         self.user_names = [u["user_name"] for u in self.users]
-        self.mode = result_data.get("mode", 1)
+        self.mode = result_data.get("mode", BATTLE_MODE_ARENA)
         self.setting_visible = setting_visible
 
     def _user_name_box(self, name: str, bgcolor: str) -> ft.Container:
@@ -38,7 +39,7 @@ class ArenaResultTable:
     def _build_header(self) -> ft.Row:
         return ft.Row(
             controls=[
-                ft.Container(width=240),  # 曲情報領域
+                ft.Container(width=360),  # 曲情報領域
                 *[
                     self._user_name_box(self.user_names[i], USER_COLORS[i])
                     for i in range(len(self.user_names))
@@ -50,10 +51,10 @@ class ArenaResultTable:
 
     def _user_score(self, result: dict | None) -> ft.Column:
         if result:
-            label = f"SCORE: {result["score"]}" if self.mode == 1 else f"MISS COUNT: {result["miss_count"]}"
+            label = f"SCORE: {result["score"]}" if self.mode == BATTLE_MODE_ARENA else f"MISS COUNT: {result["miss_count"]}"
             value = result.get("pt", 0)
         else:
-            label = "SCORE: -" if self.mode == 1 else "MISS COUNT: -"
+            label = "SCORE: -" if self.mode == BATTLE_MODE_ARENA else "MISS COUNT: -"
             value = "-"
 
         return ft.Column([
@@ -123,11 +124,15 @@ class ArenaResultTable:
 
             def create_hover_handlers(overlay_ref):
                 def on_enter(e):
+                    if self.setting_visible:
+                        return
                     overlay_ref.current.opacity = 0.9
                     overlay_ref.current.bgcolor = ft.Colors.WHITE
                     overlay_ref.current.update()
 
                 def on_exit(e):
+                    if self.setting_visible:
+                        return
                     overlay_ref.current.opacity = 0.0
                     overlay_ref.current.bgcolor = "transparent"
                     overlay_ref.current.update()
@@ -148,7 +153,7 @@ class ArenaResultTable:
                         ft.Container(
                             content=ft.Row(
                                 controls=[
-                                    ft.Container(content=self._song_info(song), width=240),
+                                    ft.Container(content=self._song_info(song), width=360),
                                     *[self._user_score(r) for r in user_results]
                                 ],
                                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN
@@ -156,17 +161,17 @@ class ArenaResultTable:
                             bgcolor="#4B4B4B",
                             padding=10,
                             border_radius=5,
-                            width=800,
+                            width=1200,
                             height=100
                         ),
                         # ホバー時の削除/スキップボタン
                         ft.Container(
                             ref=button_overlay,
                             content=ft.Row([
-                                ft.Container(content=button, width=800, alignment=ft.alignment.center)
+                                ft.Container(content=button, width=1200, alignment=ft.alignment.center)
                             ], alignment=ft.MainAxisAlignment.CENTER),
                             padding=10,
-                            width=800,
+                            width=1200,
                             height=100,
                             opacity=0.0,
                             bgcolor="transparent",
@@ -178,7 +183,7 @@ class ArenaResultTable:
 
             rows.append(row)
         return ft.Container(
-            height=220 if self.setting_visible else 430,
+            height=320 if self.setting_visible else 620,
             content=ft.Column(
                 controls=rows,
                 scroll="auto",
@@ -200,7 +205,7 @@ class ArenaResultTable:
         return ft.Container(
             content=ft.Row(
                 controls=[
-                    ft.Container(width=240),
+                    ft.Container(width=360),
                     *[
                         ft.Column([
                             ft.Text("TOTAL", size=10, color=MAIN_COLOR),
@@ -225,6 +230,6 @@ class ArenaResultTable:
                 self._build_total_row()
             ],
             spacing=10,
-            width=800,
+            width=1200,
             horizontal_alignment=ft.CrossAxisAlignment.CENTER
         )

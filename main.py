@@ -11,6 +11,10 @@ def main(page: ft.Page):
         run_migrations()
 
         page.title = "INFINITAS オンライン対戦"
+        page.window.width = 1200
+        page.window.height = 900
+        page.window.min_width = 1200
+        page.window.min_height = 900
         # ソフトウェアアイコンの設定
         page.window.icon = resource_path("icon.ico")
         

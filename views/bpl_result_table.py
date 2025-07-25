@@ -1,4 +1,5 @@
 import flet as ft
+from config.config import BATTLE_MODE_BPL
 
 # 難易度色マッピング
 DIFFICULTY_COLOR_MAP = {
@@ -48,9 +49,9 @@ class BplResultTable:
             )
     # ユーザスコア出力
     def _user_score(self, result: dict | None, mode: int) -> ft.Column:
-        label = "SCORE" if mode == 2 else "MISS COUNT"
+        label = "SCORE" if mode == BATTLE_MODE_BPL else "MISS COUNT"
         if result:
-            value = result["score"] if mode == 2 else result["miss_count"]
+            value = result["score"] if mode == BATTLE_MODE_BPL else result["miss_count"]
             highlight = result.get("pt", 0) > 0
         else:
             value = "-"
@@ -109,7 +110,7 @@ class BplResultTable:
         )
     # リザルトの各曲行（最大4件）
     def _build_song_rows(self) -> list[ft.Container]:
-        mode = self.result_data.get("mode", 2)
+        mode = self.result_data.get("mode", BATTLE_MODE_BPL)
         users = self.result_data.get("users", [])
         user_ids = [u["user_id"] for u in users] + [None] * (2 - len(users))
         user_ids = user_ids[:2]  # 常に2人
@@ -126,11 +127,15 @@ class BplResultTable:
 
             def create_hover_handlers(overlay_ref):
                 def on_enter(e):
+                    if self.setting_visible:
+                        return
                     overlay_ref.current.opacity = 0.9
                     overlay_ref.current.bgcolor = ft.Colors.WHITE
                     overlay_ref.current.update()
 
                 def on_exit(e):
+                    if self.setting_visible:
+                        return
                     overlay_ref.current.opacity = 0.0
                     overlay_ref.current.bgcolor = "transparent"
                     overlay_ref.current.update()
@@ -153,7 +158,7 @@ class BplResultTable:
                                 self._user_score(result_user0, mode),
                                 ft.Container(
                                     content=self._song_info(song),
-                                    width=250,
+                                    width=375,
                                     alignment=ft.alignment.center
                                 ),
                                 self._user_score(result_user1, mode),
@@ -161,7 +166,7 @@ class BplResultTable:
                             bgcolor="#4B4B4B",
                             padding=10,
                             border_radius=5,
-                            width=800,
+                            width=1200,
                             height=100
                         ),
                         # ボタン領域
@@ -170,12 +175,12 @@ class BplResultTable:
                             content=ft.Row([
                                 ft.Container(
                                     content=button,
-                                    width=800,
+                                    width=1200,
                                     alignment=ft.alignment.center
                                 )
                             ], alignment=ft.MainAxisAlignment.CENTER),
                             padding=10,
-                            width=800,
+                            width=1200,
                             height=100,
                             opacity=0.0,
                             bgcolor="transparent",  # 初期透明
@@ -190,7 +195,7 @@ class BplResultTable:
 
         # スクロール可能な領域に song_rows を配置
         return ft.Container(
-            height=220 if self.setting_visible else 430,  
+            height=320 if self.setting_visible else 620,  
             content=ft.Column(
                 controls=rows,
                 scroll="auto",
@@ -242,6 +247,6 @@ class BplResultTable:
         return ft.Column(
             controls=[header, song_rows, total_row],
             spacing=10,
-            width=800,
+            width=1200,
             horizontal_alignment=ft.CrossAxisAlignment.CENTER
         )

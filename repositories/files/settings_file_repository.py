@@ -1,5 +1,6 @@
 import json
 import os
+from config.config import BATTLE_MODE_ARENA, RESULT_SOURCE_DAKEN_COUNTER
 from models.settings import Settings
 from repositories.files.i_settings_file_repository import ISettingsFileRepository
 
@@ -20,7 +21,8 @@ class SettingsFileRepository(ISettingsFileRepository):
         return Settings(
             djname=data.get("djname", ""),
             room_pass=data.get("room_pass", ""),
-            mode=str(data.get("mode", "1")),
+            mode=str(data.get("mode", BATTLE_MODE_ARENA)),
+            result_source=str(data.get("result_source", RESULT_SOURCE_DAKEN_COUNTER)),
             user_num=str(data.get("user_num", "2")),
             result_file=data.get("result_file")
         )

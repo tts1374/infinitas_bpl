@@ -5,6 +5,7 @@ import re
 import uuid
 
 from application.i_main_app_service import IMainAppSerivce
+from config.config import BATTLE_MODE_BPL, BATTLE_MODE_BPL_BP
 from controllers.i_main_view_controller import IMainViewController
 from errors.connection_failed_error import ConnectionFailedError
 from models.settings import Settings
@@ -40,8 +41,9 @@ class MainViewController(IMainViewController):
         self.app.djname_input.value = settings.djname
         self.app.room_pass.value = settings.room_pass
         self.app.mode_radio.value = settings.mode
+        self.app.result_source.value = settings.result_source
 
-        if settings.mode in ["2", "4"]:
+        if int(settings.mode) in [BATTLE_MODE_BPL, BATTLE_MODE_BPL_BP]:
             self.app.user_num_select.disabled = True
             self.app.user_num_select.value = "2"
         else:
@@ -55,6 +57,7 @@ class MainViewController(IMainViewController):
         else:
             self.app.result_file_label.value = "リザルトファイル：未選択"
 
+        self.app.on_result_source_change()
         self.validate_inputs()
         self.app.page.update()
 
@@ -119,13 +122,15 @@ class MainViewController(IMainViewController):
         try:
             # 設定ファイル保存
             mode_value = int(self.app.mode_radio.value)
-            user_num = 2 if mode_value in [2, 4] else int(self.app.user_num_select.value)
-
+            user_num = 2 if mode_value in [BATTLE_MODE_BPL, BATTLE_MODE_BPL_BP] else int(self.app.user_num_select.value)
+            result_source = int(self.app.result_source.value)
+            
             settings = Settings(
                 djname=self.app.djname_input.value,
                 room_pass=self.app.room_pass.value,
                 mode=mode_value,
                 user_num=user_num,
+                result_source=result_source,
                 result_file=self.app.result_file_path
             )
             # websocketに接続
