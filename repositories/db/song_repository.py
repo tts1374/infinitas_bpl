@@ -47,7 +47,6 @@ class SongRepository(ISongRepository):
         songs = (
             self.session.query(
                 Song.song_id,
-                Song.stage_no,
                 Song.level,
                 Song.song_name,
                 Song.play_style,
@@ -55,20 +54,22 @@ class SongRepository(ISongRepository):
                 Song.notes,
             )
             .filter(Song.room_id == room_id)
-            .order_by(Song.stage_no.desc())
+            .order_by(Song.song_id.desc())  # 最新順（降順）で取得
             .all()
         )
+
+        total = len(songs)
         return [
             {
                 "song_id": s.song_id,
-                "stage_no": s.stage_no,
+                "stage_no": total - idx,
                 "level": s.level,
                 "song_name": s.song_name,
                 "play_style": s.play_style,
                 "difficulty": s.difficulty,
                 "notes": s.notes,
             }
-            for s in songs
+            for idx, s in enumerate(songs)
         ]
         
     def get_by_result_token(self, room_id: int, result_token:str) -> Song:

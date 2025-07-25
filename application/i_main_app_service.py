@@ -51,3 +51,8 @@ class IMainAppSerivce(ABC):
         """
         出力ファイルの初期化処理
         """
+    @abstractmethod
+    def load_output_file(self):
+        """
+        出力ファイルの取得処理
+        """

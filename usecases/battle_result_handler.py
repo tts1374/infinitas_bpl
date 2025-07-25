@@ -8,6 +8,7 @@ from repositories.db.i_song_result_repository import ISongResultRepository
 from repositories.db.i_user_repository import IUserRepository
 from repositories.files.i_output_file_repository import IOutputFileRepository
 from usecases.i_battle_result_handler import IBattleResultHandler
+from utils.common import safe_print
 
 
 class BattleResultHandler(IBattleResultHandler):
@@ -43,7 +44,7 @@ class BattleResultHandler(IBattleResultHandler):
                 user_name = data["name"]
                 user = self.user_repository.get_by_room_and_token(self.room_id, user_token)
                 if not user:
-                    print("[Create User]")
+                    safe_print("[Create User]")
                     # roomの定員をroom_repositoryから取得
                     room = self.room_repository.get_by_id(self.room_id)
                     if room is None:
@@ -89,10 +90,10 @@ class BattleResultHandler(IBattleResultHandler):
                 self.app_on_message_callback()
 
                 # ログ出力
-                print("[Result JSON]", output)
+                safe_print("[Result JSON]", output)
             
             elif data["operation"] == OPERATION_DELETE:
-                print("削除処理開始")
+                safe_print("削除処理開始")
                 user_token = data["userId"]
                 
                 # 部屋の存在確認
@@ -109,7 +110,7 @@ class BattleResultHandler(IBattleResultHandler):
                 if not song:
                     raise Exception("削除対象の曲が見つかりません")
 
-                print(f"削除対象の曲： {song.song_id}")
+                safe_print(f"削除対象の曲： {song.song_id}")
                 # song_idに紐づくSong_resultの削除
                 self.song_result_repository.delete(self.room_id, song.song_id)
                 # song_idに紐づくSongの削除
@@ -123,7 +124,7 @@ class BattleResultHandler(IBattleResultHandler):
                 self.app_on_message_callback()
                 
         except Exception as e:
-            print("[Error] on_message_callback:", e)
+            safe_print("[Error] on_message_callback:", e)
             self.session.rollback()
             raise Exception(str(e))
         finally:

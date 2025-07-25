@@ -77,5 +77,5 @@ class SkipSongUsecase(ISkipSongUsecase):
             safe_print(json.dumps(result_data, ensure_ascii=False, indent=2))
             await self.websocket_clinet.send(result_data)
         except Exception as e:
-            print("[Error] skip:", e)
+            safe_print("[Error] skip:", e)
             raise Exception(str(e))

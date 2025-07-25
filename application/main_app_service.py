@@ -61,3 +61,5 @@ class MainAppService(IMainAppSerivce):
     
     def initialize_output_file(self):
         self.output_file_repository.clear()
+    def load_output_file(self):
+        return self.output_file_repository.load()

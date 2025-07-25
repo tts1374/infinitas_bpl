@@ -1,13 +1,12 @@
 from typing import Optional
 import flet as ft
-import re
 import asyncio
-import os
-import json
-import sys
+import flet_webview as ftwv
 from factories.i_app_factory import IAppFactory
 from models.settings import Settings
 from utils.common import safe_print
+from views.arena_result_table import ArenaResultTable
+from views.bpl_result_table import BplResultTable
 
 class MainView:
     def __init__(self, page: ft.Page, factory: IAppFactory):
@@ -24,7 +23,12 @@ class MainView:
         page.window.prevent_close = True
         page.window.on_event = self.window_event
         
-        self.result_table_container = ft.Container()
+        self.result_table_container = ft.Container(
+            content=None,
+            alignment=ft.alignment.center, 
+            padding=10,
+            expand=True
+        )
         
         # DJNAME（バリデーション付き）
         self.djname_input = ft.TextField(
@@ -116,21 +120,32 @@ class MainView:
             [self.start_button, self.stop_button],
             alignment=ft.MainAxisAlignment.CENTER
         )
+
+        self.setting_group = ft.Container(
+            content=ft.Column([
+                ft.Container(self.djname_input),
+                ft.Container(self.room_pass_row),
+                ft.Container(mode_usernum_group),
+                ft.Container(result_file_group),
+            ]),
+            opacity=1.0,
+            scale=1.0,
+            visible=True  # 初期表示
+        )
+        
+        # ページ追加
         self.page.add(
-            ft.ResponsiveRow(
+            ft.Column(
                 controls=[
-                    ft.Container(self.djname_input, col={"sm": 12, "md": 12}),
-                    ft.Container(self.room_pass_row, col={"sm": 12, "md": 12}),
-                    ft.Container(mode_usernum_group, col={"sm": 12, "md": 12}),
-                    ft.Container(result_file_group, col={"sm": 12, "md": 4}),
-                    ft.Container(button_row, col={"sm": 12, "md": 12}),
-                    ft.Container(self.result_table_container, col={"sm": 12, "md": 12}, expand=True),
+                    self.setting_group,
+                    button_row,
+                    self.result_table_container
                 ],
-                spacing=10,
-                run_spacing=10
+                expand=True,
+                spacing=10
             )
         )
-
+        
         # イベントハンドラ登録
         self.djname_input.on_change = self.validate_all_inputs
         self.room_pass.on_change = self.validate_all_inputs
@@ -222,10 +237,6 @@ class MainView:
 
         self.page.open(dialog)
         await fut
-    
-    async def on_skip_song(self, song_id):
-        safe_print(f"スキップ押下: song_id={song_id}")
-        await self.controller.skip_song(song_id)
         
     def on_mode_change(self, e):
         self.controller.change_mode()
@@ -269,78 +280,19 @@ class MainView:
             self.result_table_container.content = None
             self.page.update()
             return
-
-        headers = ["No.", "曲名"] + [user["user_name"] for user in result["users"]] + ["スキップ", "削除"]
-
-        data_rows = []
-
-        for song in result["songs"]:
-            row_cells = []
-            row_cells.append(ft.DataCell(ft.Text(str(song.get("stage_no", song["song_id"])))))
-            row_cells.append(ft.DataCell(ft.Text(f"{song['song_name']}\n({song['play_style']} {song['difficulty']})")))
-
-            for user in result["users"]:
-                user_result = next((r for r in song["results"] if r["user_id"] == user["user_id"]), None)
-                if user_result:
-                    if result["mode"] in [1,2]:
-                        score = user_result["score"]
-                        if len(result["users"]) > 1 and len(song["results"]) == len(result["users"]):
-                            pt = user_result["pt"]
-                            cell_text = f"{score}\n{('〇' if pt == 1 else '×') if result['mode']==2 else str(pt)+'pt'}"
-                        else:
-                            cell_text = f"{score}"
-                    else:
-                        miss = user_result["miss_count"]
-                        if len(result["users"]) > 1 and len(song["results"]) == len(result["users"]):
-                            pt = user_result["pt"]
-                            cell_text = f"{miss}\n{('〇' if pt == 1 else '×') if result['mode']==4 else str(pt)+'pt'}"
-                        else:
-                            cell_text = f"{miss}"
-                    row_cells.append(ft.DataCell(ft.Text(cell_text)))
-                else:
-                    row_cells.append(ft.DataCell(ft.Text("-")))
-
-            # スキップボタン
-            if any(r["user_id"] == result["users"][0]["user_id"] for r in song["results"]):
-                row_cells.append(ft.DataCell(ft.Text("")))
-            else:
-                skip_button = ft.FilledButton(
-                    text="スキップ",
-                    bgcolor=ft.Colors.AMBER,  # 黄色
-                    color=ft.Colors.BLACK,
-                    on_click=lambda e, song_id=song["song_id"]: self.page.run_task(self.on_skip_song, song_id)
-                )
-                row_cells.append(ft.DataCell(skip_button))
-
-            # 削除ボタン
-            if any(r["user_id"] == result["users"][0]["user_id"] for r in song["results"]):
-                delete_button = ft.FilledButton(
-                    text="削除",
-                    bgcolor=ft.Colors.RED,
-                    color=ft.Colors.WHITE,
-                    on_click=lambda e, song_id=song["song_id"]: self.page.run_task(self._on_delete_song_confirm, song_id)
-                )
-                row_cells.append(ft.DataCell(delete_button))
-            else :
-                row_cells.append(ft.DataCell(ft.Text("")))
-            
-            data_rows.append(ft.DataRow(cells=row_cells))
-
-        data_table = ft.DataTable(
-            columns=[ft.DataColumn(ft.Text(h)) for h in headers],
-            rows=data_rows,
-            column_spacing=20,
-            expand=True
-        )
-
-        self.result_table_container.content = ft.Container(
-            content=ft.Column([data_table], scroll=ft.ScrollMode.AUTO),
-            padding=10,
-            expand=True
-        )
-
+        
+        mode = result.get("mode", 1)
+        setting_visible = self.setting_group.visible
+        if mode == 1 or mode == 3:
+            self.result_table_container.content = ArenaResultTable(self.page, result, self._on_skip_song, self._on_delete_song_confirm, setting_visible).build()
+        else:
+            self.result_table_container.content = BplResultTable(self.page, result, self._on_skip_song, self._on_delete_song_confirm, setting_visible).build()
         self.page.update()
-
+    
+    async def _on_skip_song(self, song_id):
+        safe_print(f"スキップ押下: song_id={song_id}")
+        await self.controller.skip_song(song_id)
+        
     async def _on_delete_song_confirm(self, song_id):
         async def on_ok():
             safe_print(f"削除確定: song_id={song_id}")

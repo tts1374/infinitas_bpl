@@ -14,6 +14,8 @@ from watchdog.observers import Observer
 import flet as ft
 
 import json
+from views.arena_result_table import ArenaResultTable
+from views.bpl_result_table import BplResultTable
 from views.main_view import MainView
 
 DB_FILE = "result.db"
@@ -107,9 +109,11 @@ class MainViewController(IMainViewController):
 
     async def start_battle(self, e):
         # UI更新：多重起動防止とProgressRing表示
+        self.app.setting_group.visible = False
         self.app.start_button.disabled = True
         self.app.start_button.content = ft.ProgressRing(width=30, height=30, stroke_width=4)
         self._input_disable()
+        self._load_result_table()
         self.app.page.update()
         
         try:
@@ -140,6 +144,7 @@ class MainViewController(IMainViewController):
         except ConnectionFailedError as e:
             await self.app.show_error_dialog(f"{e}")
             self._input_enable()
+            self.app.setting_group.visible = True
             self.app.start_button.disabled = False
             self.app.start_button.content = ft.Text("対戦開始", size=20)
         except Exception as ex:
@@ -148,6 +153,7 @@ class MainViewController(IMainViewController):
 
             # エラー発生時はボタンを元に戻す
             self._input_enable()
+            self.app.setting_group.visible = True
             self.app.start_button.disabled = False
             self.app.start_button.content = ft.Text("対戦開始", size=20)
 
@@ -172,12 +178,13 @@ class MainViewController(IMainViewController):
             safe_print("observer stop")
 
         self._input_enable()
+        self.app.setting_group.visible = True
         self.app.start_button.visible = True
         self.app.start_button.disabled = False
         self.app.start_button.content = ft.Text("対戦開始", size=20)
 
         self.app.stop_button.visible = False
-
+        self._load_result_table()
         self.app.page.update()
 
     async def skip_song(self, song_id): 
@@ -190,9 +197,7 @@ class MainViewController(IMainViewController):
         new_uuid = str(uuid.uuid4()).replace("-", "")
         self.app.room_pass.value = new_uuid
         self.validate_inputs()
-        self.app.page.update()
-        
-    
+        self.app.page.update()    
     
     ##############################
     ## private
@@ -242,10 +247,5 @@ class MainViewController(IMainViewController):
         await self.main_app_serivce.result_send(self.app.user_token, self.app.settings, content)
         
     def _load_result_table(self):
-        if not os.path.exists(RESULT_FILE):
-            return
-
-        with open(RESULT_FILE, "r", encoding="utf-8") as f:
-            result = json.load(f)
-            
+        result = self.main_app_serivce.load_output_file() 
         self.app.load_result_table(result)
