@@ -382,7 +382,7 @@ class MainView:
         result_source = safe_int(self.result_source.value, RESULT_SOURCE_DAKEN_COUNTER)
         # 選択内容に応じてボタンとFilePicker拡張子を更新
         self.result_file_select_btn.text = (
-            "リザルトファイル選択 (recent.json)"
+            "リザルトファイル選択 (records/recent.json)"
             if result_source == RESULT_SOURCE_INF_NOTEBOOK
             else "リザルトファイル選択 (today_update.xml)"
         )

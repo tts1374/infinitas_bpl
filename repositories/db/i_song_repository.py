@@ -5,12 +5,12 @@ from models.user import User
 
 class ISongRepository(ABC):
     @abstractmethod
-    def create(self, room_id, level, song_name, play_style, difficulty, notes) -> Song:
+    def create(self, room_id, level, song_name, play_style, difficulty) -> Song:
         """
         ユーザ登録
         """
     @abstractmethod
-    def get_or_create(self, room_id, level, song_name, play_style, difficulty, notes, user_id) -> Song:
+    def get_or_create(self, room_id, level, song_name, play_style, difficulty, user_id) -> Song:
         """
         曲登録(すでに存在する場合は該当ユーザを返却)
         """

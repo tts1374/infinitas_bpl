@@ -12,6 +12,7 @@ from repositories.db.room_repository import RoomRepository
 from repositories.db.song_repository import SongRepository
 from repositories.db.song_result_repository import SongResultRepository
 from repositories.db.user_repository import UserRepository
+from repositories.files.inf_notebook_file_repository import InfNotebookFileRepository
 from repositories.files.output_file_repository import OutputFileRepository
 from repositories.files.settings_file_repository import SettingsFileRepository
 from usecases.battle_result_handler import BattleResultHandler
@@ -68,6 +69,9 @@ class AppFactory(IAppFactory):
     @classmethod
     def create_music_master_repository(cls, session):
         return MusicMasterRepository(session)
+    @classmethod
+    def create_inf_notebook_file_repository(cls):
+        return InfNotebookFileRepository()
     
     
     ################################
@@ -118,8 +122,11 @@ class AppFactory(IAppFactory):
         )
     @classmethod
     def create_result_send_usecase(cls):
+        session = cls.create_session()
+        music_master_repository = cls.create_music_master_repository(session)
         websocket_client = cls.create_websocket_client()
-        return ResultSendUsecase(websocket_client)
+        inf_notebook_file_repository = cls.create_inf_notebook_file_repository()
+        return ResultSendUsecase(websocket_client, inf_notebook_file_repository, music_master_repository)
     @classmethod
     def create_skip_song_usecase(cls):
         session = cls.create_session()

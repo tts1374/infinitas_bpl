@@ -58,28 +58,27 @@ class BattleResultHandler(IBattleResultHandler):
 
                 # 曲情報パース
                 result = data["result"]
-                level = int(result["lv"])
-                song_name = result["title"]
-                difficulty_raw = result["difficulty"]
-                opt = result["opt"]
-                notes = int(result["notes"])
-
-                if difficulty_raw.startswith("SP"):
-                    play_style = "SP"
-                elif difficulty_raw.startswith("DP"):
-                    play_style = "DB" if opt.startswith("BATTLE") else "DP"
-                else:
-                    play_style = "UNKNOWN"
-
-                diff_map = {"B": "BEGINNER", "N": "NORMAL", "H": "HYPER", "A": "ANOTHER", "L": "LEGGENDARIA"}
-                difficulty = diff_map.get(difficulty_raw[-1], "UNKNOWN")
 
                 # 曲の登録
-                song = self.song_repository.get_or_create(self.room_id, level, song_name, play_style, difficulty, notes, user.user_id)
+                song = self.song_repository.get_or_create(
+                    self.room_id, 
+                    result["level"], 
+                    result["song_name"], 
+                    result["play_style"], 
+                    result["difficulty"], 
+                    user.user_id
+                )
 
                 # 結果登録
                 result_token = data["resultToken"]
-                self.song_result_repository.insert(self.room_id, song.song_id, user.user_id, result_token, result)
+                self.song_result_repository.insert(
+                    self.room_id, 
+                    song.song_id, 
+                    user.user_id, 
+                    result_token, 
+                    result["score"],
+                    result["miss_count"]
+                )
 
                 self.session.commit()
                 
@@ -153,7 +152,6 @@ class BattleResultHandler(IBattleResultHandler):
                 "song_name": song["song_name"],
                 "play_style": song["play_style"],
                 "difficulty": song["difficulty"],
-                "notes": song["notes"],
                 "results": []
             }
 
@@ -200,8 +198,6 @@ class BattleResultHandler(IBattleResultHandler):
                     "user_id": res["user_id"],
                     "score": res["score"],
                     "miss_count": res["miss_count"],
-                    "lamp": res["lamp"],
-                    "rank": res["rank"],
                     "pt": pt_dict[res["user_id"]]
                 })
 

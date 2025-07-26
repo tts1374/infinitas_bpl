@@ -6,7 +6,6 @@ from config.config import OPERATION_DELETE
 from models.settings import Settings
 from repositories.api.i_websocket_client import IWebsocketClient
 from repositories.db.i_room_repository import IRoomRepository
-from repositories.db.i_song_repository import ISongRepository
 from repositories.db.i_song_result_repository import ISongResultRepository
 from repositories.db.i_user_repository import IUserRepository
 from usecases.i_delete_song_usecase import IDeleteSongUsecase

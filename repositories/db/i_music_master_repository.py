@@ -14,3 +14,9 @@ class IMusicMasterRepository(ABC):
         """
         データのクリア
         """
+    
+    @abstractmethod
+    def get(song_name, play_style, difficulty) -> MusicMaster:
+        """
+        曲情報からデータの１件取得
+        """

@@ -12,5 +12,4 @@ class Song(Base):
     song_name = Column(Text, nullable=False)
     play_style = Column(Text, nullable=False)
     difficulty = Column(Text, nullable=False)
-    notes = Column(Integer, nullable=False)
     created_at = Column(Text, nullable=False, default=now_str)

@@ -12,6 +12,7 @@ from repositories.db.i_room_repository import IRoomRepository
 from repositories.db.i_song_repository import ISongRepository
 from repositories.db.i_song_result_repository import ISongResultRepository
 from repositories.db.i_user_repository import IUserRepository
+from repositories.files.i_inf_notebook_file_reposirory import IInfNotebookFileRepository
 from repositories.files.i_output_file_repository import IOutputFileRepository
 from repositories.files.i_settings_file_repository import ISettingsFileRepository
 from services.i_update_service import IUpdateService
@@ -62,6 +63,9 @@ class IAppFactory(ABC):
         pass
     @abstractmethod
     def create_music_master_repository(cls, session) -> IMusicMasterRepository:
+        pass
+    @abstractmethod
+    def create_inf_notebook_file_repository(cls) -> IInfNotebookFileRepository:
         pass
     
     ################################
