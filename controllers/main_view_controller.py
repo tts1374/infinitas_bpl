@@ -239,7 +239,7 @@ class MainViewController(IMainViewController):
                 await self.app.show_error_dialog(f"アップデート失敗: {err}")
     
     async def _close(self):
-        self.app.on_close()
+        await self.app.on_close()
     
     async def _file_watch_callback(self, content):
         await self.main_app_serivce.result_send(self.app.user_token, self.app.settings, content)

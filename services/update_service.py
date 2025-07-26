@@ -3,11 +3,9 @@ import sys
 import subprocess
 
 from models.program_update_result import ProgramUpdateResult
-from repositories.api.github_client import GithubClient
 from repositories.api.i_github_client import IGithubClient
 from config.config import APP_VERSION, ZIP_NAME
 from services.i_update_service import IUpdateService
-from utils.common import safe_print
 
 class UpdateService(IUpdateService):
     def __init__(self, github_client: IGithubClient):
