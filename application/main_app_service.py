@@ -7,6 +7,7 @@ from repositories.files.i_output_file_repository import IOutputFileRepository
 from repositories.files.i_settings_file_repository import ISettingsFileRepository
 from services.i_update_service import IUpdateService
 from usecases.i_delete_song_usecase import IDeleteSongUsecase
+from usecases.i_master_update_usecase import IMasterUpdateUsecase
 from usecases.i_result_send_usecase import IResultSendUsecase
 from usecases.i_skip_song_usecase import ISkipSongUsecase
 from usecases.i_start_battle_usecase import IStartBattleUsecase
@@ -19,6 +20,7 @@ class MainAppService(IMainAppSerivce):
         result_send_usecase: IResultSendUsecase,
         skip_song_usecase: ISkipSongUsecase,
         delete_song_usecase: IDeleteSongUsecase,
+        master_update_usecase: IMasterUpdateUsecase,
         update_service: IUpdateService,
         settings_file_repository: ISettingsFileRepository,
         output_file_repository: IOutputFileRepository,
@@ -31,6 +33,7 @@ class MainAppService(IMainAppSerivce):
         self.result_send_usecase = result_send_usecase
         self.skip_song_usecase = skip_song_usecase
         self.delete_song_usecase = delete_song_usecase
+        self.master_update_usecase = master_update_usecase
         self.update_service = update_service
 
     def load_settings(self):
@@ -63,3 +66,6 @@ class MainAppService(IMainAppSerivce):
         self.output_file_repository.clear()
     def load_output_file(self):
         return self.output_file_repository.load()
+    
+    def update_master_data(self):
+        return self.master_update_usecase.execute()

@@ -5,7 +5,9 @@ from db.database import SessionLocal
 from factories.i_app_factory import IAppFactory
 from models.settings import Settings
 from repositories.api.github_client import GithubClient
+from repositories.api.musictable_client import MusictableClient
 from repositories.api.websocket_client import WebsocketClient
+from repositories.db.music_master_repository import MusicMasterRepository
 from repositories.db.room_repository import RoomRepository
 from repositories.db.song_repository import SongRepository
 from repositories.db.song_result_repository import SongResultRepository
@@ -15,6 +17,7 @@ from repositories.files.settings_file_repository import SettingsFileRepository
 from usecases.battle_result_handler import BattleResultHandler
 from services.update_service import UpdateService
 from usecases.delete_song_usecase import DeleteSongUsecase
+from usecases.master_update_usecase import MasterUpdateUsecase
 from usecases.result_send_usecase import ResultSendUsecase
 from usecases.skip_song_usecase import SkipSongUsecase
 from usecases.start_battle_usecase import StartBattleUsecase
@@ -42,6 +45,9 @@ class AppFactory(IAppFactory):
             cls._websocket_client = WebsocketClient()
         return cls._websocket_client
     @classmethod
+    def create_musictable_client(cls):
+        return MusictableClient()
+    @classmethod
     def create_settings_file_repository(cls):
         return SettingsFileRepository()
     @classmethod
@@ -59,6 +65,9 @@ class AppFactory(IAppFactory):
     @classmethod
     def create_song_result_repository(cls, session):
         return SongResultRepository(session)
+    @classmethod
+    def create_music_master_repository(cls, session):
+        return MusicMasterRepository(session)
     
     
     ################################
@@ -128,6 +137,14 @@ class AppFactory(IAppFactory):
         song_result_repository = cls.create_song_result_repository(session)
         return DeleteSongUsecase(room_repository, user_repository, song_result_repository, websocket_client)
     
+    @classmethod
+    def create_master_update_usecase(cls):
+        session = cls.create_session()
+        music_master_repository = cls.create_music_master_repository(session)
+        musictable_client = cls.create_musictable_client()
+        
+        return MasterUpdateUsecase(musictable_client, music_master_repository)
+    
     ################################
     ## Application
     ################################
@@ -141,11 +158,13 @@ class AppFactory(IAppFactory):
         settings_file_repository = cls.create_settings_file_repository()
         output_file_repository = cls.create_output_file_repository()
         websocket_client = cls.create_websocket_client()
+        master_update_usecase = cls.create_master_update_usecase()
         return MainAppService(
             start_battle_usecase=start_battle_usecase,             
             result_send_usecase=result_send_usecase, 
             skip_song_usecase=skip_song_usecase,
             delete_song_usecase=delete_song_usecase, 
+            master_update_usecase=master_update_usecase,
             update_service=update_service,
             settings_file_repository=settings_file_repository,
             output_file_repository=output_file_repository,

@@ -1,6 +1,7 @@
 import asyncio
 import os
 import json
+import pickle
 import re
 import uuid
 
@@ -29,6 +30,9 @@ class MainViewController(IMainViewController):
         self.last_result_content = None
 
     def on_create(self):
+        # マスタデータの更新
+        self.main_app_serivce.update_master_data()
+        
         # アップデートのチェック
         self.app.page.run_task(self._check_for_update)
         

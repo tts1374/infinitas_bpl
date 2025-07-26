@@ -56,3 +56,9 @@ class IMainAppSerivce(ABC):
         """
         出力ファイルの取得処理
         """
+        
+    @abstractmethod
+    def update_master_data(self):
+        """
+        マスタデータの更新
+        """
