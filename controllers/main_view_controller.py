@@ -234,7 +234,7 @@ class MainViewController(IMainViewController):
         if result.need_update:
             await self.app.show_message_dialog("アップデート", "新しいバージョンが見つかりました。アップデートします。")
             safe_print("execute update")
-            err = self.main_app_serivce.perform_update(assets, self.app.page.run_task(self._close))
+            err = self.main_app_serivce.perform_update(assets, lambda: self.app.page.run_task(self._close))
             if err:
                 await self.app.show_error_dialog(f"アップデート失敗: {err}")
     
