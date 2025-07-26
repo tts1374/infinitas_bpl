@@ -19,7 +19,8 @@
 ## 依存ツールについて
 
 本ツールは  
-[INFINITAS打鍵カウンタ（OBS WebSocket版）](https://github.com/dj-kata/inf_daken_counter_obsw) の出力データ（`today_update.xml`）を利用しています。
+[INFINITAS打鍵カウンタ（OBS WebSocket版）](https://github.com/dj-kata/inf_daken_counter_obsw) の出力データ（`today_update.xml`）または、
+[inf-notebook](https://github.com/kaktuswald/inf-notebook/wiki)の出力データ（`records/recent.json`）を利用します。
 
 必ず事前にこちらのツールを導入し、動作する状態にしてからご利用ください。
 
@@ -40,17 +41,34 @@
 1. 解凍したフォルダ内の  
    **`INFINITAS_Online_Battle.exe`** を起動します。
 2. 以下の情報を入力してください。
-<img width="1261" height="706" alt="image" src="https://github.com/user-attachments/assets/4090926a-3321-4de6-95a2-45b6a76295f6" />
+<img width="1174" height="883" alt="image" src="https://github.com/user-attachments/assets/02df03bf-3db1-4c27-beaa-ef0cfa87b1bd" />
 
 | 項目 | 説明 |
 |-------|-------|
 | **DJ NAME** | 表示する名前を入力します。半角英数字・記号で**6文字以内**にしてください。 |
-| **ルームパスワード** | 対戦者同士で事前に決めたパスワードを入力します。**半角数字のみ**対応。 |
+| **ルームパスワード** | 対戦者同士で事前に決めたパスワードを入力します。**半角英数のみ**対応。ルームパス生成で自動生成することもできます。 |
 | **モード選択** | 以下から選択できます：<br>・アリーナモード<br>・BPLバトルモード<br>・アリーナ(BP)モード<br>・BPL(BP)モード |
 | **定員** | アリーナモードの場合、参加人数（最大4人）を入力します。BPLバトルの場合は2人対戦固定なので入力不要です。 |
-| **リザルトファイル選択** | 「INFINITAS打鍵カウンタ（OBS WebSocket版）」のフォルダ内にある `today_update.xml` を選択してください。 |
+| **リザルト設定** | 「INFINITAS打鍵カウンタ」または「リザルト手帳」から選択できます。ご使用のツールに合わせて設定してください。 |
+| **リザルトファイル選択** | INFINITAS打鍵カウンタを選択の場合：「INFINITAS打鍵カウンタ（OBS WebSocket版）」のフォルダ内にある `today_update.xml` を選択してください。<br> リザルト手帳を選択の場合：「inf-notebook」のフォルダ内にある `records/recent.json` を選択してください。<br> **注意！** 必ずrecords内にあるrecent.jsonを選択してください！他のファイルを選択すると正しく動きません。|
 
 3. 全員の準備が整ったら「対戦開始」を押してください。
+
+---
+
+### アプリ中の操作について
+
+- 対戦データにマウスカーソルを合わせる（ホバーする）と、操作用のボタンが表示されます。
+
+- **自分のスコアをまだ投稿していない場合**は「スキップ」ボタンが表示されます。  
+  楽曲を持っていない場合などに使用できます。  
+  ※スキップすると、その対戦は「自動的に負け」として記録されるのでご注意ください。
+
+- **自分のスコアをすでに投稿している場合**は「削除」ボタンが表示されます。  
+  対戦データ全体が削除され、対戦相手のスコアも同時に消去されます。  
+  ※他のプレイヤーの結果も消えるため、削除は慎重に行ってください。
+  
+<img width="1176" height="851" alt="image" src="https://github.com/user-attachments/assets/9cc8124d-ab3d-4f02-a4d0-5f81f3ee6352" />
 
 ---
 
@@ -70,17 +88,16 @@
 
 ## 更新情報
 
-### 2025/07/23 v0.1.2 リリース
+### 2025/07/26 v0.2.0 リリース
 
 - **バグ修正**
-  - 前回の結果が残って表示される問題を修正しました。  
-    現在は、アプリ起動時や対戦開始時に画面が正しくリセットされるようになっています。
+  - 対戦結果を削除した際、STAGE番号（表示順）が正しくなくなる問題を修正しました。
 
 - **新機能**
-  - 対戦データの削除機能を追加しました。不要な記録を簡単に消せるようになりました。
-
-- **内部改善**
-  - 今後の開発を円滑に進めるため、アプリの内部構成（アーキテクチャ）を最新化しました。
+  - **リザルト手帳**のデータに対応しました。  
+    外部ツールのスコアデータを読み込んで、対戦に利用できるようになりました。
+  - **対戦結果画面のデザインを改善**しました。  
+    視認性を向上させ、見やすく整った表示になっています。
 
 ---
 
@@ -101,9 +118,15 @@
 
 - [INFINITAS打鍵カウンタ（OBS WebSocket版）](https://github.com/dj-kata/inf_daken_counter_obsw)
   
+  出力データの利用<br>
   作者：かた様 → [https://x.com/cold_planet_](https://x.com/cold_planet_)
 
-- デザイン担当：
+- [inf-notebook](https://github.com/kaktuswald/inf-notebook/wiki)
+
+  出力データの利用、マスタデータの利用<br>
+  作者：わると様 → [https://x.com/kaktuswald](https://x.com/kaktuswald)
+  
+- デザイン担当
   
   しののめかれん → [https://x.com/sk_Lotus](https://x.com/sk_Lotus)
   
