@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
 
 from models.song_result import SongResult
-from models.user import User
 
 class ISongResultRepository(ABC):
     @abstractmethod

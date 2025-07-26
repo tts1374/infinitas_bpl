@@ -1,9 +1,7 @@
 from abc import ABC, abstractmethod
-import flet as ft
 
 from application.i_main_app_service import IMainAppSerivce
 from controllers.i_main_view_controller import IMainViewController
-from models.settings import Settings
 from repositories.api.i_github_client import IGithubClient
 from repositories.api.i_musictable_client import IMusictableClient
 from repositories.api.i_websocket_client import IWebsocketClient

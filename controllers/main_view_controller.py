@@ -11,10 +11,9 @@ from repositories.files.file_watcher import FileWatcher
 from utils.common import safe_print
 from watchdog.observers import Observer
 import flet as ft
-from views.main_view import MainView
 
 class MainViewController(IMainViewController):
-    def __init__(self, app: MainView, main_app_serivce: IMainAppSerivce):
+    def __init__(self, app, main_app_serivce: IMainAppSerivce):
         self.app = app
         self.main_app_serivce = main_app_serivce
         self.last_result_content = None

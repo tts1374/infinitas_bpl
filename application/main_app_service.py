@@ -1,7 +1,6 @@
 from typing import Tuple
 from application.i_main_app_service import IMainAppSerivce
 from models.settings import Settings
-from models.user import User
 from repositories.api.i_websocket_client import IWebsocketClient
 from repositories.files.i_output_file_repository import IOutputFileRepository
 from repositories.files.i_settings_file_repository import ISettingsFileRepository

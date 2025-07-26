@@ -3,7 +3,6 @@ from typing import Optional, Tuple
 
 from models.program_update_result import ProgramUpdateResult
 from models.settings import Settings
-from models.user import User
 
 class IMainAppSerivce(ABC):
     @abstractmethod
