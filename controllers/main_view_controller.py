@@ -1,10 +1,12 @@
 import asyncio
 import os
 import json
+import pickle
 import re
 import uuid
 
 from application.i_main_app_service import IMainAppSerivce
+from config.config import BATTLE_MODE_BPL, BATTLE_MODE_BPL_BP
 from controllers.i_main_view_controller import IMainViewController
 from errors.connection_failed_error import ConnectionFailedError
 from models.settings import Settings
@@ -14,6 +16,8 @@ from watchdog.observers import Observer
 import flet as ft
 
 import json
+from views.arena_result_table import ArenaResultTable
+from views.bpl_result_table import BplResultTable
 from views.main_view import MainView
 
 DB_FILE = "result.db"
@@ -26,6 +30,9 @@ class MainViewController(IMainViewController):
         self.last_result_content = None
 
     def on_create(self):
+        # マスタデータの更新
+        self.main_app_serivce.update_master_data()
+        
         # アップデートのチェック
         self.app.page.run_task(self._check_for_update)
         
@@ -38,8 +45,9 @@ class MainViewController(IMainViewController):
         self.app.djname_input.value = settings.djname
         self.app.room_pass.value = settings.room_pass
         self.app.mode_radio.value = settings.mode
+        self.app.result_source.value = settings.result_source
 
-        if settings.mode in ["2", "4"]:
+        if int(settings.mode) in [BATTLE_MODE_BPL, BATTLE_MODE_BPL_BP]:
             self.app.user_num_select.disabled = True
             self.app.user_num_select.value = "2"
         else:
@@ -53,6 +61,7 @@ class MainViewController(IMainViewController):
         else:
             self.app.result_file_label.value = "リザルトファイル：未選択"
 
+        self.app.on_result_source_change()
         self.validate_inputs()
         self.app.page.update()
 
@@ -107,21 +116,25 @@ class MainViewController(IMainViewController):
 
     async def start_battle(self, e):
         # UI更新：多重起動防止とProgressRing表示
+        self.app.setting_group.visible = False
         self.app.start_button.disabled = True
         self.app.start_button.content = ft.ProgressRing(width=30, height=30, stroke_width=4)
         self._input_disable()
+        self._load_result_table()
         self.app.page.update()
         
         try:
             # 設定ファイル保存
             mode_value = int(self.app.mode_radio.value)
-            user_num = 2 if mode_value in [2, 4] else int(self.app.user_num_select.value)
-
+            user_num = 2 if mode_value in [BATTLE_MODE_BPL, BATTLE_MODE_BPL_BP] else int(self.app.user_num_select.value)
+            result_source = int(self.app.result_source.value)
+            
             settings = Settings(
                 djname=self.app.djname_input.value,
                 room_pass=self.app.room_pass.value,
                 mode=mode_value,
                 user_num=user_num,
+                result_source=result_source,
                 result_file=self.app.result_file_path
             )
             # websocketに接続
@@ -140,6 +153,7 @@ class MainViewController(IMainViewController):
         except ConnectionFailedError as e:
             await self.app.show_error_dialog(f"{e}")
             self._input_enable()
+            self.app.setting_group.visible = True
             self.app.start_button.disabled = False
             self.app.start_button.content = ft.Text("対戦開始", size=20)
         except Exception as ex:
@@ -148,6 +162,7 @@ class MainViewController(IMainViewController):
 
             # エラー発生時はボタンを元に戻す
             self._input_enable()
+            self.app.setting_group.visible = True
             self.app.start_button.disabled = False
             self.app.start_button.content = ft.Text("対戦開始", size=20)
 
@@ -172,12 +187,13 @@ class MainViewController(IMainViewController):
             safe_print("observer stop")
 
         self._input_enable()
+        self.app.setting_group.visible = True
         self.app.start_button.visible = True
         self.app.start_button.disabled = False
         self.app.start_button.content = ft.Text("対戦開始", size=20)
 
         self.app.stop_button.visible = False
-
+        self._load_result_table()
         self.app.page.update()
 
     async def skip_song(self, song_id): 
@@ -190,9 +206,7 @@ class MainViewController(IMainViewController):
         new_uuid = str(uuid.uuid4()).replace("-", "")
         self.app.room_pass.value = new_uuid
         self.validate_inputs()
-        self.app.page.update()
-        
-    
+        self.app.page.update()    
     
     ##############################
     ## private
@@ -242,10 +256,5 @@ class MainViewController(IMainViewController):
         await self.main_app_serivce.result_send(self.app.user_token, self.app.settings, content)
         
     def _load_result_table(self):
-        if not os.path.exists(RESULT_FILE):
-            return
-
-        with open(RESULT_FILE, "r", encoding="utf-8") as f:
-            result = json.load(f)
-            
+        result = self.main_app_serivce.load_output_file() 
         self.app.load_result_table(result)

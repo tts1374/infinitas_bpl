@@ -2,12 +2,10 @@ from sqlalchemy import Column, Integer, Text, ForeignKey
 from db.database import Base
 from utils.common import now_str
 
-class Song(Base):
-    __tablename__ = "song"
+class MusicMaster(Base):
+    __tablename__ = "music_master"
 
-    song_id = Column(Integer, primary_key=True, autoincrement=True)
-    room_id = Column(Integer, ForeignKey("room.room_id"), nullable=False)
-    stage_no = Column(Integer, nullable=False)
+    music_master_id = Column(Integer, primary_key=True, autoincrement=True)
     level = Column(Integer, nullable=False)
     song_name = Column(Text, nullable=False)
     play_style = Column(Text, nullable=False)

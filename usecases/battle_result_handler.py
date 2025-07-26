@@ -8,6 +8,7 @@ from repositories.db.i_song_result_repository import ISongResultRepository
 from repositories.db.i_user_repository import IUserRepository
 from repositories.files.i_output_file_repository import IOutputFileRepository
 from usecases.i_battle_result_handler import IBattleResultHandler
+from utils.common import safe_print
 
 
 class BattleResultHandler(IBattleResultHandler):
@@ -43,7 +44,7 @@ class BattleResultHandler(IBattleResultHandler):
                 user_name = data["name"]
                 user = self.user_repository.get_by_room_and_token(self.room_id, user_token)
                 if not user:
-                    print("[Create User]")
+                    safe_print("[Create User]")
                     # roomの定員をroom_repositoryから取得
                     room = self.room_repository.get_by_id(self.room_id)
                     if room is None:
@@ -57,28 +58,27 @@ class BattleResultHandler(IBattleResultHandler):
 
                 # 曲情報パース
                 result = data["result"]
-                level = int(result["lv"])
-                song_name = result["title"]
-                difficulty_raw = result["difficulty"]
-                opt = result["opt"]
-                notes = int(result["notes"])
-
-                if difficulty_raw.startswith("SP"):
-                    play_style = "SP"
-                elif difficulty_raw.startswith("DP"):
-                    play_style = "DB" if opt.startswith("BATTLE") else "DP"
-                else:
-                    play_style = "UNKNOWN"
-
-                diff_map = {"B": "BEGINNER", "N": "NORMAL", "H": "HYPER", "A": "ANOTHER", "L": "LEGGENDARIA"}
-                difficulty = diff_map.get(difficulty_raw[-1], "UNKNOWN")
 
                 # 曲の登録
-                song = self.song_repository.get_or_create(self.room_id, level, song_name, play_style, difficulty, notes, user.user_id)
+                song = self.song_repository.get_or_create(
+                    self.room_id, 
+                    result["level"], 
+                    result["song_name"], 
+                    result["play_style"], 
+                    result["difficulty"], 
+                    user.user_id
+                )
 
                 # 結果登録
                 result_token = data["resultToken"]
-                self.song_result_repository.insert(self.room_id, song.song_id, user.user_id, result_token, result)
+                self.song_result_repository.insert(
+                    self.room_id, 
+                    song.song_id, 
+                    user.user_id, 
+                    result_token, 
+                    result["score"],
+                    result["miss_count"]
+                )
 
                 self.session.commit()
                 
@@ -89,10 +89,10 @@ class BattleResultHandler(IBattleResultHandler):
                 self.app_on_message_callback()
 
                 # ログ出力
-                print("[Result JSON]", output)
+                safe_print("[Result JSON]", output)
             
             elif data["operation"] == OPERATION_DELETE:
-                print("削除処理開始")
+                safe_print("削除処理開始")
                 user_token = data["userId"]
                 
                 # 部屋の存在確認
@@ -109,7 +109,7 @@ class BattleResultHandler(IBattleResultHandler):
                 if not song:
                     raise Exception("削除対象の曲が見つかりません")
 
-                print(f"削除対象の曲： {song.song_id}")
+                safe_print(f"削除対象の曲： {song.song_id}")
                 # song_idに紐づくSong_resultの削除
                 self.song_result_repository.delete(self.room_id, song.song_id)
                 # song_idに紐づくSongの削除
@@ -123,7 +123,7 @@ class BattleResultHandler(IBattleResultHandler):
                 self.app_on_message_callback()
                 
         except Exception as e:
-            print("[Error] on_message_callback:", e)
+            safe_print("[Error] on_message_callback:", e)
             self.session.rollback()
             raise Exception(str(e))
         finally:
@@ -152,7 +152,6 @@ class BattleResultHandler(IBattleResultHandler):
                 "song_name": song["song_name"],
                 "play_style": song["play_style"],
                 "difficulty": song["difficulty"],
-                "notes": song["notes"],
                 "results": []
             }
 
@@ -199,8 +198,6 @@ class BattleResultHandler(IBattleResultHandler):
                     "user_id": res["user_id"],
                     "score": res["score"],
                     "miss_count": res["miss_count"],
-                    "lamp": res["lamp"],
-                    "rank": res["rank"],
                     "pt": pt_dict[res["user_id"]]
                 })
 

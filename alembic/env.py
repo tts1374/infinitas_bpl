@@ -23,6 +23,7 @@ import models.room
 import models.user
 import models.song
 import models.song_result
+import models.music_master
 target_metadata = Base.metadata
 
 # other values from the config, defined by the needs of env.py,

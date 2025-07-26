@@ -210,3 +210,4 @@ result.db
 settings.json
 result_output.json
 *.spec
+file_meta.json

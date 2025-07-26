@@ -12,6 +12,4 @@ class SongResult(Base):
     result_token = Column(Text, nullable=False)
     score = Column(Integer, nullable=False)
     miss_count = Column(Integer, nullable=False)
-    lamp = Column(Text, nullable=False)
-    rank = Column(Text, nullable=False)
     created_at = Column(Text, nullable=False, default=now_str)

@@ -81,6 +81,7 @@ li {
 
 .user_result.arena {
   min-width: 17.5%;
+  flex:1;
 }
 .user_result.bpl {
   min-width: 30%;

@@ -49,33 +49,17 @@ class SkipSongUsecase(ISkipSongUsecase):
                 "name": self.settings.djname,
                 "resultToken": str(uuid.uuid4()).replace("-", "") + str(time.time()),
                 "result": {
-                    "lv": str(song.level),
-                    "title": song.song_name,
-                    "difficulty": converted_difficulty,
-                    "dp_unofficial_lv": None,
-                    "sp_12hard": None,
-                    "sp_12clear": None,
-                    "lamp": "FAILED",
+                    "level": str(song.level),
+                    "song_name": song.song_name,
+                    "play_style": song.play_style,
+                    "difficulty": song.difficulty,
                     "score": "0",
-                    "opt": converted_opt,
-                    "bp": "9999",
-                    "bpi": "??",
-                    "notes": str(song.notes),
-                    "score_cur": "0",
-                    "score_pre": "0",
-                    "lamp_pre": "FAILED",
-                    "bp_pre": "0",
-                    "rank_pre": "F",
-                    "rank": "F",
-                    "rankdiff": "F+0",
-                    "rankdiff0": "F",
-                    "rankdiff1": "+0",
-                    "scorerate": "0"
+                    "miss_count": "9999",
                 }
             }
             safe_print("[送信データ]")
             safe_print(json.dumps(result_data, ensure_ascii=False, indent=2))
             await self.websocket_clinet.send(result_data)
         except Exception as e:
-            print("[Error] skip:", e)
+            safe_print("[Error] skip:", e)
             raise Exception(str(e))

@@ -5,7 +5,7 @@ from models.user import User
 
 class ISongResultRepository(ABC):
     @abstractmethod
-    def insert(self, room_id, song_id, user_id, result_token, result):
+    def insert(self, room_id, song_id, user_id, result_token, score, miss_count):
         """
         リザルト登録
         """
