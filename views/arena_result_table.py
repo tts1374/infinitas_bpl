@@ -51,7 +51,7 @@ class ArenaResultTable:
 
     def _user_score(self, result: dict | None) -> ft.Column:
         if result:
-            label = f"SCORE: {result["score"]}" if self.mode == BATTLE_MODE_ARENA else f"MISS COUNT: {result["miss_count"]}"
+            label = f"SCORE: {result['score']}" if self.mode == BATTLE_MODE_ARENA else f"MISS COUNT: {result['miss_count']}"
             value = result.get("pt", 0)
         else:
             label = "SCORE: -" if self.mode == BATTLE_MODE_ARENA else "MISS COUNT: -"
