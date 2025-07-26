@@ -37,6 +37,7 @@ def build():
         "--icon", "icon.ico",      # アイコン
         "main.py",                        # メインスクリプト
         "--hidden-import", "logging.config",
+        "--add-data", "views;views",
         "--add-data", "alembic.ini;.",
         "--add-data", "alembic;alembic",
     ]
