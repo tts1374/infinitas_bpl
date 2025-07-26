@@ -1,12 +1,8 @@
 
 
-from itertools import groupby
-import os
 from typing import Tuple
 import uuid
-from db.database import SessionLocal
 from models.settings import Settings
-from models.user import User
 from repositories.api.i_websocket_client import IWebsocketClient
 from repositories.db.i_room_repository import IRoomRepository
 from repositories.db.i_user_repository import IUserRepository

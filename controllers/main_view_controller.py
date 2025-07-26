@@ -1,7 +1,4 @@
-import asyncio
 import os
-import json
-import pickle
 import re
 import uuid
 
@@ -14,14 +11,7 @@ from repositories.files.file_watcher import FileWatcher
 from utils.common import safe_print
 from watchdog.observers import Observer
 import flet as ft
-
-import json
-from views.arena_result_table import ArenaResultTable
-from views.bpl_result_table import BplResultTable
 from views.main_view import MainView
-
-DB_FILE = "result.db"
-RESULT_FILE = "result_output.json"
 
 class MainViewController(IMainViewController):
     def __init__(self, app: MainView, main_app_serivce: IMainAppSerivce):

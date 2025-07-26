@@ -1,7 +1,6 @@
 from typing import Optional
 import flet as ft
 import asyncio
-import flet_webview as ftwv
 from config.config import BATTLE_MODE_ARENA, BATTLE_MODE_ARENA_BP, BATTLE_MODE_BPL, BATTLE_MODE_BPL_BP, RESULT_SOURCE_DAKEN_COUNTER, RESULT_SOURCE_INF_NOTEBOOK
 from factories.i_app_factory import IAppFactory
 from models.settings import Settings
