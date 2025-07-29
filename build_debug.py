@@ -2,7 +2,6 @@ import os
 import re
 import subprocess
 import shutil
-import sys
 
 from utils.common import safe_print
 
@@ -52,6 +51,9 @@ def build():
     shutil.copy("bpl_battle.html", os.path.join(output_dir, "bpl_battle.html"))
     shutil.copy("bpl_battle_style.css", os.path.join(output_dir, "bpl_battle_style.css"))
     shutil.copy("bpl_battle_script.js", os.path.join(output_dir, "bpl_battle_script.js"))
+    images_dir = os.path.join(output_dir, "images")
+    os.makedirs(images_dir, exist_ok=True)
+    shutil.copy("images/icon.png", os.path.join(images_dir, "icon.png"))
     shutil.copy("icon.ico", os.path.join(output_dir, "icon.ico"))
     shutil.copy("README.md", os.path.join(output_dir, "README.md"))
     safe_print("INFINITAS_Online_Battle.exe のビルド完了。")
