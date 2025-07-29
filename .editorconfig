@@ -1,0 +1,21 @@
+# Rquired
+root = true
+
+# プロジェクト全般の設定
+[*]
+end_of_line = lf            # 改行はLF
+insert_final_newline = true # 最終行に空行を追加
+charset = utf-8             # 文字コードはUTF-8
+indent_style = space        # インデントは半角スペース
+
+# 拡張子が.pyのとき
+[*.py]
+indent_size = 4             # インデントはindent_style4つ分
+
+# Makefileのみ
+[Makefile]
+indent_style = tab          # インデントはハードタブ
+
+# 拡張子が.jsの時
+[*.js]
+indent_size = 2             # インデントはindent_style2つ分
