@@ -1,6 +1,6 @@
 from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy import create_engine
-import models
+import models # type: ignore
 
 DATABASE_URL = "sqlite:///result.db"
 

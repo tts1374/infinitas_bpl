@@ -1,7 +1,5 @@
 
 import json
-import time
-import uuid
 from config.config import OPERATION_DELETE
 from models.settings import Settings
 from repositories.api.i_websocket_client import IWebsocketClient

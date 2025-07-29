@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, Text, ForeignKey
+from sqlalchemy import Column, Integer, Text
 from db.database import Base
 from utils.common import now_str
 

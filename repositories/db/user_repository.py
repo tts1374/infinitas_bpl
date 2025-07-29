@@ -1,4 +1,3 @@
-import uuid
 from models.user import User
 from repositories.db.i_user_repository import IUserRepository
 from utils.common import now_str
