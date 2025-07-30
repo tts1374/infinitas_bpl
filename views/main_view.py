@@ -328,15 +328,27 @@ class MainView:
         safe_print("[on_close] start")
         try:
             await self.controller.stop_battle(None)
-            
-            for task in asyncio.all_tasks():
-                safe_print(f"残タスク: {task}")
         except Exception as ex:
             safe_print(f"[on_close] エラー: {ex}")
         finally:
             safe_print("[on_close] close")
             self.page.window.prevent_close = False
             self.page.window.close()
+            # 念のため少し待つ（0.1秒程度）
+            await asyncio.sleep(0.1)
+
+            # すべてのタスクをキャンセルして待つ（自分以外）
+            tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+            for t in tasks:
+                t.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            
+            for task in asyncio.all_tasks():
+                safe_print(f"残タスク: {task}")
+            
+            # 最後の保険
+            import sys
+            sys.exit(0)
             
     
     def load_result_table(self, result):
