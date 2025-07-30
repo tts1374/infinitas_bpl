@@ -3,7 +3,7 @@ from controllers.main_view_controller import MainViewController
 from db.database import SessionLocal
 from factories.i_app_factory import IAppFactory
 from repositories.api.github_client import GithubClient
-from repositories.api.musictable_client import MusictableClient
+from repositories.files.musictable_file_repository import MusictableFileRepository
 from repositories.api.websocket_client import WebsocketClient
 from repositories.db.music_master_repository import MusicMasterRepository
 from repositories.db.room_repository import RoomRepository
@@ -44,8 +44,8 @@ class AppFactory(IAppFactory):
             cls._websocket_client = WebsocketClient()
         return cls._websocket_client
     @classmethod
-    def create_musictable_client(cls):
-        return MusictableClient()
+    def create_musictable_file_repository(cls):
+        return MusictableFileRepository()
     @classmethod
     def create_settings_file_repository(cls):
         return SettingsFileRepository()
@@ -146,7 +146,7 @@ class AppFactory(IAppFactory):
     def create_master_update_usecase(cls):
         session = cls.create_session()
         music_master_repository = cls.create_music_master_repository(session)
-        musictable_client = cls.create_musictable_client()
+        musictable_client = cls.create_musictable_file_repository()
         
         return MasterUpdateUsecase(musictable_client, music_master_repository)
     

@@ -66,5 +66,5 @@ class MainAppService(IMainAppSerivce):
     def load_output_file(self):
         return self.output_file_repository.load()
     
-    def update_master_data(self):
-        return self.master_update_usecase.execute()
+    def update_master_data(self, settings: Settings) -> str:
+        return self.master_update_usecase.execute(settings)

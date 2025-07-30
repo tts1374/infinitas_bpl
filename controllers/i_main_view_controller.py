@@ -30,9 +30,9 @@ class IMainViewController(ABC):
         pass
     
     @abstractmethod
-    def select_result_file(self, e):
+    def select_result_dir(self, e):
         """
-            ファイル選択でファイルが選択された際のUI処理
+            フォルダ選択でディレクトリが選択された際のUI処理
         """
         pass
     

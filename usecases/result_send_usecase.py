@@ -80,7 +80,7 @@ class ResultSendUsecase(IResultSendUsecase):
 				return None
 
 			# 3. exportを取りに行く
-			export_json = self.inf_notebook_file_repository.load_export(settings.result_file)
+			export_json = self.inf_notebook_file_repository.load_export(settings)
 			export_list = export_json.get("list", [])
 			export_result = next((item for item in export_list if item.get("timestamp") == timestamp), None)
 			if not export_result:

@@ -1,5 +1,6 @@
 from watchdog.events import FileSystemEventHandler
 
+from models.settings import Settings
 from utils.common import safe_print
 
 class FileWatcher(FileSystemEventHandler):
@@ -8,12 +9,13 @@ class FileWatcher(FileSystemEventHandler):
 
     def on_modified(self, event):
         app = self.main_view_controller.app
+        settings: Settings = app.settings
 
-        if event.src_path != app.result_file_path:
+        if event.src_path != settings.get_result_file():
             return
 
         try:
-            with open(app.result_file_path, "r", encoding="utf-8") as f:
+            with open(settings.get_result_file(), "r", encoding="utf-8") as f:
                 content = f.read()
 
             if content == app.last_result_content:

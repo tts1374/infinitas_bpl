@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 from application.i_main_app_service import IMainAppSerivce
 from controllers.i_main_view_controller import IMainViewController
 from repositories.api.i_github_client import IGithubClient
-from repositories.api.i_musictable_client import IMusictableClient
+from repositories.files.i_musictable_file_repository import IMusictableFileRepository
 from repositories.api.i_websocket_client import IWebsocketClient
 from repositories.db.i_music_master_repository import IMusicMasterRepository
 from repositories.db.i_room_repository import IRoomRepository
@@ -39,7 +39,7 @@ class IAppFactory(ABC):
     def create_websocket_client(cls) -> IWebsocketClient:
         pass
     @abstractmethod
-    def create_musictable_client(cls) -> IMusictableClient:
+    def create_musictable_file_repository(cls) -> IMusictableFileRepository:
         pass
     @abstractmethod
     def create_settings_file_repository(cls) -> ISettingsFileRepository:

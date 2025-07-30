@@ -57,7 +57,7 @@ class IMainAppSerivce(ABC):
         """
         
     @abstractmethod
-    def update_master_data(self):
+    def update_master_data(self, settings: Settings) -> str:
         """
         マスタデータの更新
         """

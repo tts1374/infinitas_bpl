@@ -1,17 +1,18 @@
 
 from models.music_master import MusicMaster
-from repositories.api.i_musictable_client import IMusictableClient
+from models.settings import Settings
+from repositories.files.i_musictable_file_repository import IMusictableFileRepository
 from repositories.db.i_music_master_repository import IMusicMasterRepository
 from usecases.i_master_update_usecase import IMasterUpdateUsecase
 from utils.common import safe_print
 
 class MasterUpdateUsecase(IMasterUpdateUsecase):
-    def __init__(self, musictable_client: IMusictableClient, music_master_repository: IMusicMasterRepository):
-        self.musictable_client = musictable_client
+    def __init__(self, musictable_file_repository: IMusictableFileRepository, music_master_repository: IMusicMasterRepository):
+        self.musictable_client = musictable_file_repository
         self.music_master_repository = music_master_repository
 
-    def execute(self):
-        pickle_result = self.musictable_client.check_and_load_pickle()
+    def execute(self, settings: Settings) -> str:
+        pickle_result = self.musictable_client.load(settings)
         if not pickle_result.updated:
             return
         
@@ -27,3 +28,5 @@ class MasterUpdateUsecase(IMasterUpdateUsecase):
                     music_master_list.append(music_master)
 
         self.music_master_repository.insert_many(music_master_list)
+        
+        return pickle_result.timestamp
