@@ -48,7 +48,7 @@ class BplResultTable:
                 padding=5
             )
     # ユーザスコア出力
-    def _user_score(self, result: dict | None, mode: int) -> ft.Column:
+    def _user_score(self, result: dict | None, mode: int, is_left: bool) -> ft.Row:
         label = "SCORE" if mode == BATTLE_MODE_BPL else "MISS COUNT"
         if result:
             value = result["score"] if mode == BATTLE_MODE_BPL else result["miss_count"]
@@ -57,15 +57,57 @@ class BplResultTable:
             value = "-"
             highlight = False
 
-        return ft.Column([
-            ft.Text(label, size=10, color=MAIN_COLOR),
-            ft.Text(
-                str(value),
-                size=28,
-                color="#fab27b" if highlight else MAIN_COLOR,
-                weight=ft.FontWeight.BOLD,
+        icon_size = 40
+        icon_path = "icon.ico"
+
+        margin_icon = ft.margin.only(right=50) if is_left else ft.margin.only(left=50)
+        margin_score = ft.margin.only(right=100) if is_left else ft.margin.only(left=100)
+
+        icon_container = ft.Container(
+            content=ft.Image(
+                src=icon_path,
+                width=icon_size,
+                height=icon_size,
+                visible=highlight
             ),
-        ], alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER, expand=True)
+            width=icon_size,
+            height=icon_size,
+            margin=margin_icon,
+            alignment=ft.alignment.center
+        )
+
+        score_column = ft.Container(
+            content=ft.Column([
+                    ft.Text(label, size=10, color=MAIN_COLOR),
+                    ft.Text(
+                        str(value),
+                        size=28,
+                        color="#fab27b" if highlight else MAIN_COLOR,
+                        weight=ft.FontWeight.BOLD,
+                    ),
+                ],
+                alignment=ft.MainAxisAlignment.CENTER,
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER
+            ),
+            margin=margin_score
+        )
+        
+        spacer = ft.Container(expand=True)
+
+        # アイコンの位置に応じて並べる
+        if is_left:
+            return ft.Row(
+                controls=[spacer, icon_container, score_column],
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                expand=True
+            )
+        else:
+            return ft.Row(
+                controls=[score_column, icon_container, spacer],
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                expand=True
+            )
+
 
     # 曲情報
     def _song_info(self, song: dict) -> ft.Column:
@@ -155,13 +197,13 @@ class BplResultTable:
                         # 背景＋スコア
                         ft.Container(
                             content=ft.Row([
-                                self._user_score(result_user0, mode),
+                                self._user_score(result_user0, mode, is_left=True),
                                 ft.Container(
                                     content=self._song_info(song),
                                     width=375,
                                     alignment=ft.alignment.center
                                 ),
-                                self._user_score(result_user1, mode),
+                                self._user_score(result_user1, mode, is_left=False),
                             ]),
                             bgcolor="#4B4B4B",
                             padding=10,
