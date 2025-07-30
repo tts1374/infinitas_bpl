@@ -14,6 +14,7 @@ class WebsocketClient(IWebsocketClient):
         self.room_pass = None
         self.mode = None
         self.websocket = None
+        self.ping_task = None
         
     async def connect(self, room_pass: str, mode: int, on_message_callback):
         self.room_pass = room_pass
@@ -25,6 +26,7 @@ class WebsocketClient(IWebsocketClient):
             self.websocket = await websockets.connect(uri)
             safe_print("[WebSocket 接続成功]")
             self.task = asyncio.create_task(self.receive_loop())
+            self.ping_task = asyncio.create_task(self.keep_alive())
         except Exception as e:
             safe_print("[WebSocket 接続失敗]")
             with open("error.log", "w", encoding="utf-8") as f:
@@ -56,6 +58,14 @@ class WebsocketClient(IWebsocketClient):
             except asyncio.CancelledError:
                 pass
             self.task = None
+        
+        if self.ping_task:
+            self.ping_task.cancel()
+            try:
+                await self.ping_task
+            except asyncio.CancelledError:
+                pass
+            self.ping_task = None
         safe_print("[WebSocket 切断完了]")
 
     async def _send(self, data):
@@ -105,4 +115,14 @@ class WebsocketClient(IWebsocketClient):
             except Exception as e:
                 safe_print("[WebSocket 受信エラー]:", e)
                 break
-        
+            
+    async def keep_alive(self, interval=300): 
+        while True:
+            try:
+                await asyncio.sleep(interval)
+                if self.websocket:
+                    await self.websocket.ping()
+                    safe_print("[Ping送信]")
+            except Exception as e:
+                safe_print(f"[Ping送信エラー] {e}")
+                break
