@@ -347,8 +347,8 @@ class MainView:
                 safe_print(f"残タスク: {task}")
             
             # 最後の保険
-            import sys
-            sys.exit(0)
+            import os
+            os._exit(0)
             
     
     def load_result_table(self, result):
