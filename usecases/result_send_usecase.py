@@ -123,4 +123,4 @@ class ResultSendUsecase(IResultSendUsecase):
 			return
 		safe_print("[送信データ]")
 		safe_print(json.dumps(result_data, ensure_ascii=False, indent=2))
-		return self.websocket_client.send(result_data)
+		return self.websocket_client.send_with_retry(result_data)

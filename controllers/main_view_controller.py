@@ -101,7 +101,6 @@ class MainViewController(IMainViewController):
             result_dir=self.app.result_dir_path,
             resource_timestamp=self.app.resource_timestamp
         )
-        print(f"is_valid: {settings.is_valid()}, result_dir: {self.app.result_dir_path}")
 
         self.app.start_button.disabled = not settings.is_valid()
         self.app.page.update()
