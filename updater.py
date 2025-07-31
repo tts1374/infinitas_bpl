@@ -52,6 +52,7 @@ def main():
 
             src = os.path.join(root, file)
             dst = os.path.join(os.getcwd(), os.path.relpath(src, "update_tmp"))
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
             shutil.copy2(src, dst)
 
     shutil.rmtree("update_tmp")
