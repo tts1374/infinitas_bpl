@@ -4,5 +4,5 @@ websockets==15.0.1
 pyinstaller==6.14.2
 watchdog==6.0.0
 requests>=2.31.0
-sqlalchemy==2.0.41
+sqlalchemy==2.0.42
 alembic==1.16.4
