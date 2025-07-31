@@ -37,7 +37,7 @@ jobs:
             }
 
             const version = versionMatch[1];
-            const tagName = `ver${version}`;
+            const tagName = `v${version}`;
             console.log(`version: ${version}`);
 
             // リリース情報を取得
