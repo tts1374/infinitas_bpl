@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
 
-from models.settings import Settings
 
 class IOutputFileRepository(ABC):
     @abstractmethod

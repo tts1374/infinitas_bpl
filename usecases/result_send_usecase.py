@@ -80,7 +80,7 @@ class ResultSendUsecase(IResultSendUsecase):
 				return None
 
 			# 3. exportを取りに行く
-			export_json = self.inf_notebook_file_repository.load_export(settings.result_file)
+			export_json = self.inf_notebook_file_repository.load_export(settings)
 			export_list = export_json.get("list", [])
 			export_result = next((item for item in export_list if item.get("timestamp") == timestamp), None)
 			if not export_result:
@@ -123,4 +123,4 @@ class ResultSendUsecase(IResultSendUsecase):
 			return
 		safe_print("[送信データ]")
 		safe_print(json.dumps(result_data, ensure_ascii=False, indent=2))
-		return self.websocket_client.send(result_data)
+		return self.websocket_client.send_with_retry(result_data)

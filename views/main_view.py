@@ -1,10 +1,13 @@
+import threading
 from typing import Optional
 import flet as ft
 import asyncio
+
+
 from config.config import BATTLE_MODE_ARENA, BATTLE_MODE_ARENA_BP, BATTLE_MODE_BPL, BATTLE_MODE_BPL_BP, RESULT_SOURCE_DAKEN_COUNTER, RESULT_SOURCE_INF_NOTEBOOK
 from factories.i_app_factory import IAppFactory
 from models.settings import Settings
-from utils.common import safe_int, safe_print
+from utils.common import safe_print
 from views.arena_result_table import ArenaResultTable
 from views.bpl_result_table import BplResultTable
 
@@ -14,7 +17,8 @@ class MainView:
         
         safe_print("MainView 初期化中")
         self.page = page
-        self.result_file_path = None
+        self.result_dir_path = None
+        self.resource_timestamp = None
         self.last_result_content = None
         self.settings : Optional[Settings] = None
         self.room_id: Optional[int] = None
@@ -79,23 +83,18 @@ class MainView:
         )
 
         self.result_source = ft.RadioGroup(
-            on_change=self._on_result_source_change_and_file_clear,
             content=ft.Row([
                 ft.Radio(value=RESULT_SOURCE_DAKEN_COUNTER, label="INFINITAS打鍵カウンタ"),
                 ft.Radio(value=RESULT_SOURCE_INF_NOTEBOOK, label="リザルト手帳"),
             ])
         )
         # リザルトファイル選択
-        self.result_file_label = ft.Text("リザルトファイル：未選択", size=12)
-        self.result_file_button = ft.FilePicker(on_result=self.pick_result_file)
-        self.page.overlay.append(self.result_file_button)
-        self.result_file_select_btn = ft.ElevatedButton(
-            "リザルトファイル選択 (today_update.xml)",
-            on_click=lambda _: self.result_file_button.pick_files(
-                file_type=ft.FilePickerFileType.CUSTOM,
-                allowed_extensions=["xml"],
-                allow_multiple=False
-            )
+        self.result_dir_label = ft.Text("リザルトフォルダ：未選択", size=12)
+        self.result_dir_picker = ft.FilePicker(on_result=self.pick_result_dir)
+        self.page.overlay.append(self.result_dir_picker)
+        self.result_dir_select_btn = ft.ElevatedButton(
+            "リザルトフォルダ選択",
+            on_click=lambda _: self.result_dir_picker.get_directory_path()
         )
 
         # 対戦開始/停止ボタン
@@ -115,9 +114,23 @@ class MainView:
             bgcolor=ft.Colors.RED, 
             visible=False
         )
+        
+        self.save_path = {"path": None}
+        screenshot_file_picker = ft.FilePicker(on_result=self.on_screenshot_save_result)
+        page.overlay.append(screenshot_file_picker)
+
+        # 保存ダイアログを開くボタン
+        self.save_screenshot_button = ft.ElevatedButton(
+            "スクリーンショットを保存",
+            on_click=lambda _: screenshot_file_picker.save_file(
+                dialog_title="保存先を指定",
+                file_name="result.png",
+                allowed_extensions=["png"]
+            )
+        )
  
-        button_row = ft.Row(
-            [self.start_button, self.stop_button],
+        self.button_row = ft.Row(
+            [self.start_button, self.stop_button, self.save_screenshot_button],
             alignment=ft.MainAxisAlignment.CENTER
         )
 
@@ -175,8 +188,8 @@ class MainView:
                                     ft.Text("📁 リザルト設定", weight=ft.FontWeight.BOLD, size=14),
                                     self.result_source,
                                     ft.Row([
-                                        self.result_file_select_btn,
-                                        self.result_file_label,
+                                        self.result_dir_select_btn,
+                                        self.result_dir_label,
                                     ], spacing=10),
                                     
                                 ]),
@@ -205,7 +218,7 @@ class MainView:
             ft.Column(
                 controls=[
                     self.setting_group,
-                    button_row,
+                    self.button_row,
                     self.result_table_container
                 ],
                 expand=True,
@@ -218,6 +231,7 @@ class MainView:
         self.room_pass.on_change = self.validate_all_inputs
         self.mode_radio.on_change = self.on_mode_change
         self.user_num_select.on_change = self.validate_all_inputs
+        self.result_source.on_change = self.validate_all_inputs
         
         # 初期処理の実行
         self.controller.on_create()
@@ -308,8 +322,8 @@ class MainView:
     def on_mode_change(self, e):
         self.controller.change_mode()
 
-    def pick_result_file(self, e: ft.FilePickerResultEvent):
-        self.controller.select_result_file(e)
+    def pick_result_dir(self, e: ft.FilePickerResultEvent):
+        self.controller.select_result_dir(e)
 
     def validate_all_inputs(self, e=None):
         self.controller.validate_inputs()
@@ -319,6 +333,16 @@ class MainView:
 
     async def stop_battle(self, e):
         await self.controller.stop_battle(e)
+    
+    def on_screenshot_save_result(self, e: ft.FilePickerResultEvent):
+        if e.path is None:
+            self.page.snack_bar = ft.SnackBar(ft.Text("保存がキャンセルされました"))
+            self.page.snack_bar.open = True
+            self.page.update()
+            return
+
+        self.save_path["path"] = e.path
+        self.controller.take_screenshot_and_save(e.path)
 
     async def async_cleanup(self):
         await self.controller.stop_battle(None)
@@ -331,18 +355,30 @@ class MainView:
         safe_print("[on_close] start")
         try:
             await self.controller.stop_battle(None)
-            
-            for task in asyncio.all_tasks():
-                safe_print(f"残タスク: {task}")
         except Exception as ex:
             safe_print(f"[on_close] エラー: {ex}")
         finally:
             safe_print("[on_close] close")
             self.page.window.prevent_close = False
             self.page.window.close()
+            # 念のため少し待つ（0.1秒程度）
+            await asyncio.sleep(0.1)
+
+            # すべてのタスクをキャンセルして待つ（自分以外）
+            tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+            for t in tasks:
+                t.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            
+            for thread in threading.enumerate():
+                print(f"[残スレッド] name={thread.name}, daemon={thread.daemon}, ident={thread.ident}")
+            
+            # 最後の保険
+            import os
+            os._exit(0)
             
     
-    def load_result_table(self, result):
+    def load_result_table(self, result, is_enable_operation:bool):
         if not result.get("users") or not result.get("songs"):
             self.result_table_container.content = None
             self.page.update()
@@ -351,9 +387,9 @@ class MainView:
         mode = result.get("mode", BATTLE_MODE_ARENA)
         setting_visible = self.setting_group.visible
         if mode == BATTLE_MODE_ARENA or mode == BATTLE_MODE_ARENA_BP:
-            self.result_table_container.content = ArenaResultTable(self.page, result, self._on_skip_song, self._on_delete_song_confirm, setting_visible).build()
+            self.result_table_container.content = ArenaResultTable(self.page, result, self._on_skip_song, self._on_delete_song_confirm, setting_visible, is_enable_operation).build()
         else:
-            self.result_table_container.content = BplResultTable(self.page, result, self._on_skip_song, self._on_delete_song_confirm, setting_visible).build()
+            self.result_table_container.content = BplResultTable(self.page, result, self._on_skip_song, self._on_delete_song_confirm, setting_visible, is_enable_operation).build()
         self.page.update()
     
     async def _on_skip_song(self, song_id):
@@ -370,26 +406,3 @@ class MainView:
             "本当にこの対戦を削除しますか？",
             on_ok_callback=on_ok
         )
-    def _on_result_source_change_and_file_clear(self, e):
-        self.result_file_path = None
-        self.last_result_content = None
-        self.result_file_label.value = "リザルトファイル：未選択"
-        self.on_result_source_change()
-        
-    # リザルト取得手段変更
-    def on_result_source_change(self):
-        result_source = safe_int(self.result_source.value, RESULT_SOURCE_DAKEN_COUNTER)
-        # 選択内容に応じてボタンとFilePicker拡張子を更新
-        self.result_file_select_btn.text = (
-            "リザルトファイル選択 (records/recent.json)"
-            if result_source == RESULT_SOURCE_INF_NOTEBOOK
-            else "リザルトファイル選択 (today_update.xml)"
-        )
-
-        self.result_file_select_btn.on_click = lambda _: self.result_file_button.pick_files(
-            file_type=ft.FilePickerFileType.CUSTOM,
-            allowed_extensions=["json"] if result_source == RESULT_SOURCE_INF_NOTEBOOK else ["xml"],
-            allow_multiple=False
-        )
-
-        self.page.update()

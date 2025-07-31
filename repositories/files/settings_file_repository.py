@@ -21,8 +21,9 @@ class SettingsFileRepository(ISettingsFileRepository):
         return Settings(
             djname=data.get("djname", ""),
             room_pass=data.get("room_pass", ""),
-            mode=str(data.get("mode", BATTLE_MODE_ARENA)),
-            result_source=str(data.get("result_source", RESULT_SOURCE_DAKEN_COUNTER)),
-            user_num=str(data.get("user_num", "2")),
-            result_file=data.get("result_file")
+            mode=data.get("mode", BATTLE_MODE_ARENA),
+            result_source=data.get("result_source", RESULT_SOURCE_DAKEN_COUNTER),
+            user_num=data.get("user_num", "2"),
+            result_dir=data.get("result_dir"),
+            resource_timestamp=data.get("resource_timestamp", ""),
         )

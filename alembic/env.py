@@ -19,11 +19,11 @@ if config.config_file_name is not None:
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
 from db.database import Base
-import models.room
-import models.user
-import models.song
-import models.song_result
-import models.music_master
+import models.room # type: ignore
+import models.user # type: ignore
+import models.song # type: ignore
+import models.song_result # type: ignore
+import models.music_master # type: ignore
 target_metadata = Base.metadata
 
 # other values from the config, defined by the needs of env.py,

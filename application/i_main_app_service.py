@@ -57,7 +57,13 @@ class IMainAppSerivce(ABC):
         """
         
     @abstractmethod
-    def update_master_data(self):
+    def update_master_data(self, settings: Settings) -> str:
         """
         マスタデータの更新
+        """
+    
+    @abstractmethod
+    def take_screenshot(self, path: str, window_title: str):
+        """
+        スクリーンショット撮影
         """

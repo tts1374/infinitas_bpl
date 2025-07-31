@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 from application.i_main_app_service import IMainAppSerivce
 from controllers.i_main_view_controller import IMainViewController
 from repositories.api.i_github_client import IGithubClient
-from repositories.api.i_musictable_client import IMusictableClient
+from repositories.files.i_musictable_file_repository import IMusictableFileRepository
 from repositories.api.i_websocket_client import IWebsocketClient
 from repositories.db.i_music_master_repository import IMusicMasterRepository
 from repositories.db.i_room_repository import IRoomRepository
@@ -13,11 +13,14 @@ from repositories.db.i_user_repository import IUserRepository
 from repositories.files.i_inf_notebook_file_reposirory import IInfNotebookFileRepository
 from repositories.files.i_output_file_repository import IOutputFileRepository
 from repositories.files.i_settings_file_repository import ISettingsFileRepository
+from repositories.system.i_screenshot_repository import IScreenshotRepository
+from repositories.system.i_window_repository import IWindowRepository
 from services.i_update_service import IUpdateService
 from usecases.i_battle_result_handler import IBattleResultHandler
 from usecases.i_delete_song_usecase import IDeleteSongUsecase
 from usecases.i_master_update_usecase import IMasterUpdateUsecase
 from usecases.i_result_send_usecase import IResultSendUsecase
+from usecases.i_screenshot_usecase import IScreenshotUsecase
 from usecases.i_skip_song_usecase import ISkipSongUsecase
 from usecases.i_start_battle_usecase import IStartBattleUsecase
 
@@ -39,7 +42,7 @@ class IAppFactory(ABC):
     def create_websocket_client(cls) -> IWebsocketClient:
         pass
     @abstractmethod
-    def create_musictable_client(cls) -> IMusictableClient:
+    def create_musictable_file_repository(cls) -> IMusictableFileRepository:
         pass
     @abstractmethod
     def create_settings_file_repository(cls) -> ISettingsFileRepository:
@@ -64,6 +67,12 @@ class IAppFactory(ABC):
         pass
     @abstractmethod
     def create_inf_notebook_file_repository(cls) -> IInfNotebookFileRepository:
+        pass
+    @abstractmethod
+    def create_screenshot_repository(cls) -> IScreenshotRepository:
+        pass
+    @abstractmethod
+    def create_window_repository(cls) -> IWindowRepository:
         pass
     
     ################################
@@ -93,6 +102,9 @@ class IAppFactory(ABC):
         pass
     @abstractmethod
     def create_master_update_usecase(cls) -> IMasterUpdateUsecase:
+        pass
+    @abstractmethod
+    def create_screenshot_usecase(cls) -> IScreenshotUsecase:
         pass
         
     ################################

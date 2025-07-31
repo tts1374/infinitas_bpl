@@ -3,7 +3,7 @@ from controllers.main_view_controller import MainViewController
 from db.database import SessionLocal
 from factories.i_app_factory import IAppFactory
 from repositories.api.github_client import GithubClient
-from repositories.api.musictable_client import MusictableClient
+from repositories.files.musictable_file_repository import MusictableFileRepository
 from repositories.api.websocket_client import WebsocketClient
 from repositories.db.music_master_repository import MusicMasterRepository
 from repositories.db.room_repository import RoomRepository
@@ -13,11 +13,14 @@ from repositories.db.user_repository import UserRepository
 from repositories.files.inf_notebook_file_repository import InfNotebookFileRepository
 from repositories.files.output_file_repository import OutputFileRepository
 from repositories.files.settings_file_repository import SettingsFileRepository
+from repositories.system.screenshot_repository import ScreenshotRepository
+from repositories.system.window_repository import WindowRepository
 from usecases.battle_result_handler import BattleResultHandler
 from services.update_service import UpdateService
 from usecases.delete_song_usecase import DeleteSongUsecase
 from usecases.master_update_usecase import MasterUpdateUsecase
 from usecases.result_send_usecase import ResultSendUsecase
+from usecases.screenshot_usecase import ScreenshotUsecase
 from usecases.skip_song_usecase import SkipSongUsecase
 from usecases.start_battle_usecase import StartBattleUsecase
 
@@ -44,8 +47,8 @@ class AppFactory(IAppFactory):
             cls._websocket_client = WebsocketClient()
         return cls._websocket_client
     @classmethod
-    def create_musictable_client(cls):
-        return MusictableClient()
+    def create_musictable_file_repository(cls):
+        return MusictableFileRepository()
     @classmethod
     def create_settings_file_repository(cls):
         return SettingsFileRepository()
@@ -70,6 +73,12 @@ class AppFactory(IAppFactory):
     @classmethod
     def create_inf_notebook_file_repository(cls):
         return InfNotebookFileRepository()
+    @classmethod
+    def create_screenshot_repository(cls):
+        return ScreenshotRepository()
+    @classmethod
+    def create_window_repository(cls):
+        return WindowRepository()
     
     
     ################################
@@ -146,10 +155,17 @@ class AppFactory(IAppFactory):
     def create_master_update_usecase(cls):
         session = cls.create_session()
         music_master_repository = cls.create_music_master_repository(session)
-        musictable_client = cls.create_musictable_client()
+        musictable_client = cls.create_musictable_file_repository()
         
         return MasterUpdateUsecase(musictable_client, music_master_repository)
     
+    @classmethod
+    def create_screenshot_usecase(cls):
+        window_repository = cls.create_window_repository()
+        screenshot_repository = cls.create_screenshot_repository()
+        
+        return ScreenshotUsecase(window_repository, screenshot_repository)
+
     ################################
     ## Application
     ################################
@@ -159,6 +175,7 @@ class AppFactory(IAppFactory):
         result_send_usecase = cls.create_result_send_usecase()
         skip_song_usecase = cls.create_skip_song_usecase()
         delete_song_usecase = cls.create_delete_song_usecase()
+        screenshot_usecase = cls.create_screenshot_usecase()
         update_service = cls.create_update_service()
         settings_file_repository = cls.create_settings_file_repository()
         output_file_repository = cls.create_output_file_repository()
@@ -170,6 +187,7 @@ class AppFactory(IAppFactory):
             skip_song_usecase=skip_song_usecase,
             delete_song_usecase=delete_song_usecase, 
             master_update_usecase=master_update_usecase,
+            screenshot_usecase=screenshot_usecase,
             update_service=update_service,
             settings_file_repository=settings_file_repository,
             output_file_repository=output_file_repository,

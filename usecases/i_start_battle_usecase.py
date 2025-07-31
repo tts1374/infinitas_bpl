@@ -2,7 +2,6 @@ from abc import ABC, abstractmethod
 from typing import Tuple
 
 from models.settings import Settings
-from models.user import User
 
 class IStartBattleUsecase(ABC):
     @abstractmethod

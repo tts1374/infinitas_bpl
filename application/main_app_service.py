@@ -8,6 +8,7 @@ from services.i_update_service import IUpdateService
 from usecases.i_delete_song_usecase import IDeleteSongUsecase
 from usecases.i_master_update_usecase import IMasterUpdateUsecase
 from usecases.i_result_send_usecase import IResultSendUsecase
+from usecases.i_screenshot_usecase import IScreenshotUsecase
 from usecases.i_skip_song_usecase import ISkipSongUsecase
 from usecases.i_start_battle_usecase import IStartBattleUsecase
 from utils.common import safe_print
@@ -20,6 +21,7 @@ class MainAppService(IMainAppSerivce):
         skip_song_usecase: ISkipSongUsecase,
         delete_song_usecase: IDeleteSongUsecase,
         master_update_usecase: IMasterUpdateUsecase,
+        screenshot_usecase: IScreenshotUsecase,
         update_service: IUpdateService,
         settings_file_repository: ISettingsFileRepository,
         output_file_repository: IOutputFileRepository,
@@ -33,6 +35,7 @@ class MainAppService(IMainAppSerivce):
         self.skip_song_usecase = skip_song_usecase
         self.delete_song_usecase = delete_song_usecase
         self.master_update_usecase = master_update_usecase
+        self.screenshot_usecase = screenshot_usecase
         self.update_service = update_service
 
     def load_settings(self):
@@ -66,5 +69,8 @@ class MainAppService(IMainAppSerivce):
     def load_output_file(self):
         return self.output_file_repository.load()
     
-    def update_master_data(self):
-        return self.master_update_usecase.execute()
+    def update_master_data(self, settings: Settings) -> str:
+        return self.master_update_usecase.execute(settings)
+    
+    def take_screenshot(self, path: str, window_title: str):
+        self.screenshot_usecase.execute(path, window_title)

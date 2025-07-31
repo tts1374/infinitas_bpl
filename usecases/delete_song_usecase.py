@@ -1,7 +1,5 @@
 
 import json
-import time
-import uuid
 from config.config import OPERATION_DELETE
 from models.settings import Settings
 from repositories.api.i_websocket_client import IWebsocketClient
@@ -45,7 +43,7 @@ class DeleteSongUsecase(IDeleteSongUsecase):
             }
             safe_print("[送信データ]")
             safe_print(json.dumps(result_data, ensure_ascii=False, indent=2))
-            await self.websocket_clinet.send(result_data)
+            await self.websocket_clinet.send_with_retry(result_data)
         except Exception as e:
             print("[Error] skip:", e)
             raise Exception(str(e))

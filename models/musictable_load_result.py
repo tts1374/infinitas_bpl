@@ -5,3 +5,4 @@ from typing import Any
 class MusictableLoadResult:
     data: Any
     updated: bool
+    timestamp: str

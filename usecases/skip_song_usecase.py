@@ -21,27 +21,6 @@ class SkipSongUsecase(ISkipSongUsecase):
             room = self.room_repository.get_by_id(room_id)
             song = self.song_repository.get_by_id(room.room_id, song_id)
             
-            # 難易度変換マップ
-            diff_map = {
-                "BEGINNER": "B",
-                "NORMAL": "N",
-                "HYPER": "H",
-                "ANOTHER": "A",
-                "LEGGENDARIA": "L"
-            }
-
-            # play_style変換
-            if song.play_style == "DB":
-                converted_playstyle = "DP"
-            else:
-                converted_playstyle = song.play_style
-
-            # difficulty変換
-            converted_difficulty = f"{converted_playstyle}{diff_map.get(song.difficulty, '?')}"
-
-            # opt変換
-            converted_opt = "BATTLE" if song.play_style == "DB" else ""
-
             result_data = {
                 "mode": self.settings.mode,
                 "roomId": self.settings.room_pass,
@@ -59,7 +38,7 @@ class SkipSongUsecase(ISkipSongUsecase):
             }
             safe_print("[送信データ]")
             safe_print(json.dumps(result_data, ensure_ascii=False, indent=2))
-            await self.websocket_clinet.send(result_data)
+            await self.websocket_clinet.send_with_retry(result_data)
         except Exception as e:
             safe_print("[Error] skip:", e)
             raise Exception(str(e))

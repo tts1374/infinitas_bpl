@@ -15,7 +15,7 @@ TITLE_NAME_COLOR = ft.Colors.WHITE
 USER_COLORS = ["#639bff", "#ff4841", "#bdcf16", "#0fdd3c"]
 
 class ArenaResultTable:
-    def __init__(self, page: ft.Page, result_data: dict, on_skip_callback, on_delete_callback, setting_visible:bool):
+    def __init__(self, page: ft.Page, result_data: dict, on_skip_callback, on_delete_callback, setting_visible:bool, is_enable_operation:bool):
         self.page = page
         self.result_data = result_data
         self.on_skip_callback = on_skip_callback
@@ -26,6 +26,7 @@ class ArenaResultTable:
         self.user_names = [u["user_name"] for u in self.users]
         self.mode = result_data.get("mode", BATTLE_MODE_ARENA)
         self.setting_visible = setting_visible
+        self.is_enable_operation = is_enable_operation
 
     def _user_name_box(self, name: str, bgcolor: str) -> ft.Container:
         return ft.Container(
@@ -124,14 +125,15 @@ class ArenaResultTable:
 
             def create_hover_handlers(overlay_ref):
                 def on_enter(e):
-                    if self.setting_visible:
+                    print(f"on_enter: {self.is_enable_operation}")
+                    if self.setting_visible or not self.is_enable_operation:
                         return
                     overlay_ref.current.opacity = 0.9
                     overlay_ref.current.bgcolor = ft.Colors.WHITE
                     overlay_ref.current.update()
 
                 def on_exit(e):
-                    if self.setting_visible:
+                    if self.setting_visible or not self.is_enable_operation:
                         return
                     overlay_ref.current.opacity = 0.0
                     overlay_ref.current.bgcolor = "transparent"

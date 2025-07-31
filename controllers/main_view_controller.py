@@ -1,5 +1,7 @@
+import asyncio
 import os
 import re
+import time
 import uuid
 
 from application.i_main_app_service import IMainAppSerivce
@@ -8,7 +10,7 @@ from controllers.i_main_view_controller import IMainViewController
 from errors.connection_failed_error import ConnectionFailedError
 from models.settings import Settings
 from repositories.files.file_watcher import FileWatcher
-from utils.common import safe_print
+from utils.common import safe_int, safe_print
 from watchdog.observers import Observer
 import flet as ft
 
@@ -19,9 +21,6 @@ class MainViewController(IMainViewController):
         self.last_result_content = None
 
     def on_create(self):
-        # マスタデータの更新
-        self.main_app_serivce.update_master_data()
-        
         # アップデートのチェック
         self.app.page.run_task(self._check_for_update)
         
@@ -35,6 +34,7 @@ class MainViewController(IMainViewController):
         self.app.room_pass.value = settings.room_pass
         self.app.mode_radio.value = settings.mode
         self.app.result_source.value = settings.result_source
+        self.app.resource_timestamp = settings.resource_timestamp
 
         if int(settings.mode) in [BATTLE_MODE_BPL, BATTLE_MODE_BPL_BP]:
             self.app.user_num_select.disabled = True
@@ -43,14 +43,13 @@ class MainViewController(IMainViewController):
             self.app.user_num_select.disabled = False
             self.app.user_num_select.value = settings.user_num
 
-        if settings.result_file:
-            file_name = os.path.basename(settings.result_file)
-            self.app.result_file_path = settings.result_file
-            self.app.result_file_label.value = f"リザルトファイル：{file_name}"
+        if settings.result_dir:
+            dir_name = settings.result_dir
+            self.app.result_dir_path = settings.result_dir
+            self.app.result_dir_label.value = f"リザルトフォルダ：{dir_name}"
         else:
-            self.app.result_file_label.value = "リザルトファイル：未選択"
+            self.app.result_dir_label.value = "リザルトフォルダ：未選択"
 
-        self.app.on_result_source_change()
         self.validate_inputs()
         self.app.page.update()
 
@@ -80,27 +79,31 @@ class MainViewController(IMainViewController):
             self.app.user_num_select.disabled = True
         self.app.page.update()
 
-    def select_result_file(self, e):
-        if e.files:
-            self.app.result_file_path = e.files[0].path
-            file_name = os.path.basename(self.app.result_file_path)
-            self.app.result_file_label.value = f"リザルトファイル：{file_name}"
+    def select_result_dir(self, e: ft.FilePickerResultEvent):
+        if e.path:
+            self.app.result_dir_label.value = f"リザルトフォルダ：{e.path}"
+            self.app.result_dir_path = e.path
         else:
-            self.app.result_file_path = None
-            self.app.result_file_label.value = "リザルトファイル：未選択"
+            self.app.result_dir_label.value = "リザルトフォルダ：未選択"
+            self.app.result_dir_path = None
         self.validate_inputs()
 
     def validate_inputs(self):
-        djname_ok = re.fullmatch(r'^[a-zA-Z0-9.\-\*&!?#$]{1,6}$', self.app.djname_input.value or "") is not None
-        room_pass_ok = re.fullmatch(r'^[a-zA-Z0-9_-]{4,36}$', self.app.room_pass.value or "") is not None
-        file_ok = self.app.result_file_path is not None
+        mode_value = safe_int(self.app.mode_radio.value)
+        user_num = 2 if mode_value in [BATTLE_MODE_BPL, BATTLE_MODE_BPL_BP] else safe_int(self.app.user_num_select.value)
+        result_source = safe_int(self.app.result_source.value)
+        
+        settings = Settings(
+            djname=self.app.djname_input.value,
+            room_pass=self.app.room_pass.value,
+            mode=mode_value,
+            user_num=user_num,
+            result_source=result_source,
+            result_dir=self.app.result_dir_path,
+            resource_timestamp=self.app.resource_timestamp
+        )
 
-        mode = self.app.mode_radio.value
-        user_num_ok = (mode in ["2", "4"]) or (self.app.user_num_select.value is not None)
-
-        can_start = djname_ok and room_pass_ok and file_ok and user_num_ok
-
-        self.app.start_button.disabled = not can_start
+        self.app.start_button.disabled = not settings.is_valid()
         self.app.page.update()
 
     async def start_battle(self, e):
@@ -111,6 +114,7 @@ class MainViewController(IMainViewController):
         self._input_disable()
         self._load_result_table()
         self.app.page.update()
+        await asyncio.sleep(0.1)
         
         try:
             # 設定ファイル保存
@@ -124,8 +128,15 @@ class MainViewController(IMainViewController):
                 mode=mode_value,
                 user_num=user_num,
                 result_source=result_source,
-                result_file=self.app.result_file_path
+                result_dir=self.app.result_dir_path,
+                resource_timestamp=self.app.resource_timestamp
             )
+            # マスタデータの更新
+            new_timestamp = self.main_app_serivce.update_master_data(settings)
+            if new_timestamp is not None:
+                self.app.resource_timestamp = new_timestamp
+                settings.resource_timestamp = new_timestamp
+            
             # websocketに接続
             self.app.room_id, self.app.user_token = await self.main_app_serivce.start_battle(settings, self._load_result_table)
             self.app.settings = settings
@@ -133,7 +144,7 @@ class MainViewController(IMainViewController):
             # ファイル監視
             self.file_watch_service = FileWatcher(self)
             self.observer = Observer()
-            self.observer.schedule(self.file_watch_service, path=os.path.dirname(self.app.result_file_path), recursive=False)
+            self.observer.schedule(self.file_watch_service, path=os.path.dirname(self.app.settings.get_result_file()), recursive=False)
             self.observer.start()
             
             self.app.start_button.visible = False
@@ -195,7 +206,31 @@ class MainViewController(IMainViewController):
         new_uuid = str(uuid.uuid4()).replace("-", "")
         self.app.room_pass.value = new_uuid
         self.validate_inputs()
-        self.app.page.update()    
+        self.app.page.update()   
+    
+    def take_screenshot_and_save(self, path:str):
+        try:
+            # 画面調整(スクショ範囲外の非表示)
+            settings_visible = self.app.setting_group.visible
+            self.app.button_row.visible = False
+            self.app.setting_group.visible = False
+            if self.app.result_table_container.content is not None:
+                self._load_result_table(is_enable_operation=False)
+            self.app.page.update()
+            time.sleep(0.5)
+            
+            self.main_app_serivce.take_screenshot(path, self.app.page.title)
+
+            # 非表示部分の戻し
+            self.app.setting_group.visible = settings_visible
+            self.app.button_row.visible = True
+            if self.app.result_table_container.content is not None:
+                self._load_result_table()
+
+            self.app.page.open(ft.SnackBar(ft.Text(f"保存しました: {path}")))
+            self.app.page.update()
+        except Exception as ex:
+            safe_print(f"[take_screenshot_and_save] エラー: {ex}")
     
     ##############################
     ## private
@@ -206,7 +241,7 @@ class MainViewController(IMainViewController):
         self.app.mode_radio.disabled = True
         self.app.user_num_select.disabled = True
         self.app.create_room_pass_button.disabled = True
-        self.app.result_file_select_btn.disabled = True
+        self.app.result_dir_select_btn.disabled = True
         
     def _input_enable(self):
         # 入力・選択・押下を可能にする
@@ -221,7 +256,7 @@ class MainViewController(IMainViewController):
             self.app.user_num_select.disabled = False
 
         self.app.create_room_pass_button.disabled = False
-        self.app.result_file_select_btn.disabled = False
+        self.app.result_dir_select_btn.disabled = False
 
     async def _check_for_update(self):
         safe_print("アップデートのチェック")
@@ -244,6 +279,6 @@ class MainViewController(IMainViewController):
     async def _file_watch_callback(self, content):
         await self.main_app_serivce.result_send(self.app.user_token, self.app.settings, content)
         
-    def _load_result_table(self):
+    def _load_result_table(self, is_enable_operation:bool = True):
         result = self.main_app_serivce.load_output_file() 
-        self.app.load_result_table(result)
+        self.app.load_result_table(result, is_enable_operation)

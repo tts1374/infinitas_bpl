@@ -12,7 +12,7 @@ class IWebsocketClient(ABC):
         Websocketから切断する
         """
     
-    async def send(self, data):
+    async def send_with_retry(self, data, retries=3):
         """
         Websocketにメッセージを送信する
         """
