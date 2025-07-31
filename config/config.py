@@ -1,4 +1,4 @@
-APP_VERSION = "v0.2.0"
+APP_VERSION = "v0.2.1"
 IS_RELEASE = False
 DB_FILE = "result.db"
 ZIP_NAME = "INFINITAS_Online_Battle.zip"
