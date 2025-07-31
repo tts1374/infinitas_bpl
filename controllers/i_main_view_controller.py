@@ -74,3 +74,9 @@ class IMainViewController(ABC):
         """
             削除ボタン押下時の処理
         """
+    
+    @abstractmethod
+    def take_screenshot_and_save(self, path:str):
+        """
+            スクリーンショットボタン押下時の処理
+        """

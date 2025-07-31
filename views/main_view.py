@@ -1,6 +1,9 @@
+import threading
 from typing import Optional
 import flet as ft
 import asyncio
+
+
 from config.config import BATTLE_MODE_ARENA, BATTLE_MODE_ARENA_BP, BATTLE_MODE_BPL, BATTLE_MODE_BPL_BP, RESULT_SOURCE_DAKEN_COUNTER, RESULT_SOURCE_INF_NOTEBOOK
 from factories.i_app_factory import IAppFactory
 from models.settings import Settings
@@ -111,9 +114,23 @@ class MainView:
             bgcolor=ft.Colors.RED, 
             visible=False
         )
+        
+        self.save_path = {"path": None}
+        screenshot_file_picker = ft.FilePicker(on_result=self.on_screenshot_save_result)
+        page.overlay.append(screenshot_file_picker)
+
+        # 保存ダイアログを開くボタン
+        self.save_screenshot_button = ft.ElevatedButton(
+            "スクリーンショットを保存",
+            on_click=lambda _: screenshot_file_picker.save_file(
+                dialog_title="保存先を指定",
+                file_name="result.png",
+                allowed_extensions=["png"]
+            )
+        )
  
-        button_row = ft.Row(
-            [self.start_button, self.stop_button],
+        self.button_row = ft.Row(
+            [self.start_button, self.stop_button, self.save_screenshot_button],
             alignment=ft.MainAxisAlignment.CENTER
         )
 
@@ -201,7 +218,7 @@ class MainView:
             ft.Column(
                 controls=[
                     self.setting_group,
-                    button_row,
+                    self.button_row,
                     self.result_table_container
                 ],
                 expand=True,
@@ -316,6 +333,16 @@ class MainView:
 
     async def stop_battle(self, e):
         await self.controller.stop_battle(e)
+    
+    def on_screenshot_save_result(self, e: ft.FilePickerResultEvent):
+        if e.path is None:
+            self.page.snack_bar = ft.SnackBar(ft.Text("保存がキャンセルされました"))
+            self.page.snack_bar.open = True
+            self.page.update()
+            return
+
+        self.save_path["path"] = e.path
+        self.controller.take_screenshot_and_save(e.path)
 
     async def async_cleanup(self):
         await self.controller.stop_battle(None)
@@ -343,15 +370,15 @@ class MainView:
                 t.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
             
-            for task in asyncio.all_tasks():
-                safe_print(f"残タスク: {task}")
+            for thread in threading.enumerate():
+                print(f"[残スレッド] name={thread.name}, daemon={thread.daemon}, ident={thread.ident}")
             
             # 最後の保険
             import os
             os._exit(0)
             
     
-    def load_result_table(self, result):
+    def load_result_table(self, result, is_enable_operation:bool):
         if not result.get("users") or not result.get("songs"):
             self.result_table_container.content = None
             self.page.update()
@@ -360,9 +387,9 @@ class MainView:
         mode = result.get("mode", BATTLE_MODE_ARENA)
         setting_visible = self.setting_group.visible
         if mode == BATTLE_MODE_ARENA or mode == BATTLE_MODE_ARENA_BP:
-            self.result_table_container.content = ArenaResultTable(self.page, result, self._on_skip_song, self._on_delete_song_confirm, setting_visible).build()
+            self.result_table_container.content = ArenaResultTable(self.page, result, self._on_skip_song, self._on_delete_song_confirm, setting_visible, is_enable_operation).build()
         else:
-            self.result_table_container.content = BplResultTable(self.page, result, self._on_skip_song, self._on_delete_song_confirm, setting_visible).build()
+            self.result_table_container.content = BplResultTable(self.page, result, self._on_skip_song, self._on_delete_song_confirm, setting_visible, is_enable_operation).build()
         self.page.update()
     
     async def _on_skip_song(self, song_id):

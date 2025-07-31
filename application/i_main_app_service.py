@@ -61,3 +61,9 @@ class IMainAppSerivce(ABC):
         """
         マスタデータの更新
         """
+    
+    @abstractmethod
+    def take_screenshot(self, path: str, window_title: str):
+        """
+        スクリーンショット撮影
+        """

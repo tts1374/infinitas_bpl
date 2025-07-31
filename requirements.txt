@@ -6,3 +6,6 @@ watchdog==6.0.0
 requests>=2.31.0
 sqlalchemy==2.0.42
 alembic==1.16.4
+pyautogui==0.9.54
+pygetwindow==0.0.9
+pillow==11.3.0

@@ -13,14 +13,15 @@ TITLE_NAME_COLOR = ft.Colors.WHITE
 MAIN_COLOR = "#EEEEEE"
 SONG_ICON_COLOR = ft.Colors.WHITE
 class BplResultTable:
-    def __init__(self, page: ft.Page, result_data: dict, on_skip_callback, on_delete_callback, setting_visible:bool):
+    def __init__(self, page: ft.Page, result_data: dict, on_skip_callback, on_delete_callback, setting_visible:bool, is_enable_operation:bool):
         super().__init__()
         self.page = page
         self.result_data = result_data
         self.on_skip_callback = on_skip_callback
         self.on_delete_callback = on_delete_callback
         self.setting_visible = setting_visible
-    
+        self.is_enable_operation = is_enable_operation
+        
     # header生成
     def _build_header(self) -> ft.Row:
         # 最大2人想定。いなければ空白。
@@ -169,14 +170,14 @@ class BplResultTable:
 
             def create_hover_handlers(overlay_ref):
                 def on_enter(e):
-                    if self.setting_visible:
+                    if self.setting_visible or not self.is_enable_operation:
                         return
                     overlay_ref.current.opacity = 0.9
                     overlay_ref.current.bgcolor = ft.Colors.WHITE
                     overlay_ref.current.update()
 
                 def on_exit(e):
-                    if self.setting_visible:
+                    if self.setting_visible or not self.is_enable_operation:
                         return
                     overlay_ref.current.opacity = 0.0
                     overlay_ref.current.bgcolor = "transparent"

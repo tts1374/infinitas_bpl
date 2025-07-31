@@ -1,6 +1,7 @@
 import asyncio
 import os
 import re
+import time
 import uuid
 
 from application.i_main_app_service import IMainAppSerivce
@@ -205,7 +206,31 @@ class MainViewController(IMainViewController):
         new_uuid = str(uuid.uuid4()).replace("-", "")
         self.app.room_pass.value = new_uuid
         self.validate_inputs()
-        self.app.page.update()    
+        self.app.page.update()   
+    
+    def take_screenshot_and_save(self, path:str):
+        try:
+            # 画面調整(スクショ範囲外の非表示)
+            settings_visible = self.app.setting_group.visible
+            self.app.button_row.visible = False
+            self.app.setting_group.visible = False
+            if self.app.result_table_container.content is not None:
+                self._load_result_table(is_enable_operation=False)
+            self.app.page.update()
+            time.sleep(0.5)
+            
+            self.main_app_serivce.take_screenshot(path, self.app.page.title)
+
+            # 非表示部分の戻し
+            self.app.setting_group.visible = settings_visible
+            self.app.button_row.visible = True
+            if self.app.result_table_container.content is not None:
+                self._load_result_table()
+
+            self.app.page.open(ft.SnackBar(ft.Text(f"保存しました: {path}")))
+            self.app.page.update()
+        except Exception as ex:
+            safe_print(f"[take_screenshot_and_save] エラー: {ex}")
     
     ##############################
     ## private
@@ -254,6 +279,6 @@ class MainViewController(IMainViewController):
     async def _file_watch_callback(self, content):
         await self.main_app_serivce.result_send(self.app.user_token, self.app.settings, content)
         
-    def _load_result_table(self):
+    def _load_result_table(self, is_enable_operation:bool = True):
         result = self.main_app_serivce.load_output_file() 
-        self.app.load_result_table(result)
+        self.app.load_result_table(result, is_enable_operation)
