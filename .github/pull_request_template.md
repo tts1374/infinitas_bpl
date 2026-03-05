@@ -1,0 +1,2 @@
+- [ ] WORKFLOW.md を確認した
+- [ ] QUALITY.md を満たしている
