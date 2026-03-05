@@ -1,0 +1,12 @@
+export const READY_CHECK_TTL_MINUTES = 20;
+export const START_MIN_PLAYERS = 2;
+
+export const ROUND_SOFT_TTL_SECONDS = 300;
+export const HOST_SKIP_UNLOCK_SECONDS = 240;
+export const ROUND_STAGE_COUNTDOWN_AT_SECONDS = 40;
+export const ROUND_START_CALL_AT_SECONDS = 50;
+
+export const MATCH_TTL_MINUTES = 30;
+export const RESULT_TTL_MINUTES = 5;
+
+export const REJOIN_COOLDOWN_SECONDS = 10;

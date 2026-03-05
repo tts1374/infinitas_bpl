@@ -1,0 +1,343 @@
+```md id="5on2su"
+# 画面一覧（Ph1）
+
+## 0. 目的
+Ph1で実装対象とする画面・状態・主要操作を整理する。  
+ワイヤーフレームではなく、画面責務と表示要素の一覧を定義する。
+
+---
+
+## 1. 画面構成一覧
+
+Ph1 の画面は以下とする。
+
+1. 設定画面
+2. ロビー一覧画面
+3. ルーム画面
+   - LOBBY
+   - READY_CHECK
+   - PICKING
+   - PLAYING
+   - RESULT
+4. エラーダイアログ / 通知
+
+---
+
+## 2. 設定画面
+
+## 2.1 目的
+- 端末固有設定を管理する
+- プレイヤー情報と監視ソースを事前に確定する
+- ローカル監視対象の状態確認を行う
+
+## 2.2 主な表示項目
+- `display_name`
+- `player_id`（表示のみ / コピー可能）
+- `source`
+  - `inf_daken_counter`
+  - `inf-notebook`
+- 監視対象ファイルパス
+  - `inf_daken_counter`
+    - `today_update.xml`
+  - `inf-notebook`
+    - `export/recent.json`
+    - 必要なら `records/recent.json`
+- 監視状態表示
+  - 正常
+  - 未検出
+  - 読取失敗
+- 音声通知 ON/OFF
+- 保存ボタン
+
+## 2.3 主な操作
+- display_name 編集
+- source 選択
+- 監視対象ファイルパス選択
+- 保存
+- 接続テスト / 監視テスト（任意、Ph1では未実装でも可）
+
+## 2.4 制約
+- ルーム参加中は source 変更不可
+- 監視異常時は `SOURCE_UNAVAILABLE` として表示し、TECHスキップ誘導対象となる
+
+---
+
+## 3. ロビー一覧画面
+
+## 3.1 目的
+- ルームの検索・参加・作成を行う
+- 公開ルームの概要を一覧で確認する
+
+## 3.2 主な表示項目
+- ルーム一覧（最大10件/ページ）
+  - mode (`ARENA` / `BPL`)
+  - play_style (`SP` / `DP`)
+  - level_filter
+  - win_metric (`SCORE` / `MISSCOUNT`)
+  - room_comment
+  - max_players
+  - join_code有無
+  - 作成日時
+- ページング / cursor ナビゲーション
+- フィルタ項目
+  - mode
+  - play_style
+  - level_filter
+  - room_comment 部分一致
+
+## 3.3 主な操作
+- ルーム作成
+- room_id または join_code による参加
+- ロビー一覧フィルタ
+- 次ページ / 前ページ
+
+## 3.4 備考
+- `visibility != PRIVATE` のルームのみ表示対象
+- `expires_at <= now` のルームは一覧に出さない
+
+---
+
+## 4. ルーム作成ダイアログ
+
+## 4.1 目的
+- 新規ルームを作成する
+- ルームの対戦条件を決定する
+
+## 4.2 入力項目
+- ロビー公開設定
+  - `PUBLIC`
+  - `UNLISTED`
+  - `PRIVATE`
+- `join_code`
+  - 自動生成
+  - 手入力可
+- mode
+  - `ARENA`
+  - `BPL`
+- win_metric
+  - `SCORE`
+  - `MISSCOUNT`
+- play_style
+  - `SP`
+  - `DP`
+- level_filter
+  - `ANY`
+  - `LV8_10`
+  - `LV10`
+  - `LV11`
+  - `LV12`
+- max_players
+  - 2
+  - 3
+  - 4
+- room_comment
+
+## 4.3 主な操作
+- join_code 自動生成
+- 作成
+- キャンセル
+
+## 4.4 バリデーション
+- join_code は 8文字・大文字英数字（紛らわしい文字除外）
+- room_comment は最大80文字、改行なし
+
+---
+
+## 5. ルーム画面（共通）
+
+## 5.1 目的
+- ルームの現在状態を表示する
+- 状態に応じた操作を提供する
+
+## 5.2 共通表示要素
+- room_id
+- join_code
+- mode / win_metric / play_style / level_filter / max_players
+- room_comment
+- 現在の RoomState
+- 参加プレイヤー一覧
+  - display_name
+  - 接続状態
+  - ready状態
+  - source
+- ホスト表示
+- 退出ボタン
+
+---
+
+## 6. ルーム画面: LOBBY
+
+## 6.1 目的
+- 参加者が集まるまで待機する
+- READY_CHECK へ進む前の確認を行う
+
+## 6.2 主な表示項目
+- 参加者一覧
+- ルーム設定表示
+- join_code 共有情報
+
+## 6.3 主な操作
+- ホスト:
+  - READY_CHECK開始
+  - 解散
+- 非ホスト:
+  - 退出
+
+---
+
+## 7. ルーム画面: READY_CHECK
+
+## 7.1 目的
+- 開始可能な人数を満たしているか確認する
+- ホストが開始タイミングを決める
+
+## 7.2 主な表示項目
+- READY_CHECK 残り時間
+- 参加者一覧
+  - ready / not ready
+- players 数
+- start 可能/不可状態
+- `players < 2` の場合は開始不可表示
+
+## 7.3 主な操作
+- 全員:
+  - READY切替
+  - 退出
+- ホスト:
+  - START
+  - 解散
+
+## 7.4 制約
+- ホストのみ START 可能
+- `players < 2` は START 不可
+- `max_players` は募集枠であり、開始人数は START 時点の参加人数で確定
+- READY_CHECK 20分超過で解散
+
+---
+
+## 8. ルーム画面: PICKING
+
+## 8.1 目的
+- 各プレイヤーが対象譜面を1つ選ぶ
+- 凍結譜面リストを確定する
+
+## 8.2 主な表示項目
+- 自分の選曲UI
+- フィルタ条件（play_style / level_filter）
+- 選曲済みプレイヤー一覧
+- PICKING 状態表示
+
+## 8.3 主な操作
+- 曲検索
+- 曲選択
+- 指名送信
+
+## 8.4 備考
+- 同一譜面重複は DO 側で解決
+- 後着重複枠はランダム差し替え
+- 凍結後に `PICK_FROZEN` を受信し PLAYINGへ遷移
+
+---
+
+## 9. ルーム画面: PLAYING
+
+## 9.1 目的
+- 現在ラウンドの対象譜面を提示する
+- リザルト提出待ち・SKIP・TIMEOUT を扱う
+
+## 9.2 主な表示項目
+- ラウンド番号
+- 対象譜面情報
+  - 曲名
+  - 難易度
+  - level
+- 参加者ごとの現在状態
+  - 未確定
+  - PLAYED
+  - SKIPPED
+  - TIMEOUT
+- round進行タイマー
+- 音声進行状態
+  - Stage
+  - countdown
+  - START
+
+## 9.3 主な操作
+- 自分でSKIP
+- ホスト:
+  - 代理SKIP（4分以降）
+  - 強制進行（確認ダイアログあり）
+
+## 9.4 演出仕様
+- Stage:`ROUND_BEGIN` で Stage音声(例:1st stage)
+- countdown:`+40s` で `10..1,Round begin`
+- START:`+50s` で `3,2,1,Let's go`
+- `round_soft_ttl` 起点は Let's go 音声時
+
+## 9.5 備考
+- 提出は自動監視で反映
+- expected一致しないものは採用しない
+- 状態遷移時は未再生音声キュー破棄、再生中音声停止
+
+---
+
+## 10. ルーム画面: RESULT
+
+## 10.1 目的
+- ラウンド結果と総合結果を表示する
+- 部分結果を含めてローカル保存・表示する
+
+## 10.2 主な表示項目
+- 総合順位 / 勝敗
+- プレイヤー別ポイント / 勝ち数
+- ラウンド別結果
+  - 対象譜面
+  - metric 値
+  - status（PLAYED / SKIPPED / TIMEOUT）
+  - reason
+- 代理SKIPログ
+- 強制進行の有無
+
+## 10.3 主な操作
+- 閉じる
+- JSON保存確認（自動保存のみでも可）
+- OBS/HTML用の後続導線（Ph1では未実装でも可）
+
+## 10.4 備考
+- `result_ttl` 超過またはホスト解散で CLOSED
+
+---
+
+## 11. エラーダイアログ / 通知
+
+## 11.1 対象
+- `ROOM_FULL`
+- `JOIN_CODE_INVALID`
+- `NOT_HOST`
+- `INVALID_STATE`
+- `START_REQUIRES_MIN_PLAYERS`
+- `RESULT_KEY_MISMATCH`
+- `ROUND_ALREADY_CONFIRMED`
+- `HOST_SKIP_LOCKED`
+- `ROOM_STATE_LOST`
+- `SOURCE_UNAVAILABLE`
+
+## 11.2 表示方針
+- 操作失敗系はダイアログ
+- 一時通知でよいものはトーストでも可
+- `ROOM_STATE_LOST` と `SOURCE_UNAVAILABLE` は明示的ダイアログ推奨
+
+---
+
+## 12. 画面遷移概要
+- 設定画面 ↔ ロビー一覧
+- ロビー一覧 -> ルーム作成
+- ロビー一覧 -> ルーム画面（参加）
+- ルーム画面内で状態遷移
+  - LOBBY
+  - READY_CHECK
+  - PICKING
+  - PLAYING
+  - RESULT
+- ルーム終了後 -> ロビー一覧へ戻る
+```
