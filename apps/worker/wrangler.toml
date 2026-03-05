@@ -1,0 +1,8 @@
+name = "infinitas-bpl-worker"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+
+[[kv_namespaces]]
+binding = "ROOM_LOBBY_KV"
+id = "178977f3a6914369b3afd7d82b6e183b"
+preview_id = "34dd03c3d53e4006b64f57d680076bb2"
