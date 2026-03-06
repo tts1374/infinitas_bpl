@@ -6,6 +6,7 @@ import { settingsStore } from "../stores/settings-store";
 const ROUND_STAGE_COUNTDOWN_AT_MS = 40_000;
 const ROUND_START_CALL_AT_MS = 50_000;
 const RECENT_CUE_GRACE_MS = 3_000;
+const VOICE_CUE_INTERVAL_MS = 1_000;
 
 type VoiceCuePhase = "STAGE" | "COUNTDOWN" | "START";
 
@@ -105,6 +106,20 @@ function getStageLabel(roundIndex: number): string {
   }
 }
 
+function createSequentialVoiceCues(
+  phase: VoiceCuePhase,
+  startAtMs: number,
+  texts: readonly string[],
+  roundIndex: number,
+): VoiceCue[] {
+  return texts.map((text, index) => ({
+    phase,
+    dueAtMs: startAtMs + index * VOICE_CUE_INTERVAL_MS,
+    text,
+    detail: `${phase} cue ${index + 1}/${texts.length} for round ${roundIndex + 1}: ${text}`,
+  }));
+}
+
 function createVoiceCues(round: CurrentRoundSnapshot): VoiceCue[] {
   const startedAtMs = Date.parse(round.round_started_at);
   if (Number.isNaN(startedAtMs)) {
@@ -118,18 +133,18 @@ function createVoiceCues(round: CurrentRoundSnapshot): VoiceCue[] {
       text: getStageLabel(round.round_index),
       detail: `Stage cue for round ${round.round_index + 1}.`,
     },
-    {
-      phase: "COUNTDOWN",
-      dueAtMs: startedAtMs + ROUND_STAGE_COUNTDOWN_AT_MS,
-      text: "10, 9, 8, 7, 6, 5, 4. Round begin.",
-      detail: `Countdown cue for round ${round.round_index + 1}.`,
-    },
-    {
-      phase: "START",
-      dueAtMs: startedAtMs + ROUND_START_CALL_AT_MS,
-      text: "3, 2, 1. Let's go.",
-      detail: `Start cue for round ${round.round_index + 1}.`,
-    },
+    ...createSequentialVoiceCues(
+      "COUNTDOWN",
+      startedAtMs + ROUND_STAGE_COUNTDOWN_AT_MS,
+      ["10", "9", "8", "7", "6", "5", "4", "Round begin."],
+      round.round_index,
+    ),
+    ...createSequentialVoiceCues(
+      "START",
+      startedAtMs + ROUND_START_CALL_AT_MS,
+      ["3", "2", "1", "Let's go."],
+      round.round_index,
+    ),
   ];
 }
 
