@@ -57,4 +57,7 @@
 4. typecheck 実行と最終調整。
 
 ## 検証結果
-- 未実施
+- `npm ci`
+- `npm --workspace @infinitas/worker run typecheck`
+- `npm run typecheck`
+- `npx wrangler deploy --dry-run`
