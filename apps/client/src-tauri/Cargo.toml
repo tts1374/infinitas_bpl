@@ -13,6 +13,7 @@ notify = "6.1.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri = { version = "2", features = [] }
+tauri-plugin-tts = "0.1.2"
 unicode-normalization = "0.1"
 
 [build-dependencies]

@@ -6,6 +6,7 @@ import {
 import { createExternalStore, useExternalStore } from "../stores/create-store";
 import { roomStore } from "../stores/room-store";
 import { settingsStore } from "../stores/settings-store";
+import { isTauriRuntime, speakNativeTts, stopNativeTts } from "./tauri-bridge";
 
 const ROUND_STAGE_COUNTDOWN_AT_MS = ROUND_STAGE_COUNTDOWN_AT_SECONDS * 1_000;
 const ROUND_START_CALL_AT_MS = ROUND_START_CALL_AT_SECONDS * 1_000;
@@ -20,6 +21,8 @@ interface VoiceCue {
   text: string;
   detail: string;
 }
+
+const JAPANESE_TEXT_PATTERN = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uff66-\uff9f]/;
 
 export type VoicePlaybackPhase =
   | "IDLE"
@@ -56,14 +59,6 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
-function getSpeechSynthesisApi(): SpeechSynthesis | null {
-  if (typeof window === "undefined" || typeof window.speechSynthesis === "undefined") {
-    return null;
-  }
-
-  return window.speechSynthesis;
-}
-
 function setVoiceState(partialState: Partial<VoicePlaybackState>): void {
   internalStore.setState((state) => ({
     ...state,
@@ -78,7 +73,7 @@ function clearPlayback(nextPhase: VoicePlaybackPhase, detail: string, enabled: b
   }
   activeTimeoutIds = [];
 
-  getSpeechSynthesisApi()?.cancel();
+  void stopNativeTts();
   if (nextPhase === "IDLE" || nextPhase === "DISABLED" || nextPhase === "UNAVAILABLE") {
     activeRoundToken = null;
   }
@@ -94,6 +89,10 @@ function clearPlayback(nextPhase: VoicePlaybackPhase, detail: string, enabled: b
 
 function buildRoundToken(roomId: string, round: CurrentRoundSnapshot): string {
   return `${roomId}:${round.round_index}:${round.round_started_at}`;
+}
+
+function detectCueLanguage(text: string): "ja-JP" | "en-US" {
+  return JAPANESE_TEXT_PATTERN.test(text) ? "ja-JP" : "en-US";
 }
 
 function getStageLabel(roundIndex: number): string {
@@ -174,29 +173,17 @@ function createVoiceCues(round: CurrentRoundSnapshot): VoiceCue[] {
   ];
 }
 
-function speakCue(roundToken: string, cue: VoiceCue): void {
+async function speakCue(roundToken: string, cue: VoiceCue): Promise<void> {
   if (roundToken !== activeRoundToken) {
     return;
   }
 
-  const speechSynthesisApi = getSpeechSynthesisApi();
-  if (speechSynthesisApi === null) {
+  if (!isTauriRuntime()) {
     setVoiceState({
       phase: "UNAVAILABLE",
       enabled: settingsStore.getState().saved.voiceEnabled,
       pendingCues: 0,
-      detail: "Speech synthesis is unavailable in this runtime.",
-      roundToken,
-    });
-    return;
-  }
-
-  if (typeof SpeechSynthesisUtterance === "undefined") {
-    setVoiceState({
-      phase: "UNAVAILABLE",
-      enabled: settingsStore.getState().saved.voiceEnabled,
-      pendingCues: 0,
-      detail: "Speech synthesis utterances are unavailable in this runtime.",
+      detail: "Native TTS is available only inside the Tauri desktop app.",
       roundToken,
     });
     return;
@@ -210,37 +197,32 @@ function speakCue(roundToken: string, cue: VoiceCue): void {
     roundToken,
   });
 
-  const utterance = new SpeechSynthesisUtterance(cue.text);
-  utterance.lang = "en-US";
-  utterance.rate = 1;
-  utterance.pitch = 1;
-  utterance.onstart = () => {
+  try {
+    const cueLanguage = detectCueLanguage(cue.text);
+    await speakNativeTts({
+      text: cue.text,
+      language: cueLanguage,
+      rate: 1,
+      pitch: 1,
+      volume: 1,
+      queueMode: "add",
+    });
     setVoiceState({
       phase: cue.phase,
       enabled: settingsStore.getState().saved.voiceEnabled,
       pendingCues: activeTimeoutIds.length,
-      detail: `Speaking: ${cue.text}`,
+      detail: `Speaking (${cueLanguage}): ${cue.text}`,
       roundToken,
     });
-  };
-  utterance.onerror = () => {
+  } catch (error) {
     setVoiceState({
       phase: "UNAVAILABLE",
       enabled: settingsStore.getState().saved.voiceEnabled,
       pendingCues: activeTimeoutIds.length,
-      detail: `Voice playback failed during ${cue.phase.toLowerCase()} cue.`,
-      roundToken,
-    });
-  };
-
-  try {
-    speechSynthesisApi.speak(utterance);
-  } catch {
-    setVoiceState({
-      phase: "UNAVAILABLE",
-      enabled: settingsStore.getState().saved.voiceEnabled,
-      pendingCues: activeTimeoutIds.length,
-      detail: `Voice playback failed during ${cue.phase.toLowerCase()} cue.`,
+      detail:
+        error instanceof Error
+          ? error.message
+          : `Voice playback failed during ${cue.phase.toLowerCase()} cue.`,
       roundToken,
     });
   }
@@ -264,7 +246,7 @@ function scheduleRoundPlayback(roomId: string, round: CurrentRoundSnapshot): voi
     scheduledCount += 1;
     const timeoutId = window.setTimeout(() => {
       activeTimeoutIds = activeTimeoutIds.filter((value) => value !== timeoutId);
-      speakCue(roundToken, cue);
+      void speakCue(roundToken, cue);
     }, Math.max(0, delayMs));
     activeTimeoutIds.push(timeoutId);
   }
@@ -288,9 +270,8 @@ function syncVoicePlayback(): void {
     return;
   }
 
-  const speechSynthesisApi = getSpeechSynthesisApi();
-  if (speechSynthesisApi === null) {
-    clearPlayback("UNAVAILABLE", "Speech synthesis is unavailable in this runtime.", true);
+  if (!isTauriRuntime()) {
+    clearPlayback("UNAVAILABLE", "Native TTS is available only inside the Tauri desktop app.", true);
     return;
   }
 
