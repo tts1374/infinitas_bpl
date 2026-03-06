@@ -1,0 +1,179 @@
+import argparse
+import hashlib
+import json
+import os
+import re
+import sqlite3
+import tempfile
+import unicodedata
+import urllib.request
+from collections import Counter
+from pathlib import Path
+
+GITHUB_API_BASE = "https://api.github.com"
+MASTER_REPO = "tts1374/iidx_all_songs_master"
+DEFAULT_OUTPUT_PATH = Path("apps/worker/src/master/generated/iidx-song-master.json")
+USER_AGENT = "Codex"
+
+
+def normalize_lookup_key(value: str) -> str:
+    normalized = unicodedata.normalize("NFKC", value).strip()
+    normalized = re.sub(r"\s+\(", "(", normalized)
+    normalized = re.sub(r"\s+", " ", normalized)
+    return normalized.lower()
+
+
+def fetch_json(url: str) -> dict:
+    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    with urllib.request.urlopen(request) as response:
+        return json.load(response)
+
+
+def download_file(url: str, output_path: Path) -> None:
+    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    with urllib.request.urlopen(request) as response, output_path.open("wb") as handle:
+        handle.write(response.read())
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def build_payload(sqlite_path: Path, release_tag: str, manifest: dict) -> dict:
+    connection = sqlite3.connect(sqlite_path)
+    connection.row_factory = sqlite3.Row
+    cursor = connection.cursor()
+
+    charts = [
+        {
+            "play_style": row["play_style"],
+            "difficulty": row["difficulty"],
+            "level": row["level"],
+            "title": f"{row['title']}{row['title_qualifier'] or ''}",
+            "title_search_key": row["title_search_key"],
+        }
+        for row in cursor.execute(
+            """
+            SELECT
+              c.play_style,
+              c.difficulty,
+              c.level,
+              m.title,
+              m.title_qualifier,
+              m.title_search_key
+            FROM chart c
+            JOIN music m ON m.music_id = c.music_id
+            WHERE c.is_active = 1
+              AND m.is_inf_active = 1
+            ORDER BY m.title_search_key, c.play_style, c.difficulty
+            """
+        )
+    ]
+
+    chart_key_counts = Counter(
+        f"{chart['play_style']}::{chart['difficulty']}::{chart['title_search_key']}" for chart in charts
+    )
+    unique_charts = [
+        chart
+        for chart in charts
+        if chart_key_counts[f"{chart['play_style']}::{chart['difficulty']}::{chart['title_search_key']}"] == 1
+    ]
+
+    aliases = {
+        row["alias"]: row["title_search_key"]
+        for row in cursor.execute(
+            """
+            SELECT DISTINCT
+              lower(trim(a.alias)) AS alias,
+              m.title_search_key
+            FROM music_title_alias a
+            JOIN music m ON m.textage_id = a.textage_id
+            JOIN chart c ON c.music_id = m.music_id
+            WHERE c.is_active = 1
+              AND m.is_inf_active = 1
+            ORDER BY alias, m.title_search_key
+            """
+        )
+    }
+
+    connection.close()
+
+    normalized_aliases = {normalize_lookup_key(alias): title_key for alias, title_key in aliases.items()}
+
+    return {
+        "metadata": {
+            "source_repo": MASTER_REPO,
+            "release_tag": release_tag,
+            "sqlite_file_name": manifest["file_name"],
+            "schema_version": manifest["schema_version"],
+            "generated_at": manifest["generated_at"],
+            "sha256": manifest["sha256"],
+            "byte_size": manifest["byte_size"],
+            "retained_chart_count": len(unique_charts),
+            "excluded_ambiguous_chart_count": len(charts) - len(unique_charts),
+        },
+        "charts": unique_charts,
+        "aliases": normalized_aliases,
+    }
+
+
+def atomic_write_json(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    serialized = json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n"
+    with tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        newline="\n",
+        delete=False,
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+    ) as handle:
+        handle.write(serialized)
+        temp_path = Path(handle.name)
+
+    os.replace(temp_path, path)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--output", default=str(DEFAULT_OUTPUT_PATH))
+    args = parser.parse_args()
+
+    release = fetch_json(f"{GITHUB_API_BASE}/repos/{MASTER_REPO}/releases/latest")
+    release_tag = release["tag_name"]
+    assets = {asset["name"]: asset for asset in release.get("assets", [])}
+
+    latest_asset = assets.get("latest.json")
+    if latest_asset is None:
+        raise SystemExit("latest.json asset was not found in the latest release.")
+
+    manifest = fetch_json(latest_asset["browser_download_url"])
+    sqlite_asset = assets.get(manifest["file_name"])
+    if sqlite_asset is None:
+        raise SystemExit(f"SQLite asset '{manifest['file_name']}' was not found in the latest release.")
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        sqlite_path = Path(temp_dir) / manifest["file_name"]
+        download_file(sqlite_asset["browser_download_url"], sqlite_path)
+
+        actual_size = sqlite_path.stat().st_size
+        if actual_size != manifest["byte_size"]:
+            raise SystemExit(
+                f"SQLite byte size mismatch: expected {manifest['byte_size']}, got {actual_size}."
+            )
+
+        actual_hash = sha256_file(sqlite_path)
+        if actual_hash != manifest["sha256"]:
+            raise SystemExit("SQLite sha256 mismatch against latest.json.")
+
+        payload = build_payload(sqlite_path, release_tag, manifest)
+        atomic_write_json(Path(args.output), payload)
+
+
+if __name__ == "__main__":
+    main()

@@ -19,6 +19,7 @@ import type { WorkerEnv } from "../types/env";
 import { asEnumValue, asOptionalString, isRecord } from "../utils/validation";
 import { createServerEnvelope, decodeClientMessage } from "./ws-codec";
 import { RoomLobbyState, type RoomInitializationInput } from "./room-state";
+import { workerChartMaster } from "../master/chart-master";
 
 interface RoomSocketSession {
   socket: WebSocket;
@@ -166,7 +167,7 @@ function parsePickSubmitPayload(payload: unknown): { pick_chart_key: string } | 
 }
 
 export class RoomDurableObject {
-  private readonly roomState = new RoomLobbyState();
+  private readonly roomState = new RoomLobbyState(workerChartMaster);
   private readonly sessionsBySocket = new Map<WebSocket, RoomSocketSession>();
   private readonly seenClientMessageIds = new Map<string, string[]>();
 
