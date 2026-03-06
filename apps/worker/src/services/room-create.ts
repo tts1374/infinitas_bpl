@@ -17,6 +17,7 @@ import type { CreateRoomResponse } from "../types/api";
 import type { WorkerEnv } from "../types/env";
 import { putLobbyRoom } from "../kv/lobby-kv";
 import { generateJoinCode, isValidJoinCode, normalizeJoinCode } from "./join-code";
+import { initializeRoomDurableObject } from "./room-do";
 import { asEnumValue, asNullableString, asOptionalString, isRecord } from "../utils/validation";
 
 interface CreateRoomInput {
@@ -136,6 +137,9 @@ export async function createRoom(
 ): Promise<CreateRoomResponse> {
   const parsed = parseCreateRoomPayload(payload);
   const roomId = crypto.randomUUID();
+  const createdAtIso = parsed.createdAt.toISOString();
+
+  await initializeRoomDurableObject(env, roomId, parsed.settings, createdAtIso);
 
   if (parsed.settings.visibility !== "PRIVATE") {
     await putLobbyRoom(env, toLobbyEntry(roomId, parsed));
@@ -143,7 +147,7 @@ export async function createRoom(
 
   return {
     room_id: roomId,
-    created_at: parsed.createdAt.toISOString(),
+    created_at: createdAtIso,
     expires_at: parsed.expiresAt.toISOString(),
     settings: parsed.settings,
   };
