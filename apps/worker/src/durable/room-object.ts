@@ -8,6 +8,8 @@ import {
   WIN_METRICS,
   type ClientMessage,
   type ErrorCode,
+  type ExpectedKey,
+  type JsonObject,
   type RoomJoinPayload,
   type RoomSettings,
   type ServerMessagePayloadMap,
@@ -18,7 +20,7 @@ import { normalizeJoinCode } from "../services/join-code";
 import type { WorkerEnv } from "../types/env";
 import { asEnumValue, asOptionalString, isRecord } from "../utils/validation";
 import { createServerEnvelope, decodeClientMessage } from "./ws-codec";
-import { RoomLobbyState, type RoomInitializationInput } from "./room-state";
+import { RoomLobbyState, type RoomInitializationInput, type RoundTransitionResult } from "./room-state";
 import { workerChartMaster } from "../master/chart-master";
 
 interface RoomSocketSession {
@@ -166,6 +168,56 @@ function parsePickSubmitPayload(payload: unknown): { pick_chart_key: string } | 
   };
 }
 
+function parseExpectedKey(value: unknown): ExpectedKey | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const playStyle = asEnumValue(value.play_style, PLAY_STYLES);
+  const difficulty = asOptionalString(value.difficulty)?.trim() ?? "";
+  const titleSearchKey = asOptionalString(value.title_search_key)?.trim() ?? "";
+
+  if (playStyle === undefined || difficulty.length === 0 || titleSearchKey.length === 0) {
+    return null;
+  }
+
+  return {
+    play_style: playStyle,
+    difficulty,
+    title_search_key: titleSearchKey,
+  };
+}
+
+function parseResultSubmitPayload(
+  payload: unknown,
+): { round_index: number; observed_key: ExpectedKey; metric_value: number; source_meta: JsonObject | null } | null {
+  if (!isRecord(payload)) {
+    return null;
+  }
+
+  const roundIndex = typeof payload.round_index === "number" ? payload.round_index : Number.NaN;
+  const metricValue = typeof payload.metric_value === "number" ? payload.metric_value : Number.NaN;
+  const observedKey = parseExpectedKey(payload.observed_key);
+  const sourceMeta = payload.source_meta;
+  if (
+    !Number.isInteger(roundIndex) ||
+    roundIndex < 0 ||
+    !Number.isInteger(metricValue) ||
+    metricValue < 0 ||
+    observedKey === null ||
+    (sourceMeta !== undefined && sourceMeta !== null && !isRecord(sourceMeta))
+  ) {
+    return null;
+  }
+
+  return {
+    round_index: roundIndex,
+    observed_key: observedKey,
+    metric_value: metricValue,
+    source_meta: sourceMeta === undefined || sourceMeta === null ? null : (sourceMeta as JsonObject),
+  };
+}
+
 export class RoomDurableObject {
   private readonly roomState = new RoomLobbyState(workerChartMaster);
   private readonly sessionsBySocket = new Map<WebSocket, RoomSocketSession>();
@@ -209,7 +261,7 @@ export class RoomDurableObject {
   }
 
   async alarm(): Promise<void> {
-    await this.closeReadyCheckOnTimeout(new Date());
+    await this.processDueTransitions(new Date());
   }
 
   private async handleInternalInitialize(request: Request): Promise<Response> {
@@ -294,7 +346,7 @@ export class RoomDurableObject {
         return;
       }
 
-      if (await this.closeReadyCheckOnTimeout(new Date())) {
+      if (await this.processDueTransitions(new Date())) {
         return;
       }
 
@@ -324,7 +376,10 @@ export class RoomDurableObject {
           await this.handleStartMatch(session);
           return;
         case "PICK_SUBMIT":
-          this.handlePickSubmit(session, message as ClientMessage<"PICK_SUBMIT">);
+          await this.handlePickSubmit(session, message as ClientMessage<"PICK_SUBMIT">);
+          return;
+        case "RESULT_SUBMIT":
+          await this.handleResultSubmit(session, message as ClientMessage<"RESULT_SUBMIT">);
           return;
         case "STATE_GET":
           this.sendStateSnapshot(socket);
@@ -425,7 +480,7 @@ export class RoomDurableObject {
     }
 
     if (leaveResult.was_host) {
-      await this.clearReadyCheckAlarm();
+      await this.clearAlarm();
       this.broadcast("ROOM_CLOSED", { reason: "HOST_LEFT" }, true);
       await this.cleanupLobbyEntry();
       this.disconnectAll(4000, "Host left.");
@@ -462,7 +517,7 @@ export class RoomDurableObject {
       return;
     }
 
-    await this.setReadyCheckAlarm(deadline);
+    await this.syncAlarm();
     this.broadcast("READY_CHECK_OPENED", {
       ready_check_deadline: deadline.toISOString(),
     });
@@ -518,11 +573,11 @@ export class RoomDurableObject {
       }
     }
 
-    await this.clearReadyCheckAlarm();
+    await this.syncAlarm();
     this.broadcastRoomUpdated();
   }
 
-  private handlePickSubmit(session: RoomSocketSession, message: ClientMessage<"PICK_SUBMIT">): void {
+  private async handlePickSubmit(session: RoomSocketSession, message: ClientMessage<"PICK_SUBMIT">): Promise<void> {
     if (session.playerId === null) {
       this.sendError(session.socket, "INVALID_STATE", "Send ROOM_JOIN before this message.");
       return;
@@ -558,6 +613,49 @@ export class RoomDurableObject {
       this.broadcast("ROUND_BEGIN", result.round_begin);
     }
 
+    await this.syncAlarm();
+    this.broadcastRoomUpdated();
+  }
+
+  private async handleResultSubmit(
+    session: RoomSocketSession,
+    message: ClientMessage<"RESULT_SUBMIT">,
+  ): Promise<void> {
+    if (session.playerId === null) {
+      this.sendError(session.socket, "INVALID_STATE", "Send ROOM_JOIN before this message.");
+      return;
+    }
+
+    const payload = parseResultSubmitPayload(message.payload);
+    if (payload === null) {
+      this.sendError(session.socket, "INVALID_STATE", "RESULT_SUBMIT payload is invalid.");
+      return;
+    }
+
+    const result = this.roomState.submitResult(
+      session.playerId,
+      payload.round_index,
+      payload.observed_key,
+      payload.metric_value,
+      payload.source_meta,
+      new Date(),
+    );
+    if (!result.ok) {
+      switch (result.reason) {
+        case "RESULT_KEY_MISMATCH":
+          this.sendError(session.socket, "RESULT_KEY_MISMATCH", "observed_key does not match current round.");
+          return;
+        case "ROUND_ALREADY_CONFIRMED":
+          this.sendError(session.socket, "ROUND_ALREADY_CONFIRMED", "Player already confirmed for this round.");
+          return;
+        default:
+          this.sendError(session.socket, "INVALID_STATE", "RESULT_SUBMIT is unavailable in the current state.");
+          return;
+      }
+    }
+
+    await this.syncAlarm();
+    this.broadcastRoundTransition(result);
     this.broadcastRoomUpdated();
   }
 
@@ -581,6 +679,20 @@ export class RoomDurableObject {
     this.broadcast("ROOM_UPDATED", {
       room_state_snapshot: this.roomState.toSnapshot(),
     });
+  }
+
+  private broadcastRoundTransition(result: RoundTransitionResult): void {
+    for (const confirmation of result.confirmations) {
+      this.broadcast("PLAYER_ROUND_CONFIRMED", confirmation);
+    }
+
+    if (result.round_ended !== undefined) {
+      this.broadcast("ROUND_ENDED", result.round_ended);
+    }
+
+    if (result.round_begin !== undefined) {
+      this.broadcast("ROUND_BEGIN", result.round_begin);
+    }
   }
 
   private broadcast<TType extends ServerMessageType>(
@@ -652,12 +764,41 @@ export class RoomDurableObject {
     }
   }
 
-  private async setReadyCheckAlarm(deadline: Date): Promise<void> {
-    await this.state.storage.setAlarm(deadline);
+  private async clearAlarm(): Promise<void> {
+    await this.state.storage.deleteAlarm();
   }
 
-  private async clearReadyCheckAlarm(): Promise<void> {
-    await this.state.storage.deleteAlarm();
+  private async syncAlarm(): Promise<void> {
+    const nextAlarmAt = this.roomState.getNextAlarmAt();
+    if (nextAlarmAt === null) {
+      await this.clearAlarm();
+      return;
+    }
+
+    await this.state.storage.setAlarm(nextAlarmAt);
+  }
+
+  private async processDueTransitions(now: Date): Promise<boolean> {
+    if (await this.closeReadyCheckOnTimeout(now)) {
+      return true;
+    }
+
+    const matchTransition = this.roomState.expireMatchIfNeeded(now);
+    if (matchTransition !== null) {
+      await this.syncAlarm();
+      this.broadcastRoundTransition(matchTransition);
+      this.broadcastRoomUpdated();
+      return false;
+    }
+
+    const roundTransition = this.roomState.expireCurrentRoundIfNeeded(now);
+    if (roundTransition !== null) {
+      await this.syncAlarm();
+      this.broadcastRoundTransition(roundTransition);
+      this.broadcastRoomUpdated();
+    }
+
+    return false;
   }
 
   private async closeReadyCheckOnTimeout(now: Date): Promise<boolean> {
@@ -666,7 +807,7 @@ export class RoomDurableObject {
       return false;
     }
 
-    await this.clearReadyCheckAlarm();
+    await this.clearAlarm();
     this.broadcast("ROOM_CLOSED", { reason: "READY_CHECK_TIMEOUT" }, true);
     await this.cleanupLobbyEntry();
     this.disconnectAll(4001, "Ready check timed out.");
