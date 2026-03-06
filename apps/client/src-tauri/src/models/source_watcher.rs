@@ -72,6 +72,7 @@ impl Default for SourceWatcherStatePayload {
 #[serde(rename_all = "camelCase")]
 pub struct ParsedSourceObservation {
     pub timestamp: String,
+    pub play_style: Option<String>,
     pub difficulty: String,
     pub title: String,
     pub title_search_key: String,

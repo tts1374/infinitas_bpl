@@ -1,5 +1,5 @@
 use std::{
-    fs,
+    env, fs,
     path::{Path, PathBuf},
 };
 
@@ -121,6 +121,7 @@ fn parse_observation(entry: &NotebookRecentEntry) -> Result<ParsedSourceObservat
 
     Ok(ParsedSourceObservation {
         timestamp,
+        play_style: None,
         difficulty,
         title_search_key: title.clone(),
         title,
@@ -192,10 +193,25 @@ fn is_newer_timestamp(timestamp: &str, last_seen_timestamp: Option<&str>) -> boo
 }
 
 fn path_key(path: &Path) -> String {
-    path.canonicalize()
-        .unwrap_or_else(|_| path.to_path_buf())
+    let normalized = path
+        .canonicalize()
+        .unwrap_or_else(|_| {
+            if path.is_absolute() {
+                path.to_path_buf()
+            } else {
+                env::current_dir()
+                    .map(|current_dir| current_dir.join(path))
+                    .unwrap_or_else(|_| path.to_path_buf())
+            }
+        })
         .to_string_lossy()
-        .replace('/', "\\")
+        .replace('/', "\\");
+
+    normalized
+        .strip_prefix("\\\\?\\UNC\\")
+        .map(|remainder| format!("\\\\{remainder}"))
+        .or_else(|| normalized.strip_prefix("\\\\?\\").map(str::to_string))
+        .unwrap_or(normalized)
         .to_lowercase()
 }
 
