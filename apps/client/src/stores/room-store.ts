@@ -114,6 +114,19 @@ function buildRoomStateLostDescription(detail: string): string {
   return `${detail} The room has been closed locally. Review the latest saved snapshot for partial results.`;
 }
 
+function startMatchRejectMessage(reason: string): string {
+  switch (reason) {
+    case "START_REQUIRES_MIN_PLAYERS":
+      return "At least two players are required.";
+    case "NOT_ALL_PLAYERS_READY":
+      return "All current players must be READY before the match starts.";
+    case "BPL_REQUIRES_TWO_PLAYERS":
+      return "BPL mode requires exactly two players.";
+    default:
+      return reason;
+  }
+}
+
 function closeCurrentClient(sendLeaveMessage: boolean): void {
   const client = activeClient;
   activeClient = null;
@@ -253,7 +266,7 @@ function handleServerMessage(client: RoomSocketClient, message: ServerMessage): 
     }
     case "START_MATCH_REJECTED": {
       const payload = message.payload as ServerMessagePayloadMap["START_MATCH_REJECTED"];
-      setErrorDialog("Start rejected", payload.reason);
+      setErrorDialog("Start rejected", startMatchRejectMessage(payload.reason), payload.reason);
       return;
     }
     case "PICK_REJECTED": {

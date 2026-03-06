@@ -1,4 +1,4 @@
-import type { RoomListQuery, RoomListingEntry, RoomSettings } from "@infinitas/shared";
+import type { ChartSearchEntry, ChartSearchQuery, RoomListQuery, RoomListingEntry, RoomSettings } from "@infinitas/shared";
 
 export interface CreateRoomResponse {
   room_id: string;
@@ -9,6 +9,11 @@ export interface CreateRoomResponse {
 
 export interface ListRoomsResponse {
   rooms: RoomListingEntry[];
+  next_cursor: string | null;
+}
+
+export interface ChartSearchResponse {
+  charts: ChartSearchEntry[];
   next_cursor: string | null;
 }
 
@@ -104,4 +109,24 @@ export async function createRoom(baseUrl: string, settings: RoomSettings): Promi
     method: "POST",
     body: JSON.stringify(settings),
   });
+}
+
+export async function listCharts(baseUrl: string, query: ChartSearchQuery): Promise<ChartSearchResponse> {
+  const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
+  const searchParams = new URLSearchParams();
+
+  appendQueryParam(searchParams, "cursor", query.cursor);
+  appendQueryParam(searchParams, "play_style", query.play_style);
+  appendQueryParam(searchParams, "level_filter", query.level_filter);
+  appendQueryParam(searchParams, "difficulty", query.difficulty);
+  appendQueryParam(searchParams, "keyword", query.keyword);
+  if (typeof query.level === "number") {
+    searchParams.set("level", String(query.level));
+  }
+  if (typeof query.limit === "number") {
+    searchParams.set("limit", String(query.limit));
+  }
+
+  const url = `${normalizedBaseUrl}/api/charts?${searchParams}`;
+  return requestJson<ChartSearchResponse>(url, { method: "GET" });
 }
