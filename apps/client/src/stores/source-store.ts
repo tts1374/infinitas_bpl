@@ -99,7 +99,9 @@ function observationMatchesExpected(
   observation: ParsedSourceObservationPayload,
   expectedKey: ExpectedKey,
 ): boolean {
+  const observedPlayStyle = observation.playStyle ?? expectedKey.play_style;
   return (
+    observedPlayStyle === expectedKey.play_style &&
     observation.difficulty === expectedKey.difficulty &&
     observation.titleSearchKey === expectedKey.title_search_key
   );
@@ -146,6 +148,8 @@ function tryAutoSubmitParsedChange(parsedChange: ParsedSourceChangePayload): voi
     snapshot.settings.win_metric === "SCORE"
       ? matchedObservation.score
       : matchedObservation.misscount;
+  const observedPlayStyle =
+    matchedObservation.playStyle ?? currentRound.expected_key.play_style;
   if (!Number.isInteger(metricValue) || metricValue < 0) {
     return;
   }
@@ -153,7 +157,7 @@ function tryAutoSubmitParsedChange(parsedChange: ParsedSourceChangePayload): voi
   const sent = roomStore.send("RESULT_SUBMIT", {
     round_index: currentRound.round_index,
     observed_key: {
-      play_style: currentRound.expected_key.play_style,
+      play_style: observedPlayStyle,
       difficulty: matchedObservation.difficulty,
       title_search_key: matchedObservation.titleSearchKey,
     },
@@ -174,8 +178,10 @@ function tryAutoSubmitParsedChange(parsedChange: ParsedSourceChangePayload): voi
     return;
   }
 
+  const timestampLabel =
+    matchedObservation.timestamp.trim().length > 0 ? ` (${matchedObservation.timestamp})` : "";
   roomStore.noteLocalEvent(
-    `Auto-submitted ${snapshot.settings.win_metric} from ${parsedChange.source} (${matchedObservation.timestamp}).`,
+    `Auto-submitted ${snapshot.settings.win_metric} from ${parsedChange.source}${timestampLabel}.`,
   );
 }
 
