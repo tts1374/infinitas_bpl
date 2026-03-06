@@ -3,16 +3,22 @@ import {
   MATCH_TTL_MINUTES,
   READY_CHECK_TTL_MINUTES,
   REJOIN_COOLDOWN_SECONDS,
+  RESULT_TTL_MINUTES,
   ROUND_SOFT_TTL_SECONDS,
   START_MIN_PLAYERS,
   type CurrentRoundSnapshot,
   type ExpectedKey,
   type FrozenRound,
+  type JsonObject,
   type PlayerRole,
   type RoomSettings,
   type RoomState,
   type RoomStateSnapshot,
   type SourceType,
+  type SubmissionReason,
+  type SubmissionStatus,
+  type SubmittedBy,
+  type WinMetric,
 } from "@infinitas/shared";
 import type { ResolvedMasterChart, RoomChartMaster } from "../master/chart-master";
 
@@ -96,6 +102,38 @@ export interface PickSubmitResult {
   };
 }
 
+export interface RoundConfirmationEvent {
+  round_index: number;
+  player_id: string;
+  status: SubmissionStatus;
+  metric_value: number;
+  reason: SubmissionReason;
+  submitted_at: string;
+  submitted_by: SubmittedBy;
+}
+
+export interface RoundEndedEvent {
+  round_index: number;
+}
+
+export interface RoundBeginEvent {
+  round_index: number;
+  expected_key: ExpectedKey;
+  round_started_at: string;
+  soft_ttl_seconds: number;
+}
+
+export interface RoundTransitionResult {
+  confirmations: RoundConfirmationEvent[];
+  round_ended?: RoundEndedEvent;
+  round_begin?: RoundBeginEvent;
+}
+
+export interface ResultSubmitResult extends RoundTransitionResult {
+  ok: boolean;
+  reason?: "INVALID_STATE" | "PLAYER_NOT_FOUND" | "RESULT_KEY_MISMATCH" | "ROUND_ALREADY_CONFIRMED";
+}
+
 const DEFAULT_SETTINGS: RoomSettings = {
   visibility: "PUBLIC",
   join_code: null,
@@ -117,6 +155,10 @@ function computeMatchDeadline(createdAt: Date): Date {
 
 function computeReadyCheckDeadline(openedAt: Date): Date {
   return new Date(openedAt.getTime() + READY_CHECK_TTL_MINUTES * 60_000);
+}
+
+function computeResultDeadline(startedAt: Date): Date {
+  return new Date(startedAt.getTime() + RESULT_TTL_MINUTES * 60_000);
 }
 
 function computeRejoinUntil(now: Date): Date {
@@ -149,6 +191,18 @@ function cloneFrozenRound(round: FrozenRound): FrozenRound {
     },
     started_at: round.started_at,
     soft_ttl_seconds: round.soft_ttl_seconds,
+  };
+}
+
+function cloneRoundConfirmation(entry: RoundConfirmationEvent): RoundConfirmationEvent {
+  return {
+    round_index: entry.round_index,
+    player_id: entry.player_id,
+    status: entry.status,
+    metric_value: entry.metric_value,
+    reason: entry.reason,
+    submitted_at: entry.submitted_at,
+    submitted_by: entry.submitted_by,
   };
 }
 
@@ -355,6 +409,7 @@ export class RoomLobbyState {
     this.roomState = "PICKING";
     this.readyCheckDeadline = null;
     this.matchDeadline = computeMatchDeadline(now);
+    this.resultDeadline = null;
     this.matchPlayerIds = this.getPlayersInJoinOrder().map((player) => player.player_id);
     this.picks.length = 0;
     this.frozenRounds = [];
@@ -430,6 +485,79 @@ export class RoomLobbyState {
     return result;
   }
 
+  getNextAlarmAt(): Date | null {
+    if (this.roomState === "READY_CHECK" && this.readyCheckDeadline !== null) {
+      return this.readyCheckDeadline;
+    }
+
+    if (this.roomState === "PICKING") {
+      return this.matchDeadline;
+    }
+
+    if (this.roomState !== "PLAYING" || this.currentRound === null) {
+      return null;
+    }
+
+    const currentRoundDeadline = this.getCurrentRoundDeadline();
+    if (currentRoundDeadline === null) {
+      return this.matchDeadline;
+    }
+
+    return currentRoundDeadline.getTime() <= this.matchDeadline.getTime()
+      ? currentRoundDeadline
+      : this.matchDeadline;
+  }
+
+  submitResult(
+    playerId: string,
+    roundIndex: number,
+    observedKey: ExpectedKey,
+    metricValue: number,
+    _sourceMeta: JsonObject | null,
+    now: Date,
+  ): ResultSubmitResult {
+    if (this.roomState !== "PLAYING" || this.currentRound === null) {
+      return { ok: false, reason: "INVALID_STATE", confirmations: [] };
+    }
+
+    if (!this.matchPlayerIds.includes(playerId)) {
+      return { ok: false, reason: "PLAYER_NOT_FOUND", confirmations: [] };
+    }
+
+    if (roundIndex !== this.currentRound.round_index) {
+      return { ok: false, reason: "INVALID_STATE", confirmations: [] };
+    }
+
+    if (this.currentRound.confirmed.some((entry) => entry.player_id === playerId)) {
+      return { ok: false, reason: "ROUND_ALREADY_CONFIRMED", confirmations: [] };
+    }
+
+    if (!this.isSameExpectedKey(this.currentRound.expected_key, observedKey)) {
+      return { ok: false, reason: "RESULT_KEY_MISMATCH", confirmations: [] };
+    }
+
+    const confirmation = this.createRoundConfirmation({
+      round_index: roundIndex,
+      player_id: playerId,
+      status: "PLAYED",
+      metric_value: metricValue,
+      reason: null,
+      submitted_by: "SELF",
+      submitted_at: now,
+    });
+    const transition = this.applyRoundConfirmations([confirmation], now, false);
+    if (transition === null) {
+      return { ok: false, reason: "INVALID_STATE", confirmations: [] };
+    }
+
+    return {
+      ok: true,
+      confirmations: transition.confirmations,
+      ...(transition.round_ended === undefined ? {} : { round_ended: transition.round_ended }),
+      ...(transition.round_begin === undefined ? {} : { round_begin: transition.round_begin }),
+    };
+  }
+
   getReadyCheckDeadline(): Date | null {
     return this.readyCheckDeadline;
   }
@@ -447,6 +575,47 @@ export class RoomLobbyState {
     return true;
   }
 
+  expireMatchIfNeeded(now: Date): RoundTransitionResult | null {
+    if ((this.roomState !== "PICKING" && this.roomState !== "PLAYING") || now.getTime() < this.matchDeadline.getTime()) {
+      return null;
+    }
+
+    if (this.roomState === "PICKING" || this.currentRound === null) {
+      this.enterResult(now);
+      return { confirmations: [] };
+    }
+
+    const timedOutPlayers = this.getUnconfirmedPlayerIds(this.currentRound).map((playerId) =>
+      this.createTimeoutConfirmation(this.currentRound?.round_index ?? 0, playerId, now),
+    );
+    return this.applyRoundConfirmations(timedOutPlayers, now, true);
+  }
+
+  expireCurrentRoundIfNeeded(now: Date): RoundTransitionResult | null {
+    if (this.roomState !== "PLAYING" || this.currentRound === null) {
+      return null;
+    }
+
+    const deadline = this.getCurrentRoundDeadline();
+    if (
+      deadline === null ||
+      now.getTime() < deadline.getTime() ||
+      now.getTime() >= this.matchDeadline.getTime()
+    ) {
+      return null;
+    }
+
+    const unconfirmedPlayerIds = this.getUnconfirmedPlayerIds(this.currentRound);
+    if (unconfirmedPlayerIds.length === 0) {
+      return null;
+    }
+
+    const confirmations = unconfirmedPlayerIds.map((playerId) =>
+      this.createTimeoutConfirmation(this.currentRound?.round_index ?? 0, playerId, now),
+    );
+    return this.applyRoundConfirmations(confirmations, now, false);
+  }
+
   close(reason: string, now: Date): void {
     if (this.roomState === "CLOSED") {
       return;
@@ -454,6 +623,7 @@ export class RoomLobbyState {
 
     this.roomState = "CLOSED";
     this.readyCheckDeadline = null;
+    this.resultDeadline = null;
     this.closeReason = reason;
     this.closedAt = now;
   }
@@ -502,6 +672,114 @@ export class RoomLobbyState {
       closed_at: toIsoString(this.closedAt),
       close_reason: this.closeReason,
     };
+  }
+
+  private getCurrentRoundDeadline(): Date | null {
+    if (this.currentRound === null) {
+      return null;
+    }
+
+    const roundStartedAt = new Date(this.currentRound.round_started_at);
+    if (!Number.isFinite(roundStartedAt.getTime())) {
+      return null;
+    }
+
+    return new Date(roundStartedAt.getTime() + this.currentRound.soft_ttl_seconds * 1_000);
+  }
+
+  private isSameExpectedKey(left: ExpectedKey, right: ExpectedKey): boolean {
+    return expectedKeyId(left) === expectedKeyId(right);
+  }
+
+  private createRoundConfirmation(input: {
+    round_index: number;
+    player_id: string;
+    status: SubmissionStatus;
+    metric_value: number;
+    reason: SubmissionReason;
+    submitted_by: SubmittedBy;
+    submitted_at: Date;
+  }): RoundConfirmationEvent {
+    return {
+      round_index: input.round_index,
+      player_id: input.player_id,
+      status: input.status,
+      metric_value: input.metric_value,
+      reason: input.reason,
+      submitted_by: input.submitted_by,
+      submitted_at: input.submitted_at.toISOString(),
+    };
+  }
+
+  private createTimeoutConfirmation(
+    roundIndex: number,
+    playerId: string,
+    submittedAt: Date,
+  ): RoundConfirmationEvent {
+    return this.createRoundConfirmation({
+      round_index: roundIndex,
+      player_id: playerId,
+      status: "TIMEOUT",
+      metric_value: this.getDefaultTerminalMetricValue(this.settings.win_metric),
+      reason: "UNMAPPED_TIMEOUT",
+      submitted_by: "SYSTEM",
+      submitted_at: submittedAt,
+    });
+  }
+
+  private getDefaultTerminalMetricValue(metric: WinMetric): number {
+    return metric === "MISSCOUNT" ? 9999 : 0;
+  }
+
+  private getUnconfirmedPlayerIds(round: CurrentRoundSnapshot): string[] {
+    const confirmedPlayerIds = new Set(round.confirmed.map((entry) => entry.player_id));
+    return this.matchPlayerIds.filter((playerId) => !confirmedPlayerIds.has(playerId));
+  }
+
+  private applyRoundConfirmations(
+    confirmations: RoundConfirmationEvent[],
+    now: Date,
+    forceResult: boolean,
+  ): RoundTransitionResult | null {
+    if (this.currentRound === null) {
+      return null;
+    }
+
+    this.currentRound.confirmed = [
+      ...this.currentRound.confirmed,
+      ...confirmations.map(cloneRoundConfirmation),
+    ];
+
+    const currentRoundIndex = this.currentRound.round_index;
+    const result: RoundTransitionResult = {
+      confirmations: confirmations.map(cloneRoundConfirmation),
+    };
+
+    if (!forceResult && this.currentRound.confirmed.length < this.matchPlayerIds.length) {
+      return result;
+    }
+
+    result.round_ended = { round_index: currentRoundIndex };
+
+    if (forceResult) {
+      this.enterResult(now);
+      return result;
+    }
+
+    const nextRound = this.beginNextRound(currentRoundIndex + 1, now);
+    if (nextRound !== null) {
+      result.round_begin = nextRound;
+      return result;
+    }
+
+    this.enterResult(now);
+    return result;
+  }
+
+  private enterResult(now: Date): void {
+    this.roomState = "RESULT";
+    this.currentRound = null;
+    this.resultDeadline = computeResultDeadline(now);
   }
 
   private getPlayersInJoinOrder(): InternalPlayer[] {
@@ -615,25 +893,56 @@ export class RoomLobbyState {
   }
 
   private beginFirstRound(now: Date): CurrentRoundSnapshot | null {
+    return this.beginRoundAtIndex(0, now);
+  }
+
+  private beginNextRound(roundIndex: number, now: Date): RoundBeginEvent | null {
+    const nextRound = this.beginRoundAtIndex(roundIndex, now);
+    if (nextRound === null) {
+      return null;
+    }
+
+    return {
+      round_index: nextRound.round_index,
+      expected_key: cloneExpectedKey(nextRound.expected_key),
+      round_started_at: nextRound.round_started_at,
+      soft_ttl_seconds: nextRound.soft_ttl_seconds,
+    };
+  }
+
+  private beginRoundAtIndex(roundIndex: number, now: Date): CurrentRoundSnapshot | null {
     if (this.frozenRounds.length === 0) {
       return null;
     }
 
     const roundStartedAt = now.toISOString();
-    const firstRoundSource = this.frozenRounds[0];
-    if (firstRoundSource === undefined) {
+    const roundSource = this.frozenRounds.find((round) => round.round_index === roundIndex);
+    if (roundSource === undefined) {
       return null;
     }
 
-    const firstRound = cloneFrozenRound(firstRoundSource);
-    firstRound.started_at = roundStartedAt;
-    this.frozenRounds = [firstRound, ...this.frozenRounds.slice(1).map(cloneFrozenRound)];
+    this.frozenRounds = this.frozenRounds.map((round) => {
+      if (round.round_index !== roundIndex) {
+        return cloneFrozenRound(round);
+      }
+
+      return {
+        ...cloneFrozenRound(round),
+        started_at: roundStartedAt,
+      };
+    });
+
+    const startedRound = this.frozenRounds.find((round) => round.round_index === roundIndex);
+    if (startedRound === undefined) {
+      return null;
+    }
+
     this.roomState = "PLAYING";
     this.currentRound = {
-      round_index: firstRound.round_index,
-      expected_key: cloneExpectedKey(firstRound.expected_key),
+      round_index: startedRound.round_index,
+      expected_key: cloneExpectedKey(startedRound.expected_key),
       round_started_at: roundStartedAt,
-      soft_ttl_seconds: firstRound.soft_ttl_seconds,
+      soft_ttl_seconds: startedRound.soft_ttl_seconds,
       confirmed: [],
     };
     return this.currentRound;
