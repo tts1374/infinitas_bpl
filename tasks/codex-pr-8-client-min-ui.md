@@ -59,5 +59,5 @@
 - [x] `npm --workspace @infinitas/client run typecheck`
 - [x] `npm --workspace @infinitas/client run build`
 - [x] `npm run typecheck`
-- [ ] `cargo check`
-  - この実行環境では `cargo` コマンド自体が存在せず、Tauri Rust 側のコンパイル確認は未実施。
+- [x] `cargo check`
+  - `Rustlang.Rust.GNU.LLVM` と `MartinStorsjo.LLVM-MinGW.UCRT` を導入し、`apps/client/src-tauri` で確認。
