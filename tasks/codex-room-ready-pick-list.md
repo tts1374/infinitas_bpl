@@ -12,6 +12,7 @@
 - `PICKING` で選曲候補を検索・ページング表示できる UI/API を追加する。
 - `PICKING` に 120 秒 deadline と timeout 時の自動選曲を追加する。
 - `PLAYING` の演出タイムラインと countdown 表示/音声を同期させる。
+- 音声再生を Web Speech API 依存から Tauri ネイティブ TTS へ置き換える。
 - 結果表示を `CLOSED` 上で保持し、`RESULT -> CLOSED` 遷移を不要にする。
 
 ## 非目的
@@ -31,6 +32,7 @@
 - `PLAYING` は `ROUND_BEGIN` を演出開始時刻として扱い、45 秒の MUSIC SELECT と 10 秒の PLAY START を client/voice で同期表示する。
 - 最終集計後は `RESULT_READY` を保持したまま `CLOSED` snapshot へ遷移し、`RESULT_TIMEOUT` を不要化する。
 - voice playback の phase/detail を改善し、stage/選曲カウントダウン/start コールを演出仕様に合わせる。
+- Tauri plugin ベースの native TTS を導入し、client の音声再生をブラウザ `speechSynthesis` から切り替える。
 
 ## 影響範囲
 - ユーザー:
@@ -41,6 +43,7 @@
   - KV スキーマ変更なし。
   - worker の chart master 生成 JSON に検索用フィールドを追加する。
   - shared の room snapshot/timer モデルに `picking_deadline` を追加する。
+  - client の Tauri dependency / permission / lockfile を更新する。
 - 互換性:
   - 既存 WS message type は維持する。
   - HTTP API は chart search の追加のみで、既存 `/api/rooms` は維持する。
@@ -64,8 +67,13 @@
 - `apps/worker/src/index.ts`
 - `packages/shared/src/*` の chart search 型定義に必要な最小差分
 - `apps/client/src/services/worker-api-client.ts`
+- `apps/client/src/services/tauri-bridge.ts`
 - `apps/client/src/pages/RoomPage.tsx`
 - `apps/client/src/services/voice-announcer.ts`
+- `apps/client/src-tauri/Cargo.toml`
+- `apps/client/src-tauri/src/lib.rs`
+- `apps/client/src-tauri/capabilities/*`
+- `package-lock.json`
 
 ## テスト観点
 - create -> join 直後の `room_state` が `READY_CHECK` で、deadline が設定されている。
@@ -77,6 +85,7 @@
 - `PICKING` 開始時に 120 秒 countdown が表示され、deadline 到達で未 pick がランダム補完される。
 - `PLAYING` では `MUSIC SELECT:45` -> `PLAY START:10` -> `IN PLAY` が時刻同期で表示される。
 - stage/title/style/difficulty、10..1 Music Selected、3..1 Let's go の音声キューが再生待機/再生中として見える。
+- Tauri runtime では native TTS が実際に speak/stop でき、非 Tauri runtime では `UNAVAILABLE` 表示になる。
 - ラウンド終了時は `RESULT_READY` を保持したまま snapshot が `CLOSED` になり、Room closed 画面で結果が見える。
 - `pnpm --filter @infinitas/shared typecheck`
 - `pnpm --filter @infinitas/worker typecheck`
@@ -87,6 +96,7 @@
 - chart search に問題があれば新規 API と UI をまとめて revert し、既存の手入力運用へ戻す。
 - 生成 master に問題があれば生成スクリプト変更と JSON 更新をまとめて切り戻す。
 - PICKING/PLAYING timeline に問題があれば deadline と countdown 表示の差分をまとめて revert し、従来の即 PLAYING 進行へ戻す。
+- native TTS に問題があれば plugin 追加と voice service 差分をまとめて revert し、再度別方式を検討する。
 - 結果表示の `CLOSED` 保持に問題があれば `RESULT` state へ戻し、`result_ttl` を復帰する。
 
 ## Commit Plan（コミット分割計画）
@@ -96,6 +106,7 @@
 4. client の PICKING UI 追加。
 5. master 再生成と検証。
 6. PICKING deadline / PLAYING timeline / CLOSED result 表示 / voice 修正。
+7. Tauri native TTS 置換。
 
 ## 検証結果
 - [x] `npm ci`

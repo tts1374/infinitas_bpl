@@ -55,6 +55,16 @@ export interface SaveLocalResultJsonResponse {
   filePath: string;
 }
 
+export interface NativeTtsSpeakRequest {
+  text: string;
+  voiceId?: string | null;
+  language?: string;
+  rate?: number;
+  pitch?: number;
+  volume?: number;
+  queueMode?: "flush" | "add";
+}
+
 declare global {
   interface Window {
     __TAURI_INTERNALS__?: unknown;
@@ -116,6 +126,32 @@ export async function saveLocalResultJson(
 
   const { invoke } = await import("@tauri-apps/api/core");
   return invoke<SaveLocalResultJsonResponse>("save_local_result_json", { request });
+}
+
+export async function speakNativeTts(request: NativeTtsSpeakRequest): Promise<void> {
+  if (!isTauriRuntime()) {
+    throw new Error("Native TTS is available only inside the Tauri desktop app.");
+  }
+
+  const { speak } = await import("tauri-plugin-tts-api");
+  await speak({
+    language: null,
+    voiceId: null,
+    rate: null,
+    pitch: null,
+    volume: null,
+    queueMode: null,
+    ...request,
+  });
+}
+
+export async function stopNativeTts(): Promise<void> {
+  if (!isTauriRuntime()) {
+    return;
+  }
+
+  const { stop } = await import("tauri-plugin-tts-api");
+  await stop();
 }
 
 function createUnavailableState(): SourceWatcherStatePayload {
