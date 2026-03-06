@@ -20,6 +20,7 @@ interface VoiceCue {
   dueAtMs: number;
   text: string;
   detail: string;
+  rate?: number;
 }
 
 const JAPANESE_TEXT_PATTERN = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uff66-\uff9f]/;
@@ -99,9 +100,9 @@ function getStageLabel(roundIndex: number): string {
   const stageNumber = roundIndex + 1;
   switch (stageNumber) {
     case 1:
-      return "1st stage.";
+      return "First stage.";
     case 2:
-      return "2nd stage.";
+      return "Second stage.";
     case 3:
       return "Final stage.";
     default:
@@ -158,18 +159,20 @@ function createVoiceCues(round: CurrentRoundSnapshot): VoiceCue[] {
 
   return [
     ...createSequentialVoiceCues("STAGE", startedAtMs, stageTexts, round.round_index),
-    ...createSequentialVoiceCues(
-      "COUNTDOWN",
-      startedAtMs + ROUND_STAGE_COUNTDOWN_AT_MS,
-      ["10", "9", "8", "7", "6", "5", "4", "3", "2", "1", "Music selected."],
-      round.round_index,
-    ),
-    ...createSequentialVoiceCues(
-      "START",
-      startedAtMs + ROUND_START_CALL_AT_MS,
-      ["3", "2", "1", "Let's go."],
-      round.round_index,
-    ),
+    {
+      phase: "COUNTDOWN",
+      dueAtMs: startedAtMs + ROUND_STAGE_COUNTDOWN_AT_MS,
+      text: "Ten. Nine. Eight. Seven. Six. Five. Four. Three. Two. One. Music selected.",
+      detail: `COUNTDOWN cue for round ${round.round_index + 1}.`,
+      rate: 0.9,
+    },
+    {
+      phase: "START",
+      dueAtMs: startedAtMs + ROUND_START_CALL_AT_MS,
+      text: "Three. Two. One. Let's go.",
+      detail: `START cue for round ${round.round_index + 1}.`,
+      rate: 1,
+    },
   ];
 }
 
@@ -202,7 +205,7 @@ async function speakCue(roundToken: string, cue: VoiceCue): Promise<void> {
     await speakNativeTts({
       text: cue.text,
       language: cueLanguage,
-      rate: 1,
+      rate: cue.rate ?? 1,
       pitch: 1,
       volume: 1,
       queueMode: "add",
