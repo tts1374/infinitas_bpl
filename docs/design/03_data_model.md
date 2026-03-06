@@ -22,8 +22,9 @@
 - `room_state: RoomState`
 - `created_at: datetime`
 - `ready_check_deadline: datetime|null`
+- `picking_deadline: datetime|null`
 - `match_deadline: datetime`（開始基準は1つに固定。推奨: PICKING開始時点）
-- `result_deadline: datetime|null`
+- `result_deadline: datetime|null`（互換用。通常フローでは `null`）
 - `closed_at: datetime|null`
 - `close_reason: string|null`
 
@@ -56,6 +57,7 @@
 - `expected_key: ExpectedKey`
 - `display: { title: string, level: int|null }`
 - `started_at: datetime|null`（PLAYINGで開始時に埋める）
+- `started_at: datetime|null`（`ROUND_BEGIN` 時点。演出開始時刻）
 - `soft_ttl_seconds: int = 300`
 
 ### 2.6 Submission（ラウンド確定結果）
@@ -111,7 +113,7 @@
 ```
 
 ### 3.2 KV更新タイミング
-- ルーム作成: put（expires_at = created_at + ready_check_ttl + match_ttl + result_ttl）
+- ルーム作成: put（expires_at = created_at + ready_check_ttl + match_ttl）
 - ルームCLOSED: delete
 - 任意（Ph1では不要）: 人数・状態を反映したいなら別Keyで集約する（DOに負荷が寄るので後回し）
 

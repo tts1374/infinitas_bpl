@@ -234,6 +234,14 @@ function handleServerMessage(client: RoomSocketClient, message: ServerMessage): 
     case "ROOM_UPDATED":
     case "STATE_SNAPSHOT": {
       const payload = message.payload as { room_state_snapshot: RoomStateSnapshot };
+      const previousSnapshot = internalStore.getState().snapshot;
+      if (
+        payload.room_state_snapshot.room_state === "CLOSED" &&
+        previousSnapshot?.room_state !== "CLOSED"
+      ) {
+        appendEventLog(`Room closed: ${payload.room_state_snapshot.close_reason ?? "CLOSED"}.`);
+      }
+
       internalStore.setState((state) => ({
         ...state,
         snapshot: payload.room_state_snapshot,

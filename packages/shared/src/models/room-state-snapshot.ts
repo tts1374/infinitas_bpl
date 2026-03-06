@@ -37,6 +37,7 @@ export interface CurrentRoundSnapshot {
 
 export interface RoomTimers {
   ready_check_deadline: ISO8601String | null;
+  picking_deadline: ISO8601String | null;
   match_deadline: ISO8601String;
   result_deadline: ISO8601String | null;
 }

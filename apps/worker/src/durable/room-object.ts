@@ -22,7 +22,12 @@ import { normalizeJoinCode } from "../services/join-code";
 import type { WorkerEnv } from "../types/env";
 import { asEnumValue, asOptionalString, isRecord } from "../utils/validation";
 import { createServerEnvelope, decodeClientMessage } from "./ws-codec";
-import { RoomLobbyState, type RoomInitializationInput, type RoundTransitionResult } from "./room-state";
+import {
+  RoomLobbyState,
+  type PickingTimeoutResult,
+  type RoomInitializationInput,
+  type RoundTransitionResult,
+} from "./room-state";
 import { workerChartMaster } from "../master/chart-master";
 
 interface RoomSocketSession {
@@ -529,7 +534,7 @@ export class RoomDurableObject {
       return;
     }
 
-    if (leaveResult.was_host) {
+    if (leaveResult.was_host && !leaveResult.room_was_closed) {
       await this.clearAlarm();
       this.broadcast("ROOM_CLOSED", { reason: "HOST_LEFT" }, true);
       await this.cleanupLobbyEntry();
@@ -650,21 +655,8 @@ export class RoomDurableObject {
       return;
     }
 
-    this.broadcast("PICK_ACCEPTED", {
-      player_id: result.accepted_pick.player_id,
-      pick_chart_key: result.accepted_pick.pick_chart_key,
-      accepted_at: result.accepted_pick.accepted_at.toISOString(),
-    });
-
-    if (result.frozen_rounds !== undefined) {
-      this.broadcast("PICK_FROZEN", {
-        frozen_rounds: result.frozen_rounds,
-      });
-    }
-
-    if (result.round_begin !== undefined) {
-      this.broadcast("ROUND_BEGIN", result.round_begin);
-    }
+    this.broadcastAcceptedPick(result.accepted_pick);
+    this.broadcastFrozenRoundTransition(result.frozen_rounds, result.round_begin);
 
     await this.syncAlarm();
     this.broadcastRoomUpdated();
@@ -707,9 +699,7 @@ export class RoomDurableObject {
       }
     }
 
-    await this.syncAlarm();
-    this.broadcastRoundTransition(result);
-    this.broadcastRoomUpdated();
+    await this.publishRoundTransition(result);
   }
 
   private async handleSkipSelf(session: RoomSocketSession, message: ClientMessage<"SKIP_SELF">): Promise<void> {
@@ -736,9 +726,7 @@ export class RoomDurableObject {
       }
     }
 
-    await this.syncAlarm();
-    this.broadcastRoundTransition(result);
-    this.broadcastRoomUpdated();
+    await this.publishRoundTransition(result);
   }
 
   private async handleSkipHostAssign(
@@ -780,9 +768,7 @@ export class RoomDurableObject {
       }
     }
 
-    await this.syncAlarm();
-    this.broadcastRoundTransition(result);
-    this.broadcastRoomUpdated();
+    await this.publishRoundTransition(result);
   }
 
   private async handleForceAdvance(session: RoomSocketSession): Promise<void> {
@@ -807,9 +793,7 @@ export class RoomDurableObject {
       }
     }
 
-    await this.syncAlarm();
-    this.broadcastRoundTransition(result);
-    this.broadcastRoomUpdated();
+    await this.publishRoundTransition(result);
   }
 
   private findSessionByPlayerId(playerId: string): RoomSocketSession | null {
@@ -833,6 +817,41 @@ export class RoomDurableObject {
     this.broadcast("ROOM_UPDATED", {
       room_state_snapshot: this.roomState.toSnapshot(),
     });
+  }
+
+  private broadcastAcceptedPick(acceptedPick: {
+    player_id: string;
+    pick_chart_key: string;
+    accepted_at: Date;
+  }): void {
+    this.broadcast("PICK_ACCEPTED", {
+      player_id: acceptedPick.player_id,
+      pick_chart_key: acceptedPick.pick_chart_key,
+      accepted_at: acceptedPick.accepted_at.toISOString(),
+    });
+  }
+
+  private broadcastFrozenRoundTransition(
+    frozenRounds: ServerMessagePayloadMap["PICK_FROZEN"]["frozen_rounds"] | undefined,
+    roundBegin: ServerMessagePayloadMap["ROUND_BEGIN"] | undefined,
+  ): void {
+    if (frozenRounds !== undefined) {
+      this.broadcast("PICK_FROZEN", {
+        frozen_rounds: frozenRounds,
+      });
+    }
+
+    if (roundBegin !== undefined) {
+      this.broadcast("ROUND_BEGIN", roundBegin);
+    }
+  }
+
+  private broadcastPickingTimeoutTransition(result: PickingTimeoutResult): void {
+    for (const acceptedPick of result.accepted_picks) {
+      this.broadcastAcceptedPick(acceptedPick);
+    }
+
+    this.broadcastFrozenRoundTransition(result.frozen_rounds, result.round_begin);
   }
 
   private broadcastRoundTransition(result: RoundTransitionResult): void {
@@ -949,28 +968,35 @@ export class RoomDurableObject {
     await this.state.storage.setAlarm(nextAlarmAt);
   }
 
+  private async publishRoundTransition(result: RoundTransitionResult): Promise<void> {
+    await this.syncAlarm();
+    this.broadcastRoundTransition(result);
+    this.broadcastRoomUpdated();
+    await this.cleanupLobbyEntryIfClosed();
+  }
+
   private async processDueTransitions(now: Date): Promise<boolean> {
     if (await this.closeReadyCheckOnTimeout(now)) {
       return true;
     }
 
-    if (await this.closeResultOnTimeout(now)) {
-      return true;
+    const pickingTransition = this.roomState.expirePickingIfNeeded(now);
+    if (pickingTransition !== null) {
+      this.broadcastPickingTimeoutTransition(pickingTransition);
+      await this.syncAlarm();
+      this.broadcastRoomUpdated();
+      return false;
     }
 
     const matchTransition = this.roomState.expireMatchIfNeeded(now);
     if (matchTransition !== null) {
-      await this.syncAlarm();
-      this.broadcastRoundTransition(matchTransition);
-      this.broadcastRoomUpdated();
+      await this.publishRoundTransition(matchTransition);
       return false;
     }
 
     const roundTransition = this.roomState.expireCurrentRoundIfNeeded(now);
     if (roundTransition !== null) {
-      await this.syncAlarm();
-      this.broadcastRoundTransition(roundTransition);
-      this.broadcastRoomUpdated();
+      await this.publishRoundTransition(roundTransition);
     }
 
     return false;
@@ -989,19 +1015,6 @@ export class RoomDurableObject {
     return true;
   }
 
-  private async closeResultOnTimeout(now: Date): Promise<boolean> {
-    const closed = this.roomState.closeResultIfExpired(now);
-    if (!closed) {
-      return false;
-    }
-
-    await this.clearAlarm();
-    this.broadcast("ROOM_CLOSED", { reason: "RESULT_TIMEOUT" }, true);
-    await this.cleanupLobbyEntry();
-    this.disconnectAll(4002, "Result expired.");
-    return true;
-  }
-
   private async cleanupLobbyEntry(): Promise<void> {
     if (!this.roomState.isInitialized()) {
       return;
@@ -1012,5 +1025,13 @@ export class RoomDurableObject {
     } catch {
       // no-op: list API has expires_at guard as fallback
     }
+  }
+
+  private async cleanupLobbyEntryIfClosed(): Promise<void> {
+    if (this.roomState.getRoomState() !== "CLOSED") {
+      return;
+    }
+
+    await this.cleanupLobbyEntry();
   }
 }

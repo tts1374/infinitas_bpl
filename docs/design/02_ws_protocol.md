@@ -114,6 +114,7 @@
 ### 4.5 RESULT
 - `RESULT_READY`
   - payload: `{ summary: object, per_round: object, per_player: object }`
+  - 備考: 通常フローでは `PLAYING -> CLOSED` 遷移直前または同時に配信し、`CLOSED` 画面でも保持して表示する
 
 ### 4.6 同期/エラー
 - `STATE_SNAPSHOT`
@@ -169,7 +170,9 @@
   },
   "timers": {
     "ready_check_deadline": "ISO8601|null",
-    "match_deadline": "ISO8601"
+    "picking_deadline": "ISO8601|null",
+    "match_deadline": "ISO8601",
+    "result_deadline": "ISO8601|null"
   }
 }
 ```
@@ -179,6 +182,7 @@
 - 冪等化: `(player_id, client_msg_id)` は二重適用しない
 - 先着順: `PICK_SUBMIT` の採用順はDO受信順（DOがaccepted_at付与）
 - 代理SKIP: `now - round_started_at >= 240s` かつ target未確定のみ許可
-- START_MATCH: `players >= 2` かつ `room_state=READY_CHECK` のみ
+- START_MATCH: `players >= 2` かつ `room_state=READY_CHECK` かつ全員READY のみ
 - RESULT_SUBMIT: `observed_key == expected_key` かつ `round_index == current_round_index` のみ採用（accept_window=0）
-- RESULT到達後: 提出系はすべて拒否（勝敗改変防止）
+- PICKING timeout: 未pickプレイヤーへランダム割当を行ってから `PICK_FROZEN` / `ROUND_BEGIN` を配信
+- `RESULT_READY` 生成後の `CLOSED` では提出系はすべて拒否（勝敗改変防止）

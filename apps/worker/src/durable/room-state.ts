@@ -2,9 +2,10 @@ import {
   BPL_ROUNDS,
   HOST_SKIP_UNLOCK_SECONDS,
   MATCH_TTL_MINUTES,
+  PICKING_TTL_SECONDS,
   READY_CHECK_TTL_MINUTES,
   REJOIN_COOLDOWN_SECONDS,
-  RESULT_TTL_MINUTES,
+  ROUND_PLAY_BEGIN_AT_SECONDS,
   ROUND_SOFT_TTL_SECONDS,
   START_MIN_PLAYERS,
   type CurrentRoundSnapshot,
@@ -66,6 +67,7 @@ export interface JoinPlayerResult {
 export interface LeavePlayerResult {
   changed: boolean;
   was_host: boolean;
+  room_was_closed: boolean;
 }
 
 export interface ReadyCheckOpenResult {
@@ -104,6 +106,16 @@ export interface PickSubmitResult {
     round_started_at: string;
     soft_ttl_seconds: number;
   };
+}
+
+export interface PickingTimeoutResult {
+  accepted_picks: Array<{
+    player_id: string;
+    pick_chart_key: string;
+    accepted_at: Date;
+  }>;
+  frozen_rounds: FrozenRound[];
+  round_begin: RoundBeginEvent;
 }
 
 export interface RoundConfirmationEvent {
@@ -183,8 +195,8 @@ function computeReadyCheckDeadline(openedAt: Date): Date {
   return new Date(openedAt.getTime() + READY_CHECK_TTL_MINUTES * 60_000);
 }
 
-function computeResultDeadline(startedAt: Date): Date {
-  return new Date(startedAt.getTime() + RESULT_TTL_MINUTES * 60_000);
+function computePickingDeadline(startedAt: Date): Date {
+  return new Date(startedAt.getTime() + PICKING_TTL_SECONDS * 1_000);
 }
 
 function computeRejoinUntil(now: Date): Date {
@@ -241,6 +253,7 @@ export class RoomLobbyState {
   private createdAt = new Date();
   private matchDeadline = computeMatchDeadline(this.createdAt);
   private readyCheckDeadline: Date | null = null;
+  private pickingDeadline: Date | null = null;
   private resultDeadline: Date | null = null;
   private closedAt: Date | null = null;
   private closeReason: string | null = null;
@@ -364,10 +377,11 @@ export class RoomLobbyState {
   leavePlayer(playerId: string, now: Date): LeavePlayerResult {
     const player = this.players.get(playerId);
     if (!player) {
-      return { changed: false, was_host: false };
+      return { changed: false, was_host: false, room_was_closed: this.roomState === "CLOSED" };
     }
 
     const wasHost = this.hostPlayerId === playerId;
+    const roomWasClosed = this.roomState === "CLOSED";
     player.connected = false;
     player.left_at = now;
 
@@ -377,11 +391,11 @@ export class RoomLobbyState {
       player.rejoin_until = computeRejoinUntil(now);
     }
 
-    if (wasHost) {
+    if (wasHost && !roomWasClosed) {
       this.close("HOST_LEFT", now);
     }
 
-    return { changed: true, was_host: wasHost };
+    return { changed: true, was_host: wasHost, room_was_closed: roomWasClosed };
   }
 
   openReadyCheck(playerId: string, now: Date): ReadyCheckOpenResult {
@@ -442,6 +456,7 @@ export class RoomLobbyState {
 
     this.roomState = "PICKING";
     this.readyCheckDeadline = null;
+    this.pickingDeadline = computePickingDeadline(now);
     this.matchDeadline = computeMatchDeadline(now);
     this.resultDeadline = null;
     this.matchPlayerIds = this.getPlayersInJoinOrder().map((player) => player.player_id);
@@ -527,11 +542,13 @@ export class RoomLobbyState {
     }
 
     if (this.roomState === "PICKING") {
-      return this.matchDeadline;
-    }
+      if (this.pickingDeadline === null) {
+        return this.matchDeadline;
+      }
 
-    if (this.roomState === "RESULT" && this.resultDeadline !== null) {
-      return this.resultDeadline;
+      return this.pickingDeadline.getTime() <= this.matchDeadline.getTime()
+        ? this.pickingDeadline
+        : this.matchDeadline;
     }
 
     if (this.roomState !== "PLAYING" || this.currentRound === null) {
@@ -724,6 +741,74 @@ export class RoomLobbyState {
     return this.readyCheckDeadline;
   }
 
+  expirePickingIfNeeded(now: Date): PickingTimeoutResult | null {
+    if (
+      this.roomState !== "PICKING" ||
+      this.pickingDeadline === null ||
+      now.getTime() < this.pickingDeadline.getTime()
+    ) {
+      return null;
+    }
+
+    const usedChartKeys = new Set(this.picks.map((pick) => pick.pick_chart_key));
+    const missingPlayerIds = this.matchPlayerIds.filter(
+      (playerId) => !this.picks.some((pick) => pick.player_id === playerId),
+    );
+    const acceptedPicks: PickingTimeoutResult["accepted_picks"] = [];
+
+    for (const [index, playerId] of missingPlayerIds.entries()) {
+      const acceptedAt = new Date(now.getTime() + index);
+      const autoPick = this.chartMaster.pickRandomUnusedChart({
+        play_style: this.settings.play_style,
+        level_filter: this.settings.level_filter,
+        used_chart_keys: usedChartKeys,
+        seed: `${this.roomId}:auto-pick:${playerId}:${acceptedAt.toISOString()}`,
+      });
+      if (autoPick === null) {
+        return null;
+      }
+
+      this.picks.push({
+        player_id: playerId,
+        pick_chart_key: autoPick.chart_key,
+        accepted_at: acceptedAt,
+        expected_key: cloneExpectedKey(autoPick.expected_key),
+        display: {
+          title: autoPick.display.title,
+          level: autoPick.display.level,
+        },
+      });
+      usedChartKeys.add(autoPick.chart_key);
+      acceptedPicks.push({
+        player_id: playerId,
+        pick_chart_key: autoPick.chart_key,
+        accepted_at: acceptedAt,
+      });
+    }
+
+    const frozenRounds = this.buildFrozenRounds();
+    if (frozenRounds.length === 0) {
+      return null;
+    }
+
+    this.frozenRounds = frozenRounds;
+    const roundBegin = this.beginFirstRound(now);
+    if (roundBegin === null) {
+      return null;
+    }
+
+    return {
+      accepted_picks: acceptedPicks,
+      frozen_rounds: frozenRounds.map(cloneFrozenRound),
+      round_begin: {
+        round_index: roundBegin.round_index,
+        expected_key: cloneExpectedKey(roundBegin.expected_key),
+        round_started_at: roundBegin.round_started_at,
+        soft_ttl_seconds: roundBegin.soft_ttl_seconds,
+      },
+    };
+  }
+
   closeReadyCheckIfExpired(now: Date): boolean {
     if (
       this.roomState !== "READY_CHECK" ||
@@ -737,26 +822,13 @@ export class RoomLobbyState {
     return true;
   }
 
-  closeResultIfExpired(now: Date): boolean {
-    if (
-      this.roomState !== "RESULT" ||
-      this.resultDeadline === null ||
-      now.getTime() < this.resultDeadline.getTime()
-    ) {
-      return false;
-    }
-
-    this.close("RESULT_TIMEOUT", now);
-    return true;
-  }
-
   expireMatchIfNeeded(now: Date): RoundTransitionResult | null {
     if ((this.roomState !== "PICKING" && this.roomState !== "PLAYING") || now.getTime() < this.matchDeadline.getTime()) {
       return null;
     }
 
     if (this.roomState === "PICKING" || this.currentRound === null) {
-      this.enterResult(now);
+      this.closeWithResult("MATCH_TIMEOUT", now);
       return {
         confirmations: [],
         ...(this.resultReadyPayload === null ? {} : { result_ready: this.resultReadyPayload }),
@@ -801,6 +873,7 @@ export class RoomLobbyState {
 
     this.roomState = "CLOSED";
     this.readyCheckDeadline = null;
+    this.pickingDeadline = null;
     this.resultDeadline = null;
     this.closeReason = reason;
     this.closedAt = now;
@@ -843,6 +916,7 @@ export class RoomLobbyState {
             },
       timers: {
         ready_check_deadline: toIsoString(this.readyCheckDeadline),
+        picking_deadline: toIsoString(this.pickingDeadline),
         match_deadline: this.matchDeadline.toISOString(),
         result_deadline: toIsoString(this.resultDeadline),
       },
@@ -862,7 +936,11 @@ export class RoomLobbyState {
       return null;
     }
 
-    return new Date(roundStartedAt.getTime() + this.currentRound.soft_ttl_seconds * 1_000);
+    return new Date(
+      roundStartedAt.getTime() +
+        ROUND_PLAY_BEGIN_AT_SECONDS * 1_000 +
+        this.currentRound.soft_ttl_seconds * 1_000,
+    );
   }
 
   private isSameExpectedKey(left: ExpectedKey, right: ExpectedKey): boolean {
@@ -970,7 +1048,7 @@ export class RoomLobbyState {
     result.round_ended = { round_index: currentRoundIndex };
 
     if (options.force_result || this.shouldEnterResultAfterRound(currentRoundIndex)) {
-      this.enterResult(now);
+      this.closeWithResult(options.force_result ? "MATCH_TIMEOUT" : "MATCH_FINISHED", now);
       if (this.resultReadyPayload !== null) {
         result.result_ready = this.resultReadyPayload;
       }
@@ -983,18 +1061,22 @@ export class RoomLobbyState {
       return result;
     }
 
-    this.enterResult(now);
+    this.closeWithResult("MATCH_FINISHED", now);
     if (this.resultReadyPayload !== null) {
       result.result_ready = this.resultReadyPayload;
     }
     return result;
   }
 
-  private enterResult(now: Date): void {
-    this.roomState = "RESULT";
-    this.currentRound = null;
-    this.resultDeadline = computeResultDeadline(now);
+  private closeWithResult(reason: string, now: Date): void {
     this.resultReadyPayload = this.buildResultReadyPayload();
+    this.currentRound = null;
+    this.roomState = "CLOSED";
+    this.readyCheckDeadline = null;
+    this.pickingDeadline = null;
+    this.resultDeadline = null;
+    this.closeReason = reason;
+    this.closedAt = now;
   }
 
   private getPlayersInJoinOrder(): InternalPlayer[] {
@@ -1160,6 +1242,8 @@ export class RoomLobbyState {
       soft_ttl_seconds: startedRound.soft_ttl_seconds,
       confirmed: [],
     };
+    this.pickingDeadline = null;
+    this.resultDeadline = null;
     return this.currentRound;
   }
 
