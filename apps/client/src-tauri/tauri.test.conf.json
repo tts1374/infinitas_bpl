@@ -1,0 +1,20 @@
+{
+  "productName": "INFINITAS BPL Test",
+  "identifier": "com.infinitas.bpl.client.test",
+  "build": {
+    "beforeBuildCommand": "npm --workspace @infinitas/client run build:test"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "INFINITAS BPL TEST",
+        "width": 1280,
+        "height": 900,
+        "minWidth": 1024,
+        "minHeight": 720,
+        "resizable": true
+      }
+    ]
+  }
+}

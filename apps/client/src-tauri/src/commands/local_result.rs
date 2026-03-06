@@ -1,4 +1,5 @@
 use std::{
+    env,
     fs,
     path::{Path, PathBuf},
 };
@@ -8,6 +9,7 @@ use tauri::{AppHandle, Manager};
 use crate::models::{SaveLocalResultRequest, SaveLocalResultResponse};
 
 const RESULT_DIRECTORY_NAME: &str = "room-results";
+const INSTANCE_ID_ENV_KEY: &str = "INFINITAS_INSTANCE_ID";
 
 #[tauri::command]
 pub fn save_local_result_json(
@@ -19,7 +21,7 @@ pub fn save_local_result_json(
         .app_local_data_dir()
         .map_err(|error| format!("Failed to resolve app local data directory: {error}"))?;
 
-    let result_dir = base_dir.join(RESULT_DIRECTORY_NAME);
+    let result_dir = build_result_directory(&base_dir);
     fs::create_dir_all(&result_dir)
         .map_err(|error| format!("Failed to create result directory: {error}"))?;
 
@@ -29,6 +31,20 @@ pub fn save_local_result_json(
     Ok(SaveLocalResultResponse {
         file_path: file_path.to_string_lossy().into_owned(),
     })
+}
+
+fn build_result_directory(base_dir: &Path) -> PathBuf {
+    let result_dir = base_dir.join(RESULT_DIRECTORY_NAME);
+    let Ok(instance_id) = env::var(INSTANCE_ID_ENV_KEY) else {
+        return result_dir;
+    };
+
+    let trimmed = instance_id.trim();
+    if trimmed.is_empty() {
+        return result_dir;
+    }
+
+    result_dir.join(sanitize_file_component(trimmed))
 }
 
 fn build_result_file_name(request: &SaveLocalResultRequest) -> String {

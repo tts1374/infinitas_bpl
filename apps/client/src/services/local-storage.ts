@@ -1,9 +1,11 @@
+import { buildScopedStorageKey } from "../runtime/runtime-config";
+
 export function readJson<TValue>(key: string, fallbackValue: TValue): TValue {
   if (typeof window === "undefined") {
     return fallbackValue;
   }
 
-  const rawValue = window.localStorage.getItem(key);
+  const rawValue = window.localStorage.getItem(buildScopedStorageKey(key));
   if (rawValue === null) {
     return fallbackValue;
   }
@@ -20,5 +22,5 @@ export function writeJson(key: string, value: unknown): void {
     return;
   }
 
-  window.localStorage.setItem(key, JSON.stringify(value));
+  window.localStorage.setItem(buildScopedStorageKey(key), JSON.stringify(value));
 }

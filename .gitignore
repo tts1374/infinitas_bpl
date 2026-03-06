@@ -3,3 +3,4 @@ dist/
 .wrangler/
 apps/client/src-tauri/target/
 apps/client/src-tauri/gen/
+testdata/runtime/

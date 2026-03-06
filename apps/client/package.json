@@ -6,9 +6,11 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 1420",
     "build": "vite build",
+    "build:test": "vite build --mode test",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "tauri:build:test": "tauri build --config src-tauri/tauri.test.conf.json"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.5.1",

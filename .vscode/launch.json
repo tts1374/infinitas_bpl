@@ -1,0 +1,20 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "INFINITAS BPL (Tauri Dev)",
+      "type": "node-terminal",
+      "request": "launch",
+      "preLaunchTask": "Worker Dev",
+      "command": "npm --workspace @infinitas/client run tauri:dev",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "INFINITAS BPL (2 Clients Local)",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\scripts\\start-local-two-clients.ps1\"",
+      "cwd": "${workspaceFolder}"
+    }
+  ]
+}

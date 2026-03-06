@@ -1,17 +1,17 @@
-import type { ExpectedKey, SourceType } from "@infinitas/shared";
+import type { SourceType } from "@infinitas/shared";
 import {
   getSourceWatcherState,
   isTauriRuntime,
   listenToSourceWatcherEvents,
-  type ParsedSourceObservationPayload,
+  type ParsedSourceChangePayload,
   startSourceWatcher,
   stopSourceWatcher,
-  type ParsedSourceChangePayload,
   type SourceWatcherEventKind,
   type SourceWatcherEventPayload,
   type SourceWatcherStatePayload,
   type SourceWatcherStatus,
 } from "../services/tauri-bridge";
+import { submitParsedSourceChange } from "../services/source-submission";
 import { roomStore } from "./room-store";
 import { createExternalStore, useExternalStore } from "./create-store";
 import { settingsStore, type ClientSettings, type SourcePaths } from "./settings-store";
@@ -95,94 +95,12 @@ function mapWatcherEvent(payload: SourceWatcherEventPayload): SourceWatcherEvent
   };
 }
 
-function observationMatchesExpected(
-  observation: ParsedSourceObservationPayload,
-  expectedKey: ExpectedKey,
-): boolean {
-  const observedPlayStyle = observation.playStyle ?? expectedKey.play_style;
-  return (
-    observedPlayStyle === expectedKey.play_style &&
-    observation.difficulty === expectedKey.difficulty &&
-    observation.titleSearchKey === expectedKey.title_search_key
-  );
-}
-
 function handleWatcherError(payload: SourceWatcherEventPayload): void {
   if (payload.kind !== "ERROR") {
     return;
   }
 
   roomStore.reportSourceUnavailable(payload.detail);
-}
-
-function tryAutoSubmitParsedChange(parsedChange: ParsedSourceChangePayload): void {
-  if (parsedChange.observations.length === 0) {
-    return;
-  }
-
-  const roomState = roomStore.getState();
-  const snapshot = roomState.snapshot;
-  const currentRound = snapshot?.current_round ?? null;
-  if (
-    roomState.connectionStatus !== "CONNECTED" ||
-    snapshot === null ||
-    snapshot.room_state !== "PLAYING" ||
-    currentRound === null
-  ) {
-    return;
-  }
-
-  const savedSettings = settingsStore.getState().saved;
-  if (currentRound.confirmed.some((entry) => entry.player_id === savedSettings.playerId)) {
-    return;
-  }
-
-  const matchedObservation = parsedChange.observations.find((observation) =>
-    observationMatchesExpected(observation, currentRound.expected_key),
-  );
-  if (!matchedObservation) {
-    return;
-  }
-
-  const metricValue =
-    snapshot.settings.win_metric === "SCORE"
-      ? matchedObservation.score
-      : matchedObservation.misscount;
-  const observedPlayStyle =
-    matchedObservation.playStyle ?? currentRound.expected_key.play_style;
-  if (!Number.isInteger(metricValue) || metricValue < 0) {
-    return;
-  }
-
-  const sent = roomStore.send("RESULT_SUBMIT", {
-    round_index: currentRound.round_index,
-    observed_key: {
-      play_style: observedPlayStyle,
-      difficulty: matchedObservation.difficulty,
-      title_search_key: matchedObservation.titleSearchKey,
-    },
-    metric_value: metricValue,
-    source_meta: {
-      source: parsedChange.source,
-      timestamp: matchedObservation.timestamp,
-      difficulty: matchedObservation.difficulty,
-      title: matchedObservation.title,
-      title_search_key: matchedObservation.titleSearchKey,
-      score: matchedObservation.score,
-      misscount: matchedObservation.misscount,
-      file_path: parsedChange.filePath,
-    },
-  });
-
-  if (!sent) {
-    return;
-  }
-
-  const timestampLabel =
-    matchedObservation.timestamp.trim().length > 0 ? ` (${matchedObservation.timestamp})` : "";
-  roomStore.noteLocalEvent(
-    `Auto-submitted ${snapshot.settings.win_metric} from ${parsedChange.source}${timestampLabel}.`,
-  );
 }
 
 function handleWatcherEvent(payload: SourceWatcherEventPayload): void {
@@ -199,7 +117,7 @@ function handleWatcherEvent(payload: SourceWatcherEventPayload): void {
     return;
   }
 
-  tryAutoSubmitParsedChange(payload.parserOutput);
+  submitParsedSourceChange(payload.parserOutput, payload.parserOutput.source);
 }
 
 function getMissingPathMessage(source: SourceType, paths: SourcePaths): string | null {

@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "kind": "result-template",
+  "case_name": "arena_score_draw_equal",
+  "description": "ARENA / SCORE. Use the same case on both clients when you want an equal-score round.",
+  "target_room": {
+    "mode": "ARENA",
+    "win_metric": "SCORE",
+    "play_style": "SP"
+  },
+  "source": "inf-notebook",
+  "metric_value": 2222,
+  "source_meta": {
+    "timestamp": "20260306-200200",
+    "title": "debug arena score draw",
+    "score": 2222,
+    "misscount": 26
+  }
+}

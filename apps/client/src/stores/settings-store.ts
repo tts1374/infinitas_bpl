@@ -1,4 +1,5 @@
 import { SOURCE_TYPES, type SourceType } from "@infinitas/shared";
+import { runtimeConfig } from "../runtime/runtime-config";
 import { readJson, writeJson } from "../services/local-storage";
 import { createExternalStore, useExternalStore } from "./create-store";
 
@@ -53,14 +54,37 @@ function normalizeBaseUrl(value: string | undefined): string {
   return (trimmed.length === 0 ? DEFAULT_API_BASE_URL : trimmed).replace(/\/+$/, "");
 }
 
-function normalizeSettings(rawSettings: PartialClientSettings | null): ClientSettings {
+function createDefaultSettings(): ClientSettings {
+  const defaultSourcePaths = createDefaultSourcePaths();
   return {
-    apiBaseUrl: normalizeBaseUrl(rawSettings?.apiBaseUrl),
-    playerId: rawSettings?.playerId?.trim() || crypto.randomUUID(),
-    displayName: rawSettings?.displayName?.trim() ?? "",
-    source: normalizeSource(rawSettings?.source),
+    apiBaseUrl: normalizeBaseUrl(runtimeConfig.settingsDefaults.apiBaseUrl),
+    playerId: runtimeConfig.settingsDefaults.playerId?.trim() || crypto.randomUUID(),
+    displayName: runtimeConfig.settingsDefaults.displayName?.trim() ?? "",
+    source: normalizeSource(runtimeConfig.settingsDefaults.source),
     sourcePaths: {
-      ...createDefaultSourcePaths(),
+      dakenTodayUpdateXml:
+        runtimeConfig.settingsDefaults.sourcePaths.dakenTodayUpdateXml ??
+        defaultSourcePaths.dakenTodayUpdateXml,
+      notebookExportRecentJson:
+        runtimeConfig.settingsDefaults.sourcePaths.notebookExportRecentJson ??
+        defaultSourcePaths.notebookExportRecentJson,
+      notebookRecordsRecentJson:
+        runtimeConfig.settingsDefaults.sourcePaths.notebookRecordsRecentJson ??
+        defaultSourcePaths.notebookRecordsRecentJson,
+    },
+    voiceEnabled: true,
+  };
+}
+
+function normalizeSettings(rawSettings: PartialClientSettings | null): ClientSettings {
+  const defaults = createDefaultSettings();
+  return {
+    apiBaseUrl: normalizeBaseUrl(rawSettings?.apiBaseUrl ?? defaults.apiBaseUrl),
+    playerId: rawSettings?.playerId?.trim() || defaults.playerId,
+    displayName: rawSettings?.displayName?.trim() ?? defaults.displayName,
+    source: normalizeSource(rawSettings?.source ?? defaults.source),
+    sourcePaths: {
+      ...defaults.sourcePaths,
       ...rawSettings?.sourcePaths,
     },
     voiceEnabled: rawSettings?.voiceEnabled ?? true,

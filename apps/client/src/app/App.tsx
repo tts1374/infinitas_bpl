@@ -2,6 +2,7 @@ import { startTransition, useEffect, useState } from "react";
 import { ErrorDialog } from "../components/ErrorDialog";
 import { LobbyPage } from "../pages/LobbyPage";
 import { RoomPage } from "../pages/RoomPage";
+import { runtimeConfig } from "../runtime/runtime-config";
 import { localResultArchiveService } from "../services/result-archive";
 import { voiceAnnouncerService } from "../services/voice-announcer";
 import { SettingsPage } from "../pages/SettingsPage";
@@ -70,6 +71,13 @@ export function App() {
           <h1>INFINITAS BPL Client</h1>
         </div>
         <div className="header-status">
+          {runtimeConfig.instanceId !== null ? (
+            <div className="status-stack">
+              <span className="status-label">Instance</span>
+              <strong>{runtimeConfig.instanceLabel}</strong>
+              <span className="status-muted">{runtimeConfig.instanceId}</span>
+            </div>
+          ) : null}
           <div className="status-stack">
             <span className="status-label">Player</span>
             <strong>{savedSettings.displayName || "Unnamed player"}</strong>

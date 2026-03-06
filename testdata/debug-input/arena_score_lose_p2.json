@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "kind": "result-template",
+  "case_name": "arena_score_lose_p2",
+  "description": "ARENA / SCORE. Use this on player 2 when you want this side to lose to the win_p1 case.",
+  "target_room": {
+    "mode": "ARENA",
+    "win_metric": "SCORE",
+    "play_style": "SP"
+  },
+  "source": "inf-notebook",
+  "metric_value": 1980,
+  "source_meta": {
+    "timestamp": "20260306-200130",
+    "title": "debug arena score lose p2",
+    "score": 1980,
+    "misscount": 41
+  }
+}

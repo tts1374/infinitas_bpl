@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "kind": "result-template",
+  "case_name": "arena_misscount_clean_run",
+  "description": "ARENA / MISSCOUNT. Low BP example for validating misscount rules with inf_daken_counter style payloads.",
+  "target_room": {
+    "mode": "ARENA",
+    "win_metric": "MISSCOUNT",
+    "play_style": "SP"
+  },
+  "source": "inf_daken_counter",
+  "metric_value": 8,
+  "source_meta": {
+    "title": "debug arena misscount clean run",
+    "score": 2310,
+    "misscount": 8
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "kind": "skip-template",
+  "case_name": "bpl_skip_case",
+  "description": "BPL / SCORE. Sends SKIP_SELF with TECH to validate skip handling without touching watcher files.",
+  "target_room": {
+    "mode": "BPL",
+    "win_metric": "SCORE",
+    "play_style": "SP"
+  },
+  "skip_reason": "TECH"
+}

@@ -1,7 +1,9 @@
 import { handleGetRooms, handlePostRooms, handleRoomWebSocket, matchRoomWebSocketPath } from "./routes/rooms";
 import { RoomDurableObject } from "./durable/room-object";
 import type { WorkerEnv } from "./types/env";
-import { methodNotAllowed, notFound } from "./utils/http";
+import { methodNotAllowed, noContent, notFound, withCors } from "./utils/http";
+
+const ROOMS_ALLOWED_METHODS = ["GET", "POST"];
 
 export { RoomDurableObject };
 
@@ -15,14 +17,17 @@ export default {
     }
 
     if (url.pathname === "/api/rooms") {
+      if (request.method === "OPTIONS") {
+        return withCors(noContent(), request, ROOMS_ALLOWED_METHODS);
+      }
       if (request.method === "POST") {
-        return handlePostRooms(request, env);
+        return withCors(await handlePostRooms(request, env), request, ROOMS_ALLOWED_METHODS);
       }
       if (request.method === "GET") {
-        return handleGetRooms(request, env);
+        return withCors(await handleGetRooms(request, env), request, ROOMS_ALLOWED_METHODS);
       }
 
-      return methodNotAllowed(["GET", "POST"]);
+      return withCors(methodNotAllowed([...ROOMS_ALLOWED_METHODS, "OPTIONS"]), request, ROOMS_ALLOWED_METHODS);
     }
 
     return notFound();

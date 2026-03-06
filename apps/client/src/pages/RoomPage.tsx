@@ -1,5 +1,6 @@
 import { HOST_SKIP_UNLOCK_SECONDS, SKIP_REASONS } from "@infinitas/shared";
 import { useState } from "react";
+import { DebugInjectionPanel } from "../components/DebugInjectionPanel";
 import { useLocalResultArchiveStore } from "../services/result-archive";
 import { useVoicePlaybackStore } from "../services/voice-announcer";
 import { roomStore, useRoomStore } from "../stores/room-store";
@@ -489,6 +490,8 @@ export function RoomPage() {
                   </p>
                 </section>
               </div>
+
+              <DebugInjectionPanel />
 
               <section className="panel-subsection">
                 <h3>Confirmed players</h3>

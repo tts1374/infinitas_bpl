@@ -364,6 +364,44 @@ button {
   flex: 1;
 }
 
+.debug-panel {
+  border-top: 1px solid rgba(22, 32, 50, 0.08);
+  padding-top: 1rem;
+}
+
+.debug-grid {
+  align-items: flex-start;
+}
+
+.debug-card {
+  flex: 1;
+  padding: 1rem;
+  border-radius: 18px;
+  background: rgba(247, 242, 224, 0.72);
+}
+
+.debug-status-strip {
+  margin-top: 1rem;
+}
+
+.debug-outcome {
+  display: grid;
+  gap: 0.2rem;
+  margin-top: 1rem;
+  padding: 0.9rem 1rem;
+  border-radius: 18px;
+}
+
+.debug-outcome.ok {
+  background: rgba(42, 157, 85, 0.12);
+  color: #185f32;
+}
+
+.debug-outcome.danger {
+  background: rgba(190, 49, 68, 0.12);
+  color: #8d1224;
+}
+
 .watcher-path-list {
   gap: 0.5rem;
 }

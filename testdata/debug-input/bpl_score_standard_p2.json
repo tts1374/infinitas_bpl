@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "kind": "result-template",
+  "case_name": "bpl_score_standard_p2",
+  "description": "BPL / SCORE. Standard score example for the second client in a BPL room.",
+  "target_room": {
+    "mode": "BPL",
+    "win_metric": "SCORE",
+    "play_style": "SP"
+  },
+  "source": "inf-notebook",
+  "metric_value": 2410,
+  "source_meta": {
+    "timestamp": "20260306-200300",
+    "title": "debug bpl score standard p2",
+    "score": 2410,
+    "misscount": 22
+  }
+}
