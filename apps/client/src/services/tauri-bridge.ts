@@ -45,6 +45,16 @@ interface StartSourceWatcherRequest {
   sourcePaths: SourcePaths;
 }
 
+export interface SaveLocalResultJsonRequest {
+  roomId: string;
+  createdAt: string | null;
+  jsonText: string;
+}
+
+export interface SaveLocalResultJsonResponse {
+  filePath: string;
+}
+
 declare global {
   interface Window {
     __TAURI_INTERNALS__?: unknown;
@@ -95,6 +105,17 @@ export async function listenToSourceWatcherEvents(
   return listen<SourceWatcherEventPayload>(SOURCE_WATCHER_EVENT_NAME, (event) => {
     handler(event.payload);
   });
+}
+
+export async function saveLocalResultJson(
+  request: SaveLocalResultJsonRequest,
+): Promise<SaveLocalResultJsonResponse> {
+  if (!isTauriRuntime()) {
+    throw new Error("Local result save is available only inside the Tauri desktop app.");
+  }
+
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<SaveLocalResultJsonResponse>("save_local_result_json", { request });
 }
 
 function createUnavailableState(): SourceWatcherStatePayload {

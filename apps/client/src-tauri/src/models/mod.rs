@@ -1,5 +1,7 @@
+mod local_result;
 mod source_watcher;
 
+pub use local_result::{SaveLocalResultRequest, SaveLocalResultResponse};
 pub use source_watcher::{
     now_ms, ParsedSourceChange, ParsedSourceObservation, SourcePathsConfig, SourceType,
     SourceWatcherEventKind, SourceWatcherEventPayload, SourceWatcherStatePayload,
