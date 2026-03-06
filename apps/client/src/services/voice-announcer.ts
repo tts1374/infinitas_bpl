@@ -136,7 +136,7 @@ function createVoiceCues(round: CurrentRoundSnapshot): VoiceCue[] {
     ...createSequentialVoiceCues(
       "COUNTDOWN",
       startedAtMs + ROUND_STAGE_COUNTDOWN_AT_MS,
-      ["10", "9", "8", "7", "6", "5", "4", "Round begin."],
+      ["10", "9", "8", "7", "6", "5", "4", "3", "2", "1", "Round begin."],
       round.round_index,
     ),
     ...createSequentialVoiceCues(
