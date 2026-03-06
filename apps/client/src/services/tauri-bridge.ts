@@ -1,4 +1,4 @@
-import type { SourceType } from "@infinitas/shared";
+import type { PlayStyle, SourceType } from "@infinitas/shared";
 import type { SourcePaths } from "../stores/settings-store";
 
 const SOURCE_WATCHER_EVENT_NAME = "source-watcher://event";
@@ -16,6 +16,7 @@ export interface SourceWatcherStatePayload {
 
 export interface ParsedSourceObservationPayload {
   timestamp: string;
+  playStyle: PlayStyle | null;
   difficulty: string;
   title: string;
   titleSearchKey: string;

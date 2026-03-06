@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::env;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
@@ -434,9 +435,22 @@ fn require_path(raw_path: &str, label: &str) -> Result<PathBuf, String> {
 fn path_key(path: &Path) -> String {
     let normalized = path
         .canonicalize()
-        .unwrap_or_else(|_| path.to_path_buf())
+        .unwrap_or_else(|_| {
+            if path.is_absolute() {
+                path.to_path_buf()
+            } else {
+                env::current_dir()
+                    .map(|current_dir| current_dir.join(path))
+                    .unwrap_or_else(|_| path.to_path_buf())
+            }
+        })
         .to_string_lossy()
         .replace('/', "\\");
 
-    normalized.to_lowercase()
+    normalized
+        .strip_prefix("\\\\?\\UNC\\")
+        .map(|remainder| format!("\\\\{remainder}"))
+        .or_else(|| normalized.strip_prefix("\\\\?\\").map(str::to_string))
+        .unwrap_or(normalized)
+        .to_lowercase()
 }
