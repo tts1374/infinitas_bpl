@@ -318,6 +318,7 @@ export class RoomDurableObject {
 
     try {
       this.roomState.initialize(parsed);
+      await this.syncAlarm();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to initialize room.";
       return jsonResponse(400, { error: message });
@@ -612,6 +613,9 @@ export class RoomDurableObject {
           return;
         case "START_REQUIRES_MIN_PLAYERS":
           this.sendStartMatchRejected(session.socket, "START_REQUIRES_MIN_PLAYERS");
+          return;
+        case "NOT_ALL_PLAYERS_READY":
+          this.sendStartMatchRejected(session.socket, "NOT_ALL_PLAYERS_READY");
           return;
         case "BPL_REQUIRES_TWO_PLAYERS":
           this.sendStartMatchRejected(session.socket, "BPL_REQUIRES_TWO_PLAYERS");
