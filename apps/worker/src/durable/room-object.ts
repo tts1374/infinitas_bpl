@@ -25,6 +25,15 @@ interface RoomSocketSession {
   playerId: string | null;
 }
 
+interface DurableObjectStorageLike {
+  deleteAlarm(): Promise<void>;
+  setAlarm(scheduledTime: number | Date): Promise<void>;
+}
+
+interface DurableObjectStateLike {
+  storage: DurableObjectStorageLike;
+}
+
 const IDEMPOTENCY_LOG_LIMIT = 300;
 const OPEN_WEBSOCKET_STATE = 1;
 const SWITCHING_PROTOCOLS_STATUS = 101;
@@ -130,13 +139,23 @@ function parseRoomJoinPayload(payload: unknown): RoomJoinPayload | null {
   };
 }
 
+function parseReadySetPayload(payload: unknown): { ready: boolean } | null {
+  if (!isRecord(payload) || typeof payload.ready !== "boolean") {
+    return null;
+  }
+
+  return {
+    ready: payload.ready,
+  };
+}
+
 export class RoomDurableObject {
   private readonly roomState = new RoomLobbyState();
   private readonly sessionsBySocket = new Map<WebSocket, RoomSocketSession>();
   private readonly seenClientMessageIds = new Map<string, string[]>();
 
   constructor(
-    private readonly _state: unknown,
+    private readonly state: DurableObjectStateLike,
     private readonly env: WorkerEnv,
   ) {}
 
@@ -170,6 +189,10 @@ export class RoomDurableObject {
       status: SWITCHING_PROTOCOLS_STATUS,
       webSocket: clientSocket,
     } as ResponseInit);
+  }
+
+  async alarm(): Promise<void> {
+    await this.closeReadyCheckOnTimeout(new Date());
   }
 
   private async handleInternalInitialize(request: Request): Promise<Response> {
@@ -206,88 +229,109 @@ export class RoomDurableObject {
     this.sessionsBySocket.set(socket, session);
 
     socket.addEventListener("message", (event) => {
-      this.handleSocketMessage(socket, event);
+      void this.handleSocketMessage(socket, event);
     });
     socket.addEventListener("close", () => {
-      this.handleSocketClose(socket);
+      void this.handleSocketClose(socket);
     });
     socket.addEventListener("error", () => {
-      this.handleSocketClose(socket);
+      void this.handleSocketClose(socket);
     });
   }
 
-  private handleSocketMessage(socket: WebSocket, event: MessageEvent): void {
+  private async handleSocketMessage(socket: WebSocket, event: MessageEvent): Promise<void> {
     const session = this.sessionsBySocket.get(socket);
     if (!session) {
       return;
     }
 
-    if (typeof event.data !== "string") {
-      this.sendError(socket, "INVALID_STATE", "Only text messages are supported.");
-      return;
-    }
-
-    const decoded = decodeClientMessage(event.data);
-    if (!decoded.ok) {
-      this.sendError(socket, "INVALID_STATE", decoded.error);
-      return;
-    }
-
-    const message = decoded.message;
-    if (
-      message.client_msg_id.trim().length === 0 ||
-      message.player_id.trim().length === 0 ||
-      message.room_id.trim().length === 0
-    ) {
-      this.sendError(socket, "INVALID_STATE", "Envelope fields must not be empty.");
-      return;
-    }
-
-    if (this.roomState.isInitialized() && message.room_id !== this.roomState.getRoomId()) {
-      this.sendError(socket, "INVALID_STATE", "room_id does not match this room.");
-      return;
-    }
-
-    if (session.playerId !== null && session.playerId !== message.player_id) {
-      this.sendError(socket, "INVALID_STATE", "player_id mismatch on this socket.");
-      return;
-    }
-
-    if (this.isDuplicateMessage(message.player_id, message.client_msg_id)) {
-      return;
-    }
-
-    if (message.type !== "ROOM_JOIN" && session.playerId === null) {
-      this.sendError(socket, "INVALID_STATE", "Send ROOM_JOIN before this message.");
-      return;
-    }
-
-    switch (message.type) {
-      case "ROOM_JOIN":
-        this.handleRoomJoin(session, message as ClientMessage<"ROOM_JOIN">);
+    try {
+      if (typeof event.data !== "string") {
+        this.sendError(socket, "INVALID_STATE", "Only text messages are supported.");
         return;
-      case "ROOM_LEAVE":
-        this.handleRoomLeave(session, true);
+      }
+
+      const decoded = decodeClientMessage(event.data);
+      if (!decoded.ok) {
+        this.sendError(socket, "INVALID_STATE", decoded.error);
         return;
-      case "STATE_GET":
-        this.sendStateSnapshot(socket);
+      }
+
+      const message = decoded.message;
+      if (
+        message.client_msg_id.trim().length === 0 ||
+        message.player_id.trim().length === 0 ||
+        message.room_id.trim().length === 0
+      ) {
+        this.sendError(socket, "INVALID_STATE", "Envelope fields must not be empty.");
         return;
-      case "PING":
-        this.send(socket, "PONG", {});
+      }
+
+      if (this.roomState.isInitialized() && message.room_id !== this.roomState.getRoomId()) {
+        this.sendError(socket, "INVALID_STATE", "room_id does not match this room.");
         return;
-      default:
-        this.sendError(socket, "INVALID_STATE", `Message type ${message.type} is unavailable in LOBBY.`);
+      }
+
+      if (session.playerId !== null && session.playerId !== message.player_id) {
+        this.sendError(socket, "INVALID_STATE", "player_id mismatch on this socket.");
+        return;
+      }
+
+      if (await this.closeReadyCheckOnTimeout(new Date())) {
+        return;
+      }
+
+      if (this.isDuplicateMessage(message.player_id, message.client_msg_id)) {
+        return;
+      }
+
+      if (message.type !== "ROOM_JOIN" && session.playerId === null) {
+        this.sendError(socket, "INVALID_STATE", "Send ROOM_JOIN before this message.");
+        return;
+      }
+
+      switch (message.type) {
+        case "ROOM_JOIN":
+          this.handleRoomJoin(session, message as ClientMessage<"ROOM_JOIN">);
+          return;
+        case "ROOM_LEAVE":
+          await this.handleRoomLeave(session, true);
+          return;
+        case "READY_CHECK_OPEN":
+          await this.handleReadyCheckOpen(session);
+          return;
+        case "READY_SET":
+          this.handleReadySet(session, message as ClientMessage<"READY_SET">);
+          return;
+        case "START_MATCH":
+          await this.handleStartMatch(session);
+          return;
+        case "STATE_GET":
+          this.sendStateSnapshot(socket);
+          return;
+        case "PING":
+          this.send(socket, "PONG", {});
+          return;
+        default:
+          this.sendError(
+            socket,
+            "INVALID_STATE",
+            `Message type ${message.type} is unavailable in ${this.roomState.getRoomState()}.`,
+          );
+      }
+    } catch {
+      this.sendError(socket, "INVALID_STATE", "Failed to process message.");
     }
   }
 
-  private handleSocketClose(socket: WebSocket): void {
+  private async handleSocketClose(socket: WebSocket): Promise<void> {
     const session = this.sessionsBySocket.get(socket);
     if (!session) {
       return;
     }
 
     this.sessionsBySocket.delete(socket);
-    this.handleRoomLeave(session, false);
+    await this.handleRoomLeave(session, false);
   }
 
   private handleRoomJoin(session: RoomSocketSession, message: ClientMessage<"ROOM_JOIN">): void {
@@ -341,7 +385,7 @@ export class RoomDurableObject {
     this.broadcastRoomUpdated();
   }
 
-  private handleRoomLeave(session: RoomSocketSession, closeSocket: boolean): void {
+  private async handleRoomLeave(session: RoomSocketSession, closeSocket: boolean): Promise<void> {
     const playerId = session.playerId;
     session.playerId = null;
 
@@ -353,7 +397,7 @@ export class RoomDurableObject {
     }
 
     const leaveResult = this.roomState.leavePlayer(playerId, new Date());
-    if (!leaveResult.removed) {
+    if (!leaveResult.changed) {
       if (closeSocket) {
         this.safeCloseSocket(session.socket, 1000, "Left room.");
       }
@@ -361,8 +405,9 @@ export class RoomDurableObject {
     }
 
     if (leaveResult.was_host) {
+      await this.clearReadyCheckAlarm();
       this.broadcast("ROOM_CLOSED", { reason: "HOST_LEFT" }, true);
-      void this.cleanupLobbyEntry();
+      await this.cleanupLobbyEntry();
       this.disconnectAll(4000, "Host left.");
       return;
     }
@@ -371,6 +416,87 @@ export class RoomDurableObject {
     if (closeSocket) {
       this.safeCloseSocket(session.socket, 1000, "Left room.");
     }
+  }
+
+  private async handleReadyCheckOpen(session: RoomSocketSession): Promise<void> {
+    if (session.playerId === null) {
+      this.sendError(session.socket, "INVALID_STATE", "Send ROOM_JOIN before this message.");
+      return;
+    }
+
+    const openedAt = new Date();
+    const result = this.roomState.openReadyCheck(session.playerId, openedAt);
+    if (!result.ok) {
+      if (result.reason === "NOT_HOST") {
+        this.sendError(session.socket, "NOT_HOST", "Only the host can open READY_CHECK.");
+        return;
+      }
+
+      this.sendError(session.socket, "INVALID_STATE", "READY_CHECK can only be opened from LOBBY.");
+      return;
+    }
+
+    const deadline = result.ready_check_deadline;
+    if (deadline === undefined) {
+      this.sendError(session.socket, "INVALID_STATE", "READY_CHECK deadline is unavailable.");
+      return;
+    }
+
+    await this.setReadyCheckAlarm(deadline);
+    this.broadcast("READY_CHECK_OPENED", {
+      ready_check_deadline: deadline.toISOString(),
+    });
+    this.broadcastRoomUpdated();
+  }
+
+  private handleReadySet(session: RoomSocketSession, message: ClientMessage<"READY_SET">): void {
+    if (session.playerId === null) {
+      this.sendError(session.socket, "INVALID_STATE", "Send ROOM_JOIN before this message.");
+      return;
+    }
+
+    const payload = parseReadySetPayload(message.payload);
+    if (payload === null) {
+      this.sendError(session.socket, "INVALID_STATE", "READY_SET payload is invalid.");
+      return;
+    }
+
+    const result = this.roomState.setPlayerReady(session.playerId, payload.ready);
+    if (!result.ok) {
+      this.sendError(session.socket, "INVALID_STATE", "READY_SET is only available during READY_CHECK.");
+      return;
+    }
+
+    this.broadcast("READY_STATUS_CHANGED", {
+      player_id: session.playerId,
+      ready: payload.ready,
+    });
+    this.broadcastRoomUpdated();
+  }
+
+  private async handleStartMatch(session: RoomSocketSession): Promise<void> {
+    if (session.playerId === null) {
+      this.sendError(session.socket, "INVALID_STATE", "Send ROOM_JOIN before this message.");
+      return;
+    }
+
+    const result = this.roomState.startMatch(session.playerId, new Date());
+    if (!result.ok) {
+      switch (result.reason) {
+        case "NOT_HOST":
+          this.sendError(session.socket, "NOT_HOST", "Only the host can start the match.");
+          return;
+        case "START_REQUIRES_MIN_PLAYERS":
+          this.sendStartMatchRejected(session.socket, "START_REQUIRES_MIN_PLAYERS");
+          return;
+        default:
+          this.sendStartMatchRejected(session.socket, "INVALID_STATE");
+          return;
+      }
+    }
+
+    await this.clearReadyCheckAlarm();
+    this.broadcastRoomUpdated();
   }
 
   private findSessionByPlayerId(playerId: string): RoomSocketSession | null {
@@ -430,6 +556,10 @@ export class RoomDurableObject {
     this.send(socket, "ROOM_JOIN_REJECTED", { reason });
   }
 
+  private sendStartMatchRejected(socket: WebSocket, reason: string): void {
+    this.send(socket, "START_MATCH_REJECTED", { reason });
+  }
+
   private isDuplicateMessage(playerId: string, clientMessageId: string): boolean {
     const seenIds = this.seenClientMessageIds.get(playerId) ?? [];
     if (seenIds.includes(clientMessageId)) {
@@ -458,6 +588,27 @@ export class RoomDurableObject {
     if (socket.readyState === OPEN_WEBSOCKET_STATE) {
       socket.close(code, reason);
     }
+  }
+
+  private async setReadyCheckAlarm(deadline: Date): Promise<void> {
+    await this.state.storage.setAlarm(deadline);
+  }
+
+  private async clearReadyCheckAlarm(): Promise<void> {
+    await this.state.storage.deleteAlarm();
+  }
+
+  private async closeReadyCheckOnTimeout(now: Date): Promise<boolean> {
+    const closed = this.roomState.closeReadyCheckIfExpired(now);
+    if (!closed) {
+      return false;
+    }
+
+    await this.clearReadyCheckAlarm();
+    this.broadcast("ROOM_CLOSED", { reason: "READY_CHECK_TIMEOUT" }, true);
+    await this.cleanupLobbyEntry();
+    this.disconnectAll(4001, "Ready check timed out.");
+    return true;
   }
 
   private async cleanupLobbyEntry(): Promise<void> {
