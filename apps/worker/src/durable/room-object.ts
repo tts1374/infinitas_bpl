@@ -149,6 +149,22 @@ function parseReadySetPayload(payload: unknown): { ready: boolean } | null {
   };
 }
 
+function parsePickSubmitPayload(payload: unknown): { pick_chart_key: string } | null {
+  if (!isRecord(payload)) {
+    return null;
+  }
+
+  const pickChartKeyRaw = asOptionalString(payload.pick_chart_key);
+  const pickChartKey = pickChartKeyRaw?.trim() ?? "";
+  if (pickChartKey.length === 0) {
+    return null;
+  }
+
+  return {
+    pick_chart_key: pickChartKey,
+  };
+}
+
 export class RoomDurableObject {
   private readonly roomState = new RoomLobbyState();
   private readonly sessionsBySocket = new Map<WebSocket, RoomSocketSession>();
@@ -305,6 +321,9 @@ export class RoomDurableObject {
           return;
         case "START_MATCH":
           await this.handleStartMatch(session);
+          return;
+        case "PICK_SUBMIT":
+          this.handlePickSubmit(session, message as ClientMessage<"PICK_SUBMIT">);
           return;
         case "STATE_GET":
           this.sendStateSnapshot(socket);
@@ -489,6 +508,9 @@ export class RoomDurableObject {
         case "START_REQUIRES_MIN_PLAYERS":
           this.sendStartMatchRejected(session.socket, "START_REQUIRES_MIN_PLAYERS");
           return;
+        case "BPL_REQUIRES_TWO_PLAYERS":
+          this.sendStartMatchRejected(session.socket, "BPL_REQUIRES_TWO_PLAYERS");
+          return;
         default:
           this.sendStartMatchRejected(session.socket, "INVALID_STATE");
           return;
@@ -496,6 +518,45 @@ export class RoomDurableObject {
     }
 
     await this.clearReadyCheckAlarm();
+    this.broadcastRoomUpdated();
+  }
+
+  private handlePickSubmit(session: RoomSocketSession, message: ClientMessage<"PICK_SUBMIT">): void {
+    if (session.playerId === null) {
+      this.sendError(session.socket, "INVALID_STATE", "Send ROOM_JOIN before this message.");
+      return;
+    }
+
+    const payload = parsePickSubmitPayload(message.payload);
+    if (payload === null) {
+      this.send(session.socket, "PICK_REJECTED", { reason: "INVALID_PICK_CHART_KEY" });
+      return;
+    }
+
+    const result = this.roomState.submitPick(session.playerId, payload.pick_chart_key, new Date());
+    if (!result.ok || result.accepted_pick === undefined) {
+      this.send(session.socket, "PICK_REJECTED", {
+        reason: result.reason ?? "PICK_REJECTED",
+      });
+      return;
+    }
+
+    this.broadcast("PICK_ACCEPTED", {
+      player_id: result.accepted_pick.player_id,
+      pick_chart_key: result.accepted_pick.pick_chart_key,
+      accepted_at: result.accepted_pick.accepted_at.toISOString(),
+    });
+
+    if (result.frozen_rounds !== undefined) {
+      this.broadcast("PICK_FROZEN", {
+        frozen_rounds: result.frozen_rounds,
+      });
+    }
+
+    if (result.round_begin !== undefined) {
+      this.broadcast("ROUND_BEGIN", result.round_begin);
+    }
+
     this.broadcastRoomUpdated();
   }
 
