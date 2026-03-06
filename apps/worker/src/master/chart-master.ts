@@ -1,5 +1,8 @@
 import {
+  CHART_SEARCH_PAGE_SIZE,
   CHART_DIFFICULTIES,
+  type ChartSearchEntry,
+  type ChartSearchResponse,
   type ChartDifficulty,
   type ExpectedKey,
   type FrozenRound,
@@ -25,6 +28,9 @@ interface WorkerChartMasterChart {
   difficulty: ChartDifficulty;
   level: number;
   title: string;
+  title_qualifier: string;
+  artist: string;
+  genre: string;
   title_search_key: string;
 }
 
@@ -61,6 +67,16 @@ export interface RandomUnusedChartOptions {
   preferred_level?: number | null;
 }
 
+export interface SearchChartsOptions {
+  play_style: PlayStyle;
+  level_filter: LevelFilter;
+  difficulty?: ChartDifficulty;
+  level?: number;
+  keyword?: string;
+  cursor?: string;
+  limit?: number;
+}
+
 export interface RoomChartMaster {
   resolvePickChartKey(
     pickChartKey: string,
@@ -68,6 +84,7 @@ export interface RoomChartMaster {
     levelFilter: LevelFilter,
   ): ResolvedMasterChart | null;
   pickRandomUnusedChart(options: RandomUnusedChartOptions): ResolvedMasterChart | null;
+  searchCharts(options: SearchChartsOptions): ChartSearchResponse;
   getMetadata(): WorkerChartMasterMetadata;
 }
 
@@ -90,6 +107,19 @@ function normalizeLookupKey(value: string): string {
 
 function buildChartKey(playStyle: PlayStyle, difficulty: ChartDifficulty, titleSearchKey: string): string {
   return `${playStyle}::${difficulty}::${titleSearchKey}`;
+}
+
+function parseCursorOffset(cursor: string | undefined): number {
+  if (cursor === undefined) {
+    return 0;
+  }
+
+  const parsed = Number.parseInt(cursor, 10);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return 0;
+  }
+
+  return parsed;
 }
 
 function matchesLevelFilter(level: number, levelFilter: LevelFilter): boolean {
@@ -258,12 +288,27 @@ function createResolvedMasterChart(chart: WorkerChartMasterChart): ResolvedMaste
   };
 }
 
+function createChartSearchEntry(chart: WorkerChartMasterChart): ChartSearchEntry {
+  return {
+    chart_key: buildChartKey(chart.play_style, chart.difficulty, chart.title_search_key),
+    play_style: chart.play_style,
+    difficulty: chart.difficulty,
+    level: chart.level,
+    title: chart.title,
+    title_qualifier: chart.title_qualifier,
+    artist: chart.artist,
+    genre: chart.genre,
+    title_search_key: chart.title_search_key,
+  };
+}
+
 export function createRoomChartMaster(snapshotInput: WorkerChartMasterSnapshot): RoomChartMaster {
   const snapshot = snapshotInput;
   const chartKeyCounts = new Map<string, number>();
   const chartByKey = new Map<string, ResolvedMasterChart>();
   const poolByFilter = new Map<string, ResolvedMasterChart[]>();
   const aliasToTitleSearchKey = new Map<string, string>();
+  const searchableCharts: Array<{ chart: ChartSearchEntry; keyword_index: string }> = [];
 
   for (const [alias, titleSearchKey] of Object.entries(snapshot.aliases)) {
     aliasToTitleSearchKey.set(normalizeLookupKey(alias), titleSearchKey);
@@ -280,6 +325,12 @@ export function createRoomChartMaster(snapshotInput: WorkerChartMasterSnapshot):
       continue;
     }
 
+    searchableCharts.push({
+      chart: createChartSearchEntry(chart),
+      keyword_index: normalizeLookupKey(
+        [chart.title, chart.title_qualifier, chart.artist, chart.genre].filter((value) => value.length > 0).join(" "),
+      ),
+    });
     chartByKey.set(resolvedChart.chart_key, resolvedChart);
 
     for (const levelFilter of ["ANY", "LV8_10", "LV10", "LV11", "LV12"] as const) {
@@ -398,6 +449,47 @@ export function createRoomChartMaster(snapshotInput: WorkerChartMasterSnapshot):
       }
 
       return null;
+    },
+
+    searchCharts({
+      play_style,
+      level_filter,
+      difficulty,
+      level,
+      keyword,
+      cursor,
+      limit,
+    }) {
+      const offset = parseCursorOffset(cursor);
+      const normalizedKeyword = keyword?.trim() ? normalizeLookupKey(keyword) : "";
+      const pageSize = Math.max(1, Math.min(limit ?? CHART_SEARCH_PAGE_SIZE, CHART_SEARCH_PAGE_SIZE));
+      const filteredCharts = searchableCharts.filter(({ chart, keyword_index }) => {
+        if (chart.play_style !== play_style) {
+          return false;
+        }
+        if (!matchesLevelFilter(chart.level, level_filter)) {
+          return false;
+        }
+        if (difficulty !== undefined && chart.difficulty !== difficulty) {
+          return false;
+        }
+        if (level !== undefined && chart.level !== level) {
+          return false;
+        }
+        if (normalizedKeyword.length > 0 && !keyword_index.includes(normalizedKeyword)) {
+          return false;
+        }
+
+        return true;
+      });
+
+      const charts = filteredCharts.slice(offset, offset + pageSize).map(({ chart }) => chart);
+      const nextOffset = offset + charts.length;
+
+      return {
+        charts,
+        next_cursor: nextOffset < filteredCharts.length ? String(nextOffset) : null,
+      };
     },
 
     getMetadata() {
