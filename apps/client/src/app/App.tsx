@@ -2,6 +2,8 @@ import { startTransition, useEffect, useState } from "react";
 import { ErrorDialog } from "../components/ErrorDialog";
 import { LobbyPage } from "../pages/LobbyPage";
 import { RoomPage } from "../pages/RoomPage";
+import { localResultArchiveService } from "../services/result-archive";
+import { voiceAnnouncerService } from "../services/voice-announcer";
 import { SettingsPage } from "../pages/SettingsPage";
 import { roomStore, useRoomStore } from "../stores/room-store";
 import { sourceStore } from "../stores/source-store";
@@ -46,8 +48,12 @@ export function App() {
 
   useEffect(() => {
     void sourceStore.attach();
+    localResultArchiveService.start();
+    voiceAnnouncerService.start();
 
     return () => {
+      voiceAnnouncerService.stop();
+      localResultArchiveService.stop();
       sourceStore.detach();
     };
   }, []);
@@ -60,7 +66,7 @@ export function App() {
     <main className="app-shell">
       <header className="app-header">
         <div>
-          <p className="eyebrow">PR-9</p>
+          <p className="eyebrow">PR-12</p>
           <h1>INFINITAS BPL Client</h1>
         </div>
         <div className="header-status">

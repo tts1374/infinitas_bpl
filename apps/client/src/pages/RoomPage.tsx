@@ -1,5 +1,7 @@
 import { HOST_SKIP_UNLOCK_SECONDS, SKIP_REASONS } from "@infinitas/shared";
 import { useState } from "react";
+import { useLocalResultArchiveStore } from "../services/result-archive";
+import { useVoicePlaybackStore } from "../services/voice-announcer";
 import { roomStore, useRoomStore } from "../stores/room-store";
 import { useSettingsStore } from "../stores/settings-store";
 import { formatDateTime, stringifyJson } from "../utils/format";
@@ -21,6 +23,28 @@ function formatExpectedKey(
   return `${expectedKey.play_style} / ${expectedKey.difficulty} / ${expectedKey.title_search_key}`;
 }
 
+function getArchiveTone(status: string): string {
+  if (status === "READY") {
+    return "ok";
+  }
+  if (status === "ERROR") {
+    return "danger";
+  }
+
+  return "warning";
+}
+
+function getVoiceTone(phase: string): string {
+  if (phase === "UNAVAILABLE") {
+    return "danger";
+  }
+  if (phase === "DISABLED") {
+    return "warning";
+  }
+
+  return phase === "IDLE" ? "warning" : "ok";
+}
+
 export function RoomPage() {
   const snapshot = useRoomStore((state) => state.snapshot);
   const resultReady = useRoomStore((state) => state.resultReady);
@@ -28,6 +52,18 @@ export function RoomPage() {
   const connectionDetail = useRoomStore((state) => state.connectionDetail);
   const eventLog = useRoomStore((state) => state.eventLog);
   const savedSettings = useSettingsStore((state) => state.saved);
+  const archiveStatus = useLocalResultArchiveStore((state) => state.status);
+  const archiveStorage = useLocalResultArchiveStore((state) => state.storage);
+  const archivePath = useLocalResultArchiveStore((state) => state.filePath);
+  const archiveStorageKey = useLocalResultArchiveStore((state) => state.storageKey);
+  const archiveLastSavedAt = useLocalResultArchiveStore((state) => state.lastSavedAt);
+  const archiveSaveCount = useLocalResultArchiveStore((state) => state.saveCount);
+  const archiveLastError = useLocalResultArchiveStore((state) => state.lastError);
+  const archiveLatest = useLocalResultArchiveStore((state) => state.latestArchive);
+  const voicePhase = useVoicePlaybackStore((state) => state.phase);
+  const voiceDetail = useVoicePlaybackStore((state) => state.detail);
+  const voiceLastUpdatedAt = useVoicePlaybackStore((state) => state.lastUpdatedAt);
+  const voicePendingCues = useVoicePlaybackStore((state) => state.pendingCues);
 
   const [pickChartKey, setPickChartKey] = useState("");
   const [metricValue, setMetricValue] = useState("0");
@@ -157,6 +193,50 @@ export function RoomPage() {
               </dl>
             </article>
           ))}
+        </div>
+      </article>
+
+      <article className="panel">
+        <div className="panel-header">
+          <div>
+            <p className="eyebrow">Runtime</p>
+            <h2>Voice and local archive</h2>
+          </div>
+        </div>
+
+        <div className="split-panel">
+          <section className="status-stack support-card">
+            <div className="inline-field">
+              <span className="status-label">Voice playback</span>
+              <span className={`status-pill ${getVoiceTone(voicePhase)}`}>{voicePhase}</span>
+            </div>
+            <strong>{savedSettings.voiceEnabled ? "Voice enabled" : "Voice disabled"}</strong>
+            <span className="status-muted">{voiceDetail}</span>
+            <span className="status-muted">Pending cues: {voicePendingCues}</span>
+            <span className="status-muted">Updated: {formatDateTime(voiceLastUpdatedAt)}</span>
+          </section>
+
+          <section className="status-stack support-card">
+            <div className="inline-field">
+              <span className="status-label">Local archive</span>
+              <span className={`status-pill ${getArchiveTone(archiveStatus)}`}>{archiveStatus}</span>
+            </div>
+            <strong>
+              {archiveStorage === "TAURI_FILE"
+                ? "JSON file output"
+                : archiveStorage === "LOCAL_STORAGE"
+                  ? "localStorage fallback"
+                  : "Awaiting first save"}
+            </strong>
+            <span className="status-muted">Entries saved: {archiveSaveCount}</span>
+            <span className="status-muted">Last saved: {formatDateTime(archiveLastSavedAt)}</span>
+            <span className="status-muted">
+              Latest snapshot state: {archiveLatest?.latest_snapshot.room_state ?? "-"}
+            </span>
+            {archivePath ? <code className="path-chip">{archivePath}</code> : null}
+            {!archivePath && archiveStorageKey ? <code className="path-chip">{archiveStorageKey}</code> : null}
+            {archiveLastError ? <p className="inline-error">{archiveLastError}</p> : null}
+          </section>
         </div>
       </article>
 

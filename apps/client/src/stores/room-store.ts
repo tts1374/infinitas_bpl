@@ -110,6 +110,10 @@ function buildSourceUnavailableDescription(detail: string, roomState: RoomStateS
   return detail;
 }
 
+function buildRoomStateLostDescription(detail: string): string {
+  return `${detail} The room has been closed locally. Review the latest saved snapshot for partial results.`;
+}
+
 function closeCurrentClient(sendLeaveMessage: boolean): void {
   const client = activeClient;
   activeClient = null;
@@ -231,9 +235,19 @@ function handleServerMessage(client: RoomSocketClient, message: ServerMessage): 
       closeCurrentClient(false);
       internalStore.setState((state) => ({
         ...state,
-        connectionStatus: "ERROR",
-        connectionDetail: "Join rejected.",
+        connectionStatus: payload.reason === "ROOM_STATE_LOST" ? "CLOSED" : "ERROR",
+        connectionDetail: payload.reason === "ROOM_STATE_LOST" ? "Room state lost." : "Join rejected.",
       }));
+      if (payload.reason === "ROOM_STATE_LOST") {
+        setErrorDialog(
+          "Room state lost",
+          buildRoomStateLostDescription("The room could not be recovered."),
+          payload.reason,
+          true,
+        );
+        return;
+      }
+
       setErrorDialog("Join rejected", payload.reason);
       return;
     }
@@ -268,13 +282,28 @@ function handleServerMessage(client: RoomSocketClient, message: ServerMessage): 
     }
     case "ERROR": {
       const payload = message.payload as ServerMessagePayloadMap["ERROR"];
+      const snapshot = internalStore.getState().snapshot;
+      const description =
+        payload.code === "ROOM_STATE_LOST"
+          ? buildRoomStateLostDescription(payload.message)
+          : payload.code === "SOURCE_UNAVAILABLE" && snapshot !== null
+            ? buildSourceUnavailableDescription(payload.message, snapshot.room_state)
+            : payload.message;
+
+      if (payload.code === "ROOM_STATE_LOST") {
+        closeCurrentClient(false);
+        updateClosedSnapshot(payload.code, message.server_time);
+        appendEventLog("Room state lost. Showing the latest local snapshot.");
+      }
+
       internalStore.setState((state) => ({
         ...state,
         connectionStatus: payload.code === "ROOM_STATE_LOST" ? "CLOSED" : state.connectionStatus,
+        connectionDetail: payload.code === "ROOM_STATE_LOST" ? "Room state lost." : state.connectionDetail,
       }));
       setErrorDialog(
         errorTitleFromCode(payload.code),
-        payload.message,
+        description,
         payload.code,
         payload.code === "ROOM_STATE_LOST" || payload.code === "SOURCE_UNAVAILABLE",
       );

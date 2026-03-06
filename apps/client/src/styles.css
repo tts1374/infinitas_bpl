@@ -360,6 +360,10 @@ button {
   gap: 1rem;
 }
 
+.support-card {
+  flex: 1;
+}
+
 .watcher-path-list {
   gap: 0.5rem;
 }
@@ -431,6 +435,15 @@ pre {
   font-size: 0.85rem;
   font-weight: 700;
   color: #8d1224;
+}
+
+.dialog-support {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0 0 1rem;
+  padding: 0.9rem 1rem;
+  border-radius: 18px;
+  background: rgba(255, 244, 238, 0.85);
 }
 
 @media (max-width: 1080px) {
