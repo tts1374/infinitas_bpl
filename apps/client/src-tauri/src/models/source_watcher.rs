@@ -70,10 +70,22 @@ impl Default for SourceWatcherStatePayload {
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ParsedSourceObservation {
+    pub timestamp: String,
+    pub difficulty: String,
+    pub title: String,
+    pub title_search_key: String,
+    pub score: u32,
+    pub misscount: u32,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ParsedSourceChange {
     pub source: SourceType,
     pub file_path: String,
     pub file_size_bytes: u64,
+    pub observations: Vec<ParsedSourceObservation>,
 }
 
 #[derive(Clone, Debug, Serialize)]
