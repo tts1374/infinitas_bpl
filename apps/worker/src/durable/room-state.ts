@@ -1,22 +1,20 @@
 import {
   BPL_ROUNDS,
-  CHART_DIFFICULTIES,
   MATCH_TTL_MINUTES,
   READY_CHECK_TTL_MINUTES,
   REJOIN_COOLDOWN_SECONDS,
   ROUND_SOFT_TTL_SECONDS,
   START_MIN_PLAYERS,
-  type ChartDifficulty,
   type CurrentRoundSnapshot,
   type ExpectedKey,
   type FrozenRound,
   type PlayerRole,
-  type PlayStyle,
   type RoomSettings,
   type RoomState,
   type RoomStateSnapshot,
   type SourceType,
 } from "@infinitas/shared";
+import type { ResolvedMasterChart, RoomChartMaster } from "../master/chart-master";
 
 interface InternalPlayer {
   player_id: string;
@@ -34,11 +32,6 @@ interface InternalPick {
   player_id: string;
   pick_chart_key: string;
   accepted_at: Date;
-  expected_key: ExpectedKey;
-  display: FrozenRound["display"];
-}
-
-interface ParsedPickChartKey {
   expected_key: ExpectedKey;
   display: FrozenRound["display"];
 }
@@ -134,131 +127,6 @@ function canNewPlayerJoin(roomState: RoomState): roomState is "LOBBY" | "READY_C
   return roomState === "LOBBY" || roomState === "READY_CHECK";
 }
 
-function isChartDifficulty(value: unknown): value is ChartDifficulty {
-  return typeof value === "string" && CHART_DIFFICULTIES.includes(value as ChartDifficulty);
-}
-
-function normalizeTitleSearchKey(value: string): string {
-  return value
-    .normalize("NFKC")
-    .trim()
-    .replace(/\s+\(/g, "(")
-    .replace(/\s+/g, " ")
-    .toLowerCase();
-}
-
-function parseLevel(value: unknown): number | null {
-  if (value === null || value === undefined || value === "") {
-    return null;
-  }
-
-  if (typeof value === "number" && Number.isInteger(value)) {
-    return value;
-  }
-
-  if (typeof value === "string" && /^-?\d+$/.test(value.trim())) {
-    return Number.parseInt(value, 10);
-  }
-
-  return null;
-}
-
-function parsePickChartKeyJson(value: string, playStyle: PlayStyle): ParsedPickChartKey | null {
-  if (!value.startsWith("{")) {
-    return null;
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(value);
-  } catch {
-    return null;
-  }
-
-  if (typeof parsed !== "object" || parsed === null) {
-    return null;
-  }
-
-  const record = parsed as Record<string, unknown>;
-  if (!isChartDifficulty(record.difficulty) || typeof record.title_search_key !== "string") {
-    return null;
-  }
-
-  const titleSearchKey = normalizeTitleSearchKey(record.title_search_key);
-  if (titleSearchKey.length === 0) {
-    return null;
-  }
-
-  const title =
-    typeof record.title === "string" && record.title.trim().length > 0
-      ? record.title.trim()
-      : record.title_search_key;
-
-  return {
-    expected_key: {
-      play_style: playStyle,
-      difficulty: record.difficulty,
-      title_search_key: titleSearchKey,
-    },
-    display: {
-      title,
-      level: parseLevel(record.level),
-    },
-  };
-}
-
-function parsePickChartKeyDelimited(value: string, playStyle: PlayStyle): ParsedPickChartKey | null {
-  const delimiter = value.includes("::") ? "::" : value.includes("|") ? "|" : null;
-  if (delimiter === null) {
-    return null;
-  }
-
-  const segments = value.split(delimiter).map((segment) => segment.trim());
-  const difficulty = segments[0];
-  const rawTitleSearchKey = segments[1];
-  const rawTitle = segments[2];
-  const rawLevel = segments[3];
-
-  if (
-    segments.length < 2 ||
-    difficulty === undefined ||
-    rawTitleSearchKey === undefined ||
-    !isChartDifficulty(difficulty)
-  ) {
-    return null;
-  }
-
-  const titleSearchKey = normalizeTitleSearchKey(rawTitleSearchKey);
-  if (titleSearchKey.length === 0) {
-    return null;
-  }
-
-  const title = rawTitle && rawTitle.length > 0 ? rawTitle : rawTitleSearchKey;
-
-  return {
-    expected_key: {
-      play_style: playStyle,
-      difficulty,
-      title_search_key: titleSearchKey,
-    },
-    display: {
-      title,
-      level: parseLevel(rawLevel),
-    },
-  };
-}
-
-function parsePickChartKey(value: string, playStyle: PlayStyle): ParsedPickChartKey | null {
-  const trimmedValue = value.trim();
-  if (trimmedValue.length === 0) {
-    return null;
-  }
-
-  return (
-    parsePickChartKeyJson(trimmedValue, playStyle) ?? parsePickChartKeyDelimited(trimmedValue, playStyle)
-  );
-}
-
 function expectedKeyId(expectedKey: ExpectedKey): string {
   return `${expectedKey.play_style}::${expectedKey.difficulty}::${expectedKey.title_search_key}`;
 }
@@ -301,6 +169,8 @@ export class RoomLobbyState {
   private frozenRounds: FrozenRound[] = [];
   private currentRound: CurrentRoundSnapshot | null = null;
   private matchPlayerIds: string[] = [];
+
+  constructor(private readonly chartMaster: RoomChartMaster) {}
 
   initialize(input: RoomInitializationInput): void {
     const createdAt = new Date(input.created_at);
@@ -510,12 +380,20 @@ export class RoomLobbyState {
       return { ok: false, reason: "PLAYER_ALREADY_PICKED" };
     }
 
-    const parsedPick = parsePickChartKey(pickChartKey, this.settings.play_style);
-    if (parsedPick === null) {
+    const resolvedChart = this.chartMaster.resolvePickChartKey(
+      pickChartKey,
+      this.settings.play_style,
+      this.settings.level_filter,
+    );
+    if (resolvedChart === null) {
       return { ok: false, reason: "INVALID_PICK_CHART_KEY" };
     }
 
-    const resolvedPick = this.resolveDuplicatePick(playerId, pickChartKey.trim(), parsedPick, now);
+    const resolvedPick = this.resolveDuplicatePick(playerId, pickChartKey.trim(), resolvedChart, now);
+    if (resolvedPick === null) {
+      return { ok: false, reason: "INVALID_STATE" };
+    }
+
     this.picks.push(resolvedPick);
 
     const result: PickSubmitResult = {
@@ -634,39 +512,38 @@ export class RoomLobbyState {
 
   private resolveDuplicatePick(
     playerId: string,
-    pickChartKey: string,
-    parsedPick: ParsedPickChartKey,
+    requestedPickChartKey: string,
+    resolvedChart: ResolvedMasterChart,
     acceptedAt: Date,
-  ): InternalPick {
-    const usedKeys = new Set(this.picks.map((pick) => expectedKeyId(pick.expected_key)));
-    let expectedKey = cloneExpectedKey(parsedPick.expected_key);
-    let display = {
-      title: parsedPick.display.title,
-      level: parsedPick.display.level,
-    };
-    let resolvedPickChartKey = pickChartKey;
+  ): InternalPick | null {
+    const usedKeys = new Set(this.picks.map((pick) => pick.pick_chart_key));
+    let selectedChart = resolvedChart;
 
-    let duplicateIndex = 0;
-    while (usedKeys.has(expectedKeyId(expectedKey))) {
-      duplicateIndex += 1;
-      expectedKey = {
-        play_style: expectedKey.play_style,
-        difficulty: expectedKey.difficulty,
-        title_search_key: `${parsedPick.expected_key.title_search_key}__auto_${duplicateIndex}`,
-      };
-      display = {
-        title: `${parsedPick.display.title} [AUTO ${duplicateIndex}]`,
-        level: parsedPick.display.level,
-      };
-      resolvedPickChartKey = `${pickChartKey}#AUTO_${duplicateIndex}`;
+    if (usedKeys.has(selectedChart.chart_key)) {
+      const replacementChart = this.chartMaster.pickRandomUnusedChart({
+        play_style: this.settings.play_style,
+        level_filter: this.settings.level_filter,
+        used_chart_keys: usedKeys,
+        seed: `${this.roomId}:${playerId}:${requestedPickChartKey}:${acceptedAt.toISOString()}`,
+        preferred_difficulty: selectedChart.expected_key.difficulty,
+        preferred_level: selectedChart.display.level,
+      });
+      if (replacementChart === null) {
+        return null;
+      }
+
+      selectedChart = replacementChart;
     }
 
     return {
       player_id: playerId,
-      pick_chart_key: resolvedPickChartKey,
+      pick_chart_key: selectedChart.chart_key,
       accepted_at: acceptedAt,
-      expected_key: expectedKey,
-      display,
+      expected_key: cloneExpectedKey(selectedChart.expected_key),
+      display: {
+        title: selectedChart.display.title,
+        level: selectedChart.display.level,
+      },
     };
   }
 
@@ -703,38 +580,34 @@ export class RoomLobbyState {
       soft_ttl_seconds: ROUND_SOFT_TTL_SECONDS,
     }));
 
-    // PR-5 has no chart master yet, so the BPL random slot is a synthetic unique placeholder.
-    const randomRound = this.buildSyntheticRandomRound(rounds.length, rounds);
+    const randomRound = this.buildMasterRandomRound(rounds.length, rounds);
+    if (randomRound === null) {
+      return [];
+    }
+
     rounds.push(randomRound);
 
     return rounds.slice(0, BPL_ROUNDS);
   }
 
-  private buildSyntheticRandomRound(roundIndex: number, existingRounds: FrozenRound[]): FrozenRound {
+  private buildMasterRandomRound(roundIndex: number, existingRounds: FrozenRound[]): FrozenRound | null {
     const usedKeys = new Set(existingRounds.map((round) => expectedKeyId(round.expected_key)));
-    const baseDifficulty = existingRounds[0]?.expected_key.difficulty ?? "ANOTHER";
-    let suffix = 1;
-    let expectedKey: ExpectedKey = {
+    const randomChart = this.chartMaster.pickRandomUnusedChart({
       play_style: this.settings.play_style,
-      difficulty: baseDifficulty,
-      title_search_key: `random-${roundIndex + 1}`,
-    };
-
-    while (usedKeys.has(expectedKeyId(expectedKey))) {
-      suffix += 1;
-      expectedKey = {
-        play_style: this.settings.play_style,
-        difficulty: baseDifficulty,
-        title_search_key: `random-${roundIndex + 1}-${suffix}`,
-      };
+      level_filter: this.settings.level_filter,
+      used_chart_keys: usedKeys,
+      seed: `${this.roomId}:random:${roundIndex}:${Array.from(usedKeys).sort().join("|")}`,
+    });
+    if (randomChart === null) {
+      return null;
     }
 
     return {
       round_index: roundIndex,
-      expected_key: expectedKey,
+      expected_key: cloneExpectedKey(randomChart.expected_key),
       display: {
-        title: `RANDOM ${roundIndex + 1}`,
-        level: null,
+        title: randomChart.display.title,
+        level: randomChart.display.level,
       },
       started_at: null,
       soft_ttl_seconds: ROUND_SOFT_TTL_SECONDS,
