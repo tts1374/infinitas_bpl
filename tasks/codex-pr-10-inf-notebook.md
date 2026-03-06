@@ -59,8 +59,9 @@
 4. build/typecheck/test/cargo check を通し、最終調整する。
 
 ## 検証結果
-- [ ] `npm --workspace @infinitas/client run typecheck`
-- [ ] `npm --workspace @infinitas/client run build`
-- [ ] `npm run typecheck`
-- [ ] `cargo test -p infinitas-client-tauri notebook`
-- [ ] `cargo check`
+- [x] `npm --workspace @infinitas/client run typecheck`
+- [x] `npm --workspace @infinitas/client run build`
+- [x] `npm run typecheck`
+- [ ] `cargo test -p infinitas-client-tauri notebook` (`x86_64-w64-mingw32-clang` link 時に exported symbols 上限へ到達)
+- [x] `cargo check`
+- [x] `cargo check --tests`
