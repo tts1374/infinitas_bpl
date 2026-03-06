@@ -3,6 +3,7 @@ import {
   MAX_PLAYERS_OPTIONS,
   MODES,
   PLAY_STYLES,
+  SKIP_REASONS,
   SOURCE_TYPES,
   VISIBILITIES,
   WIN_METRICS,
@@ -12,6 +13,7 @@ import {
   type JsonObject,
   type RoomJoinPayload,
   type RoomSettings,
+  type SkipReason,
   type ServerMessagePayloadMap,
   type ServerMessageType,
 } from "@infinitas/shared";
@@ -218,6 +220,43 @@ function parseResultSubmitPayload(
   };
 }
 
+function parseSkipPayload(payload: unknown): { round_index: number; reason: SkipReason } | null {
+  if (!isRecord(payload)) {
+    return null;
+  }
+
+  const roundIndex = typeof payload.round_index === "number" ? payload.round_index : Number.NaN;
+  const reason = asEnumValue(payload.reason, SKIP_REASONS);
+  if (!Number.isInteger(roundIndex) || roundIndex < 0 || reason === undefined) {
+    return null;
+  }
+
+  return {
+    round_index: roundIndex,
+    reason,
+  };
+}
+
+function parseSkipHostAssignPayload(
+  payload: unknown,
+): { round_index: number; target_player_id: string; reason: SkipReason } | null {
+  const parsedSkip = parseSkipPayload(payload);
+  if (parsedSkip === null || !isRecord(payload)) {
+    return null;
+  }
+
+  const targetPlayerId = asOptionalString(payload.target_player_id)?.trim() ?? "";
+  if (targetPlayerId.length === 0) {
+    return null;
+  }
+
+  return {
+    round_index: parsedSkip.round_index,
+    target_player_id: targetPlayerId,
+    reason: parsedSkip.reason,
+  };
+}
+
 export class RoomDurableObject {
   private readonly roomState = new RoomLobbyState(workerChartMaster);
   private readonly sessionsBySocket = new Map<WebSocket, RoomSocketSession>();
@@ -381,6 +420,15 @@ export class RoomDurableObject {
         case "RESULT_SUBMIT":
           await this.handleResultSubmit(session, message as ClientMessage<"RESULT_SUBMIT">);
           return;
+        case "SKIP_SELF":
+          await this.handleSkipSelf(session, message as ClientMessage<"SKIP_SELF">);
+          return;
+        case "SKIP_HOST_ASSIGN":
+          await this.handleSkipHostAssign(session, message as ClientMessage<"SKIP_HOST_ASSIGN">);
+          return;
+        case "FORCE_ADVANCE":
+          await this.handleForceAdvance(session);
+          return;
         case "STATE_GET":
           this.sendStateSnapshot(socket);
           return;
@@ -457,6 +505,7 @@ export class RoomDurableObject {
     this.send(session.socket, "ROOM_JOIN_ACCEPTED", {
       room_state_snapshot: this.roomState.toSnapshot(),
     });
+    this.sendResultReadyIfAvailable(session.socket);
     this.broadcastRoomUpdated();
   }
 
@@ -659,6 +708,106 @@ export class RoomDurableObject {
     this.broadcastRoomUpdated();
   }
 
+  private async handleSkipSelf(session: RoomSocketSession, message: ClientMessage<"SKIP_SELF">): Promise<void> {
+    if (session.playerId === null) {
+      this.sendError(session.socket, "INVALID_STATE", "Send ROOM_JOIN before this message.");
+      return;
+    }
+
+    const payload = parseSkipPayload(message.payload);
+    if (payload === null) {
+      this.sendError(session.socket, "INVALID_STATE", "SKIP_SELF payload is invalid.");
+      return;
+    }
+
+    const result = this.roomState.skipSelf(session.playerId, payload.round_index, payload.reason, new Date());
+    if (!result.ok) {
+      switch (result.reason) {
+        case "ROUND_ALREADY_CONFIRMED":
+          this.sendError(session.socket, "ROUND_ALREADY_CONFIRMED", "Player already confirmed for this round.");
+          return;
+        default:
+          this.sendError(session.socket, "INVALID_STATE", "SKIP_SELF is unavailable in the current state.");
+          return;
+      }
+    }
+
+    await this.syncAlarm();
+    this.broadcastRoundTransition(result);
+    this.broadcastRoomUpdated();
+  }
+
+  private async handleSkipHostAssign(
+    session: RoomSocketSession,
+    message: ClientMessage<"SKIP_HOST_ASSIGN">,
+  ): Promise<void> {
+    if (session.playerId === null) {
+      this.sendError(session.socket, "INVALID_STATE", "Send ROOM_JOIN before this message.");
+      return;
+    }
+
+    const payload = parseSkipHostAssignPayload(message.payload);
+    if (payload === null) {
+      this.sendError(session.socket, "INVALID_STATE", "SKIP_HOST_ASSIGN payload is invalid.");
+      return;
+    }
+
+    const result = this.roomState.assignHostSkip(
+      session.playerId,
+      payload.round_index,
+      payload.target_player_id,
+      payload.reason,
+      new Date(),
+    );
+    if (!result.ok) {
+      switch (result.reason) {
+        case "NOT_HOST":
+          this.sendError(session.socket, "NOT_HOST", "Only the host can assign a skip.");
+          return;
+        case "HOST_SKIP_LOCKED":
+          this.sendError(session.socket, "HOST_SKIP_LOCKED", "Host skip is locked until the round has been active for 240 seconds.");
+          return;
+        case "ROUND_ALREADY_CONFIRMED":
+          this.sendError(session.socket, "ROUND_ALREADY_CONFIRMED", "Target player already confirmed for this round.");
+          return;
+        default:
+          this.sendError(session.socket, "INVALID_STATE", "SKIP_HOST_ASSIGN is unavailable in the current state.");
+          return;
+      }
+    }
+
+    await this.syncAlarm();
+    this.broadcastRoundTransition(result);
+    this.broadcastRoomUpdated();
+  }
+
+  private async handleForceAdvance(session: RoomSocketSession): Promise<void> {
+    if (session.playerId === null) {
+      this.sendError(session.socket, "INVALID_STATE", "Send ROOM_JOIN before this message.");
+      return;
+    }
+
+    const result = this.roomState.forceAdvance(session.playerId, new Date());
+    if (!result.ok) {
+      switch (result.reason) {
+        case "NOT_HOST":
+          this.sendError(session.socket, "NOT_HOST", "Only the host can force advance.");
+          return;
+        default:
+          this.sendError(
+            session.socket,
+            "INVALID_STATE",
+            "FORCE_ADVANCE is unavailable unless the current round still has unconfirmed players.",
+          );
+          return;
+      }
+    }
+
+    await this.syncAlarm();
+    this.broadcastRoundTransition(result);
+    this.broadcastRoomUpdated();
+  }
+
   private findSessionByPlayerId(playerId: string): RoomSocketSession | null {
     for (const session of this.sessionsBySocket.values()) {
       if (session.playerId === playerId) {
@@ -673,6 +822,7 @@ export class RoomDurableObject {
     this.send(socket, "STATE_SNAPSHOT", {
       room_state_snapshot: this.roomState.toSnapshot(),
     });
+    this.sendResultReadyIfAvailable(socket);
   }
 
   private broadcastRoomUpdated(): void {
@@ -686,12 +836,20 @@ export class RoomDurableObject {
       this.broadcast("PLAYER_ROUND_CONFIRMED", confirmation);
     }
 
+    if (result.force_advance_applied !== undefined) {
+      this.broadcast("FORCE_ADVANCE_APPLIED", result.force_advance_applied);
+    }
+
     if (result.round_ended !== undefined) {
       this.broadcast("ROUND_ENDED", result.round_ended);
     }
 
     if (result.round_begin !== undefined) {
       this.broadcast("ROUND_BEGIN", result.round_begin);
+    }
+
+    if (result.result_ready !== undefined) {
+      this.broadcast("RESULT_READY", result.result_ready);
     }
   }
 
@@ -732,6 +890,15 @@ export class RoomDurableObject {
 
   private sendStartMatchRejected(socket: WebSocket, reason: string): void {
     this.send(socket, "START_MATCH_REJECTED", { reason });
+  }
+
+  private sendResultReadyIfAvailable(socket: WebSocket): void {
+    const payload = this.roomState.getResultReadyPayload();
+    if (payload === null) {
+      return;
+    }
+
+    this.send(socket, "RESULT_READY", payload);
   }
 
   private isDuplicateMessage(playerId: string, clientMessageId: string): boolean {
@@ -783,6 +950,10 @@ export class RoomDurableObject {
       return true;
     }
 
+    if (await this.closeResultOnTimeout(now)) {
+      return true;
+    }
+
     const matchTransition = this.roomState.expireMatchIfNeeded(now);
     if (matchTransition !== null) {
       await this.syncAlarm();
@@ -811,6 +982,19 @@ export class RoomDurableObject {
     this.broadcast("ROOM_CLOSED", { reason: "READY_CHECK_TIMEOUT" }, true);
     await this.cleanupLobbyEntry();
     this.disconnectAll(4001, "Ready check timed out.");
+    return true;
+  }
+
+  private async closeResultOnTimeout(now: Date): Promise<boolean> {
+    const closed = this.roomState.closeResultIfExpired(now);
+    if (!closed) {
+      return false;
+    }
+
+    await this.clearAlarm();
+    this.broadcast("ROOM_CLOSED", { reason: "RESULT_TIMEOUT" }, true);
+    await this.cleanupLobbyEntry();
+    this.disconnectAll(4002, "Result expired.");
     return true;
   }
 
