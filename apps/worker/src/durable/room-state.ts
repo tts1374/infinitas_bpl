@@ -1,4 +1,14 @@
-import { MATCH_TTL_MINUTES, type PlayerRole, type RoomSettings, type RoomState, type RoomStateSnapshot, type SourceType } from "@infinitas/shared";
+import {
+  MATCH_TTL_MINUTES,
+  READY_CHECK_TTL_MINUTES,
+  REJOIN_COOLDOWN_SECONDS,
+  START_MIN_PLAYERS,
+  type PlayerRole,
+  type RoomSettings,
+  type RoomState,
+  type RoomStateSnapshot,
+  type SourceType,
+} from "@infinitas/shared";
 
 interface InternalPlayer {
   player_id: string;
@@ -27,12 +37,28 @@ export interface JoinPlayerInput {
 
 export interface JoinPlayerResult {
   ok: boolean;
-  reason?: "ROOM_CLOSED" | "ROOM_FULL";
+  reason?: "ROOM_CLOSED" | "ROOM_FULL" | "ROOM_JOIN_LOCKED";
 }
 
 export interface LeavePlayerResult {
-  removed: boolean;
+  changed: boolean;
   was_host: boolean;
+}
+
+export interface ReadyCheckOpenResult {
+  ok: boolean;
+  reason?: "INVALID_STATE" | "NOT_HOST";
+  ready_check_deadline?: Date;
+}
+
+export interface ReadySetResult {
+  ok: boolean;
+  reason?: "INVALID_STATE" | "PLAYER_NOT_FOUND";
+}
+
+export interface StartMatchResult {
+  ok: boolean;
+  reason?: "INVALID_STATE" | "NOT_HOST" | "START_REQUIRES_MIN_PLAYERS";
 }
 
 const DEFAULT_SETTINGS: RoomSettings = {
@@ -54,6 +80,18 @@ function computeMatchDeadline(createdAt: Date): Date {
   return new Date(createdAt.getTime() + MATCH_TTL_MINUTES * 60_000);
 }
 
+function computeReadyCheckDeadline(openedAt: Date): Date {
+  return new Date(openedAt.getTime() + READY_CHECK_TTL_MINUTES * 60_000);
+}
+
+function computeRejoinUntil(now: Date): Date {
+  return new Date(now.getTime() + REJOIN_COOLDOWN_SECONDS * 1_000);
+}
+
+function canNewPlayerJoin(roomState: RoomState): roomState is "LOBBY" | "READY_CHECK" {
+  return roomState === "LOBBY" || roomState === "READY_CHECK";
+}
+
 export class RoomLobbyState {
   private initialized = false;
   private roomId = "";
@@ -62,6 +100,7 @@ export class RoomLobbyState {
   private hostPlayerId: string | null = null;
   private createdAt = new Date();
   private matchDeadline = computeMatchDeadline(this.createdAt);
+  private readyCheckDeadline: Date | null = null;
   private resultDeadline: Date | null = null;
   private closedAt: Date | null = null;
   private closeReason: string | null = null;
@@ -121,6 +160,10 @@ export class RoomLobbyState {
       return true;
     }
 
+    if (!canNewPlayerJoin(this.roomState)) {
+      return false;
+    }
+
     return this.players.size < this.settings.max_players;
   }
 
@@ -130,6 +173,10 @@ export class RoomLobbyState {
     }
 
     const existing = this.players.get(input.player_id);
+    if (!existing && !canNewPlayerJoin(this.roomState)) {
+      return { ok: false, reason: "ROOM_JOIN_LOCKED" };
+    }
+
     if (!existing && this.players.size >= this.settings.max_players) {
       return { ok: false, reason: "ROOM_FULL" };
     }
@@ -139,7 +186,7 @@ export class RoomLobbyState {
       existing.source = input.source;
       existing.connected = true;
       existing.left_at = null;
-      existing.ready = false;
+      existing.rejoin_until = null;
       return { ok: true };
     }
 
@@ -167,19 +214,99 @@ export class RoomLobbyState {
   leavePlayer(playerId: string, now: Date): LeavePlayerResult {
     const player = this.players.get(playerId);
     if (!player) {
-      return { removed: false, was_host: false };
+      return { changed: false, was_host: false };
     }
 
     const wasHost = this.hostPlayerId === playerId;
     player.connected = false;
     player.left_at = now;
-    this.players.delete(playerId);
+
+    if (canNewPlayerJoin(this.roomState)) {
+      this.players.delete(playerId);
+    } else {
+      player.rejoin_until = computeRejoinUntil(now);
+    }
 
     if (wasHost) {
       this.close("HOST_LEFT", now);
     }
 
-    return { removed: true, was_host: wasHost };
+    return { changed: true, was_host: wasHost };
+  }
+
+  openReadyCheck(playerId: string, now: Date): ReadyCheckOpenResult {
+    if (playerId !== this.hostPlayerId) {
+      return { ok: false, reason: "NOT_HOST" };
+    }
+
+    if (this.roomState !== "LOBBY") {
+      return { ok: false, reason: "INVALID_STATE" };
+    }
+
+    this.roomState = "READY_CHECK";
+    this.readyCheckDeadline = computeReadyCheckDeadline(now);
+    for (const player of this.players.values()) {
+      player.ready = false;
+    }
+
+    return {
+      ok: true,
+      ready_check_deadline: this.readyCheckDeadline,
+    };
+  }
+
+  setPlayerReady(playerId: string, ready: boolean): ReadySetResult {
+    if (this.roomState !== "READY_CHECK") {
+      return { ok: false, reason: "INVALID_STATE" };
+    }
+
+    const player = this.players.get(playerId);
+    if (!player) {
+      return { ok: false, reason: "PLAYER_NOT_FOUND" };
+    }
+
+    player.ready = ready;
+    return { ok: true };
+  }
+
+  startMatch(playerId: string, now: Date): StartMatchResult {
+    if (playerId !== this.hostPlayerId) {
+      return { ok: false, reason: "NOT_HOST" };
+    }
+
+    if (this.roomState !== "READY_CHECK") {
+      return { ok: false, reason: "INVALID_STATE" };
+    }
+
+    if (this.players.size < START_MIN_PLAYERS) {
+      return { ok: false, reason: "START_REQUIRES_MIN_PLAYERS" };
+    }
+
+    this.roomState = "PICKING";
+    this.readyCheckDeadline = null;
+    this.matchDeadline = computeMatchDeadline(now);
+    for (const player of this.players.values()) {
+      player.ready = false;
+    }
+
+    return { ok: true };
+  }
+
+  getReadyCheckDeadline(): Date | null {
+    return this.readyCheckDeadline;
+  }
+
+  closeReadyCheckIfExpired(now: Date): boolean {
+    if (
+      this.roomState !== "READY_CHECK" ||
+      this.readyCheckDeadline === null ||
+      now.getTime() < this.readyCheckDeadline.getTime()
+    ) {
+      return false;
+    }
+
+    this.close("READY_CHECK_TIMEOUT", now);
+    return true;
   }
 
   close(reason: string, now: Date): void {
@@ -188,6 +315,7 @@ export class RoomLobbyState {
     }
 
     this.roomState = "CLOSED";
+    this.readyCheckDeadline = null;
     this.closeReason = reason;
     this.closedAt = now;
   }
@@ -217,7 +345,7 @@ export class RoomLobbyState {
       frozen_rounds: [],
       current_round: null,
       timers: {
-        ready_check_deadline: null,
+        ready_check_deadline: toIsoString(this.readyCheckDeadline),
         match_deadline: this.matchDeadline.toISOString(),
         result_deadline: toIsoString(this.resultDeadline),
       },
