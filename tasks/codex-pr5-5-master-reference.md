@@ -56,3 +56,17 @@
 2. Worker master loader / resolver を追加。
 3. `room-state.ts` と `room-object.ts` を master 解決へ切り替え。
 4. snapshot 生成と typecheck 実行で仕上げる。
+
+## 検証結果
+- `python scripts/build_worker_chart_master.py`
+- `node C:\work\infinitas_arena\infinitas_bpl\node_modules\typescript\bin\tsc --noEmit -p apps/worker/tsconfig.json`
+- `node C:\work\infinitas_arena\infinitas_bpl\node_modules\typescript\bin\tsc --noEmit -p tsconfig.json`
+- snapshot sanity:
+  - `release_tag=2026-02-23`
+  - `charts=11121`
+  - `aliases=1791`
+  - `duplicate_chart_keys=0`
+  - `excluded_ambiguous_chart_count=26`
+
+## 補足
+- `npm --workspace @infinitas/worker run typecheck` は、この worktree に `node_modules/.bin/tsc` が無いため実行せず、既存 workspace の TypeScript バイナリを直接利用した。
