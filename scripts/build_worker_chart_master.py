@@ -54,6 +54,9 @@ def build_payload(sqlite_path: Path, release_tag: str, manifest: dict) -> dict:
             "difficulty": row["difficulty"],
             "level": row["level"],
             "title": f"{row['title']}{row['title_qualifier'] or ''}",
+            "title_qualifier": row["title_qualifier"] or "",
+            "artist": row["artist"] or "",
+            "genre": row["genre"] or "",
             "title_search_key": row["title_search_key"],
         }
         for row in cursor.execute(
@@ -64,6 +67,8 @@ def build_payload(sqlite_path: Path, release_tag: str, manifest: dict) -> dict:
               c.level,
               m.title,
               m.title_qualifier,
+              m.artist,
+              m.genre,
               m.title_search_key
             FROM chart c
             JOIN music m ON m.music_id = c.music_id

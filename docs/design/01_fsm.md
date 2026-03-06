@@ -26,7 +26,8 @@
 - `CLOSED`
 
 ### 状態遷移（概要）
-- `LOBBY` -> `READY_CHECK`（ホスト操作）
+- ルーム作成完了時に `READY_CHECK` を開始する（新規作成フローでは `LOBBY` に留まらない）
+- `LOBBY` -> `READY_CHECK`（互換用。ホスト操作）
 - `READY_CHECK` -> `PICKING`（ホスト `START`。条件: players>=2）
 - `PICKING` -> `PLAYING`（DOが確定譜面リストを凍結して遷移）
 - `PLAYING` -> `PLAYING`（全員確定で次ラウンドへ）
@@ -62,10 +63,12 @@
 - 参加/退出は自由（最大 `max_players`）
 - ホストのみ `READY_CHECK` を開ける
 - `visibility=PRIVATE` の場合は join_code必須（入口のWorkerで弾くか、DOで弾くかを統一）
+- Ph1 の通常 create フローではルーム作成直後に `READY_CHECK` へ遷移済みであり、画面滞在は想定しない
 
 ## 7. READY_CHECK（開始準備）
 ### ルール
 - `players < 2` の間は `START` 押下不可（ホストUIでdisabled、DOでも拒否）
+- `ready=false` の参加者が 1 人でもいる間は `START` 押下不可（ホストUIでdisabled、DOでも拒否）
 - `START` はホストのみ（確認ダイアログなしで可）
 - READY_CHECK中は参加・退出可能（最大 `max_players`）
 - `ready_check_ttl` 超過: `CLOSED`（解散）

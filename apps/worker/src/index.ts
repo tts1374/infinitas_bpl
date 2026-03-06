@@ -1,8 +1,10 @@
+import { handleGetCharts } from "./routes/charts";
 import { handleGetRooms, handlePostRooms, handleRoomWebSocket, matchRoomWebSocketPath } from "./routes/rooms";
 import { RoomDurableObject } from "./durable/room-object";
 import type { WorkerEnv } from "./types/env";
 import { methodNotAllowed, noContent, notFound, withCors } from "./utils/http";
 
+const CHARTS_ALLOWED_METHODS = ["GET"];
 const ROOMS_ALLOWED_METHODS = ["GET", "POST"];
 
 export { RoomDurableObject };
@@ -28,6 +30,17 @@ export default {
       }
 
       return withCors(methodNotAllowed([...ROOMS_ALLOWED_METHODS, "OPTIONS"]), request, ROOMS_ALLOWED_METHODS);
+    }
+
+    if (url.pathname === "/api/charts") {
+      if (request.method === "OPTIONS") {
+        return withCors(noContent(), request, CHARTS_ALLOWED_METHODS);
+      }
+      if (request.method === "GET") {
+        return withCors(await handleGetCharts(request), request, CHARTS_ALLOWED_METHODS);
+      }
+
+      return withCors(methodNotAllowed([...CHARTS_ALLOWED_METHODS, "OPTIONS"]), request, CHARTS_ALLOWED_METHODS);
     }
 
     return notFound();

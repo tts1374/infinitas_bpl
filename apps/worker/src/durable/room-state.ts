@@ -85,6 +85,7 @@ export interface StartMatchResult {
     | "INVALID_STATE"
     | "NOT_HOST"
     | "START_REQUIRES_MIN_PLAYERS"
+    | "NOT_ALL_PLAYERS_READY"
     | "BPL_REQUIRES_TWO_PLAYERS";
 }
 
@@ -270,6 +271,8 @@ export class RoomLobbyState {
     this.roomId = input.room_id;
     this.settings = { ...input.settings };
     this.createdAt = createdAt;
+    this.roomState = "READY_CHECK";
+    this.readyCheckDeadline = computeReadyCheckDeadline(createdAt);
     this.matchDeadline = computeMatchDeadline(createdAt);
   }
 
@@ -427,6 +430,10 @@ export class RoomLobbyState {
 
     if (this.players.size < START_MIN_PLAYERS) {
       return { ok: false, reason: "START_REQUIRES_MIN_PLAYERS" };
+    }
+
+    if (this.getPlayersInJoinOrder().some((player) => !player.ready)) {
+      return { ok: false, reason: "NOT_ALL_PLAYERS_READY" };
     }
 
     if (this.settings.mode === "BPL" && this.players.size !== 2) {

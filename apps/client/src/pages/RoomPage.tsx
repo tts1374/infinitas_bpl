@@ -1,7 +1,14 @@
-import { HOST_SKIP_UNLOCK_SECONDS, SKIP_REASONS } from "@infinitas/shared";
-import { useState } from "react";
+import {
+  CHART_DIFFICULTIES,
+  CHART_SEARCH_PAGE_SIZE,
+  HOST_SKIP_UNLOCK_SECONDS,
+  SKIP_REASONS,
+  type ChartSearchEntry,
+} from "@infinitas/shared";
+import { useDeferredValue, useEffect, useRef, useState } from "react";
 import { DebugInjectionPanel } from "../components/DebugInjectionPanel";
 import { useLocalResultArchiveStore } from "../services/result-archive";
+import { listCharts } from "../services/worker-api-client";
 import { useVoicePlaybackStore } from "../services/voice-announcer";
 import { roomStore, useRoomStore } from "../stores/room-store";
 import { useSettingsStore } from "../stores/settings-store";
@@ -70,6 +77,135 @@ export function RoomPage() {
   const [metricValue, setMetricValue] = useState("0");
   const [selfSkipReason, setSelfSkipReason] = useState<(typeof SKIP_REASONS)[number]>("TECH");
   const [hostSkipReason, setHostSkipReason] = useState<(typeof SKIP_REASONS)[number]>("UNOWNED");
+  const [chartDifficulty, setChartDifficulty] = useState<(typeof CHART_DIFFICULTIES)[number] | "">("");
+  const [chartLevel, setChartLevel] = useState("");
+  const [chartKeyword, setChartKeyword] = useState("");
+  const deferredChartKeyword = useDeferredValue(chartKeyword);
+  const [chartResults, setChartResults] = useState<ChartSearchEntry[]>([]);
+  const [chartLoading, setChartLoading] = useState(false);
+  const [chartError, setChartError] = useState<string | null>(null);
+  const [chartCursor, setChartCursor] = useState<string | null>(null);
+  const [chartNextCursor, setChartNextCursor] = useState<string | null>(null);
+  const [chartPreviousCursors, setChartPreviousCursors] = useState<Array<string | null>>([]);
+  const [chartLastLoadedAt, setChartLastLoadedAt] = useState<string | null>(null);
+  const chartRequestIdRef = useRef(0);
+
+  async function loadChartCandidates(targetCursor: string | null, historyMode: "reset" | "next" | "previous"): Promise<void> {
+    if (snapshot === null || snapshot.room_state !== "PICKING") {
+      return;
+    }
+
+    const trimmedLevel = chartLevel.trim();
+    const parsedLevel = trimmedLevel.length === 0 ? undefined : Number(trimmedLevel);
+    if (
+      parsedLevel !== undefined &&
+      (!Number.isInteger(parsedLevel) || parsedLevel < 1 || parsedLevel > 12)
+    ) {
+      chartRequestIdRef.current += 1;
+      setChartLoading(false);
+      setChartError("Level search must be between 1 and 12.");
+      setChartResults([]);
+      setChartCursor(null);
+      setChartNextCursor(null);
+      setChartPreviousCursors([]);
+      setChartLastLoadedAt(null);
+      return;
+    }
+
+    const requestId = chartRequestIdRef.current + 1;
+    chartRequestIdRef.current = requestId;
+    setChartLoading(true);
+    setChartError(null);
+
+    try {
+      const response = await listCharts(savedSettings.apiBaseUrl, {
+        play_style: snapshot.settings.play_style,
+        level_filter: snapshot.settings.level_filter,
+        ...(chartDifficulty === "" ? {} : { difficulty: chartDifficulty }),
+        ...(parsedLevel === undefined ? {} : { level: parsedLevel }),
+        ...(deferredChartKeyword.trim().length === 0 ? {} : { keyword: deferredChartKeyword.trim() }),
+        ...(targetCursor === null ? {} : { cursor: targetCursor }),
+        limit: CHART_SEARCH_PAGE_SIZE,
+      });
+      if (chartRequestIdRef.current !== requestId) {
+        return;
+      }
+
+      setChartResults(response.charts);
+      setChartCursor(targetCursor);
+      setChartNextCursor(response.next_cursor);
+      setChartLastLoadedAt(new Date().toISOString());
+      setChartPreviousCursors((current) => {
+        if (historyMode === "reset") {
+          return [];
+        }
+        if (historyMode === "next") {
+          return [...current, chartCursor];
+        }
+
+        return current.slice(0, -1);
+      });
+    } catch (error) {
+      if (chartRequestIdRef.current !== requestId) {
+        return;
+      }
+
+      const message = error instanceof Error ? error.message : "Failed to load chart candidates.";
+      setChartError(message);
+      if (historyMode === "reset") {
+        setChartResults([]);
+        setChartCursor(null);
+        setChartNextCursor(null);
+        setChartPreviousCursors([]);
+        setChartLastLoadedAt(null);
+      }
+    } finally {
+      if (chartRequestIdRef.current === requestId) {
+        setChartLoading(false);
+      }
+    }
+  }
+
+  useEffect(() => {
+    if (snapshot?.room_state !== "PICKING") {
+      chartRequestIdRef.current += 1;
+      setChartLoading(false);
+      setChartError(null);
+      setChartResults([]);
+      setChartCursor(null);
+      setChartNextCursor(null);
+      setChartPreviousCursors([]);
+      setChartLastLoadedAt(null);
+      return;
+    }
+
+    const trimmedLevel = chartLevel.trim();
+    if (trimmedLevel.length > 0) {
+      const parsedLevel = Number(trimmedLevel);
+      if (!Number.isInteger(parsedLevel) || parsedLevel < 1 || parsedLevel > 12) {
+        chartRequestIdRef.current += 1;
+        setChartLoading(false);
+        setChartError("Level search must be between 1 and 12.");
+        setChartResults([]);
+        setChartCursor(null);
+        setChartNextCursor(null);
+        setChartPreviousCursors([]);
+        setChartLastLoadedAt(null);
+        return;
+      }
+    }
+
+    void loadChartCandidates(null, "reset");
+  }, [
+    chartDifficulty,
+    chartLevel,
+    deferredChartKeyword,
+    savedSettings.apiBaseUrl,
+    snapshot?.room_id,
+    snapshot?.room_state,
+    snapshot?.settings.level_filter,
+    snapshot?.settings.play_style,
+  ]);
 
   if (snapshot === null) {
     return (
@@ -97,6 +233,9 @@ export function RoomPage() {
   const pendingPlayers = currentRound
     ? snapshot.players.filter((player) => !confirmedPlayers.has(player.player_id))
     : [];
+  const readyPlayersCount = snapshot.players.filter((player) => player.ready).length;
+  const allPlayersReady = snapshot.players.length >= 2 && snapshot.players.every((player) => player.ready);
+  const mySubmittedPick = snapshot.picks.find((pick) => pick.player_id === savedSettings.playerId) ?? null;
 
   return (
     <section className="page-grid room-grid">
@@ -277,7 +416,10 @@ export function RoomPage() {
               <h2>Confirm entrants</h2>
             </div>
           </div>
-          <p>At least two connected players are required before START_MATCH.</p>
+          <p>
+            {readyPlayersCount} / {snapshot.players.length} players are READY. START_MATCH requires at least two
+            players and every current entrant to be READY.
+          </p>
           <div className="button-row">
             <button
               type="button"
@@ -294,7 +436,7 @@ export function RoomPage() {
               <button
                 type="button"
                 className="primary-button"
-                disabled={snapshot.players.length < 2}
+                disabled={!allPlayersReady}
                 onClick={() => {
                   roomStore.send("START_MATCH", {});
                 }}
@@ -311,39 +453,189 @@ export function RoomPage() {
           <div className="panel-header">
             <div>
               <p className="eyebrow">PICKING</p>
-              <h2>Submit chart key</h2>
+              <h2>Select a chart</h2>
             </div>
           </div>
-          <div className="form-grid">
+
+          <div className="split-panel">
+            <section>
+              <div className="form-grid">
+                <label className="field full-width">
+                  <span>pick_chart_key</span>
+                  <input
+                    type="text"
+                    value={pickChartKey}
+                    onChange={(event) => {
+                      setPickChartKey(event.currentTarget.value);
+                    }}
+                    placeholder="SP::ANOTHER::title_search_key"
+                  />
+                </label>
+              </div>
+              <div className="button-row">
+                <button
+                  type="button"
+                  className="primary-button"
+                  disabled={pickChartKey.trim().length === 0 || mySubmittedPick !== null}
+                  onClick={() => {
+                    if (
+                      roomStore.send("PICK_SUBMIT", {
+                        pick_chart_key: pickChartKey.trim(),
+                      })
+                    ) {
+                      setPickChartKey("");
+                    }
+                  }}
+                >
+                  Submit pick
+                </button>
+              </div>
+            </section>
+
+            <section className="status-stack support-card">
+              <strong>Room preset filter</strong>
+              <span className="status-muted">Play style: {snapshot.settings.play_style}</span>
+              <span className="status-muted">Level filter: {snapshot.settings.level_filter}</span>
+              <span className="status-muted">
+                {mySubmittedPick === null
+                  ? "You can submit one chart from the list below."
+                  : `Submitted: ${mySubmittedPick.pick_chart_key}`}
+              </span>
+            </section>
+          </div>
+
+          <div className="filter-grid">
+            <label className="field">
+              <span>Difficulty</span>
+              <select
+                value={chartDifficulty}
+                onChange={(event) => {
+                  setChartDifficulty(event.currentTarget.value as (typeof CHART_DIFFICULTIES)[number] | "");
+                }}
+              >
+                <option value="">ALL</option>
+                {CHART_DIFFICULTIES.map((difficulty) => (
+                  <option key={difficulty} value={difficulty}>
+                    {difficulty}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="field">
+              <span>Level</span>
+              <input
+                type="number"
+                min={1}
+                max={12}
+                value={chartLevel}
+                onChange={(event) => {
+                  setChartLevel(event.currentTarget.value);
+                }}
+                placeholder="Exact level"
+              />
+            </label>
+
             <label className="field full-width">
-              <span>pick_chart_key</span>
+              <span>Keyword</span>
               <input
                 type="text"
-                value={pickChartKey}
+                value={chartKeyword}
                 onChange={(event) => {
-                  setPickChartKey(event.currentTarget.value);
+                  setChartKeyword(event.currentTarget.value);
                 }}
-                placeholder="song-id__SP_ANOTHER"
+                placeholder="Search by title qualifier / artist / genre"
               />
             </label>
           </div>
-          <div className="button-row">
-            <button
-              type="button"
-              className="primary-button"
-              disabled={pickChartKey.trim().length === 0}
-              onClick={() => {
-                if (
-                  roomStore.send("PICK_SUBMIT", {
-                    pick_chart_key: pickChartKey.trim(),
-                  })
-                ) {
-                  setPickChartKey("");
-                }
-              }}
-            >
-              Submit pick
-            </button>
+
+          {chartError ? <p className="inline-error">{chartError}</p> : null}
+
+          <div className="table-wrapper">
+            <table className="room-table">
+              <thead>
+                <tr>
+                  <th>Title</th>
+                  <th>Artist</th>
+                  <th>Genre</th>
+                  <th>Diff</th>
+                  <th>Lv</th>
+                  <th>Key</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {chartResults.length === 0 ? (
+                  <tr>
+                    <td colSpan={7}>
+                      <div className="empty-state">{chartLoading ? "Loading charts..." : "No charts found."}</div>
+                    </td>
+                  </tr>
+                ) : (
+                  chartResults.map((chart) => (
+                    <tr key={chart.chart_key}>
+                      <td>{chart.title}</td>
+                      <td>{chart.artist || "-"}</td>
+                      <td>{chart.genre || "-"}</td>
+                      <td>{chart.difficulty}</td>
+                      <td>{chart.level}</td>
+                      <td>
+                        <code>{chart.chart_key}</code>
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className="secondary-button small"
+                          disabled={mySubmittedPick !== null}
+                          onClick={() => {
+                            setPickChartKey(chart.chart_key);
+                            roomStore.send("PICK_SUBMIT", {
+                              pick_chart_key: chart.chart_key,
+                            });
+                          }}
+                        >
+                          Pick
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="panel-footer">
+            <div className="meta-strip">
+              <span>Last loaded: {formatDateTime(chartLastLoadedAt)}</span>
+              <span>{chartResults.length} chart(s)</span>
+            </div>
+            <div className="button-row">
+              <button
+                type="button"
+                className="secondary-button"
+                disabled={chartPreviousCursors.length === 0 || chartLoading}
+                onClick={() => {
+                  const previousCursor = chartPreviousCursors[chartPreviousCursors.length - 1] ?? null;
+                  void loadChartCandidates(previousCursor, "previous");
+                }}
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                className="secondary-button"
+                disabled={chartNextCursor === null || chartLoading}
+                onClick={() => {
+                  if (chartNextCursor === null) {
+                    return;
+                  }
+
+                  void loadChartCandidates(chartNextCursor, "next");
+                }}
+              >
+                Next
+              </button>
+            </div>
           </div>
 
           <div className="split-panel">
