@@ -69,7 +69,7 @@
 4. build/typecheck/cargo check を通し、最終調整を行う。
 
 ## 検証結果
-- [ ] `npm --workspace @infinitas/client run typecheck`
-- [ ] `npm --workspace @infinitas/client run build`
-- [ ] `npm run typecheck`
-- [ ] `cargo check`
+- [x] `npm --workspace @infinitas/client run typecheck`
+- [x] `npm --workspace @infinitas/client run build`
+- [x] `npm run typecheck`
+- [x] `cargo check`
