@@ -237,6 +237,26 @@ WS 接続と LOBBY を成立させる。
 
 ---
 
+## PR-5.5: read-only 譜面マスタ参照
+### 目的
+DO から read-only の譜面マスタを参照できるようにし、凍結譜面を実譜面ベースで確定できるようにする。
+
+### 対象
+- `iidx_all_songs_master` release の取り込み経路
+- server 側 read-only 参照データの配置
+- DO からの譜面/曲参照
+- `pick_chart_key` の実譜面解決
+- BPL random 1 の実譜面選出
+- `expected_key` / display の master 由来確定
+
+### 完了条件
+- DO が read-only マスタを参照できる
+- `pick_chart_key` から実譜面を解決できる
+- BPL random 1 が実譜面ベースで確定できる
+- `frozen_rounds.expected_key` と display が master 由来で埋まる
+
+---
+
 ## PR-6: PLAYING 基本進行
 ### 目的
 ラウンド進行と提出の骨格を作る。
@@ -383,6 +403,7 @@ Ph1 体験を成立させる。
 - PR-3
 - PR-4
 - PR-5
+- PR-5.5
 - PR-6
 - PR-7
 
