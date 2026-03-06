@@ -2,8 +2,12 @@ import {
   CHART_DIFFICULTIES,
   CHART_SEARCH_PAGE_SIZE,
   HOST_SKIP_UNLOCK_SECONDS,
+  ROUND_MUSIC_SELECT_SECONDS,
+  ROUND_PLAY_BEGIN_AT_SECONDS,
   SKIP_REASONS,
   type ChartSearchEntry,
+  type CurrentRoundSnapshot,
+  type ResultReadyPayload,
 } from "@infinitas/shared";
 import { useDeferredValue, useEffect, useRef, useState } from "react";
 import { DebugInjectionPanel } from "../components/DebugInjectionPanel";
@@ -53,6 +57,83 @@ function getVoiceTone(phase: string): string {
   return phase === "IDLE" ? "warning" : "ok";
 }
 
+function getIsoTimeMs(value: string | null | undefined): number | null {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function getRemainingSeconds(targetAtMs: number | null, nowMs: number): number | null {
+  if (targetAtMs === null) {
+    return null;
+  }
+
+  return Math.max(0, Math.ceil((targetAtMs - nowMs) / 1_000));
+}
+
+function getPlayingCountdown(round: CurrentRoundSnapshot, nowMs: number): {
+  label: string;
+  remainingSeconds: number;
+  detail: string;
+} | null {
+  const startedAtMs = getIsoTimeMs(round.round_started_at);
+  if (startedAtMs === null) {
+    return null;
+  }
+
+  const musicSelectEndsAtMs = startedAtMs + ROUND_MUSIC_SELECT_SECONDS * 1_000;
+  const playBeginAtMs = startedAtMs + ROUND_PLAY_BEGIN_AT_SECONDS * 1_000;
+  const playDeadlineAtMs = playBeginAtMs + round.soft_ttl_seconds * 1_000;
+
+  if (nowMs < musicSelectEndsAtMs) {
+    return {
+      label: "MUSIC SELECT",
+      remainingSeconds: getRemainingSeconds(musicSelectEndsAtMs, nowMs) ?? 0,
+      detail: "Chart select window.",
+    };
+  }
+
+  if (nowMs < playBeginAtMs) {
+    return {
+      label: "PLAY START",
+      remainingSeconds: getRemainingSeconds(playBeginAtMs, nowMs) ?? 0,
+      detail: "Start buffer before gameplay begins.",
+    };
+  }
+
+  return {
+    label: "IN PLAY",
+    remainingSeconds: getRemainingSeconds(playDeadlineAtMs, nowMs) ?? 0,
+    detail: "Soft TTL remaining after Let's go.",
+  };
+}
+
+function ResultSummaryView({ resultReady }: { resultReady: ResultReadyPayload | null }) {
+  if (resultReady === null) {
+    return <p className="empty-state">Awaiting RESULT_READY payload.</p>;
+  }
+
+  return (
+    <div className="split-panel result-grid">
+      <section>
+        <h3>Summary</h3>
+        <pre>{stringifyJson(resultReady.summary)}</pre>
+      </section>
+      <section>
+        <h3>Per player</h3>
+        <pre>{stringifyJson(resultReady.per_player)}</pre>
+      </section>
+      <section className="full-span">
+        <h3>Per round</h3>
+        <pre>{stringifyJson(resultReady.per_round)}</pre>
+      </section>
+    </div>
+  );
+}
+
 export function RoomPage() {
   const snapshot = useRoomStore((state) => state.snapshot);
   const resultReady = useRoomStore((state) => state.resultReady);
@@ -88,6 +169,7 @@ export function RoomPage() {
   const [chartNextCursor, setChartNextCursor] = useState<string | null>(null);
   const [chartPreviousCursors, setChartPreviousCursors] = useState<Array<string | null>>([]);
   const [chartLastLoadedAt, setChartLastLoadedAt] = useState<string | null>(null);
+  const [clockNowMs, setClockNowMs] = useState(() => Date.now());
   const chartRequestIdRef = useRef(0);
 
   async function loadChartCandidates(targetCursor: string | null, historyMode: "reset" | "next" | "previous"): Promise<void> {
@@ -207,6 +289,22 @@ export function RoomPage() {
     snapshot?.settings.play_style,
   ]);
 
+  useEffect(() => {
+    if (snapshot?.room_state !== "PICKING" && snapshot?.room_state !== "PLAYING") {
+      setClockNowMs(Date.now());
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      setClockNowMs(Date.now());
+    }, 1_000);
+
+    setClockNowMs(Date.now());
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [snapshot?.room_state, snapshot?.current_round?.round_started_at, snapshot?.timers.picking_deadline]);
+
   if (snapshot === null) {
     return (
       <section className="page-grid">
@@ -236,6 +334,10 @@ export function RoomPage() {
   const readyPlayersCount = snapshot.players.filter((player) => player.ready).length;
   const allPlayersReady = snapshot.players.length >= 2 && snapshot.players.every((player) => player.ready);
   const mySubmittedPick = snapshot.picks.find((pick) => pick.player_id === savedSettings.playerId) ?? null;
+  const currentRoundDisplay =
+    currentRound === null ? null : snapshot.frozen_rounds.find((round) => round.round_index === currentRound.round_index) ?? null;
+  const pickingCountdown = getRemainingSeconds(getIsoTimeMs(snapshot.timers.picking_deadline), clockNowMs);
+  const playingCountdown = currentRound === null ? null : getPlayingCountdown(currentRound, clockNowMs);
 
   return (
     <section className="page-grid room-grid">
@@ -297,14 +399,18 @@ export function RoomPage() {
             <strong>{formatDateTime(snapshot.timers.match_deadline)}</strong>
           </div>
           <div>
-            <span className="meta-label">Result deadline</span>
-            <strong>{formatDateTime(snapshot.timers.result_deadline)}</strong>
+            <span className="meta-label">Picking deadline</span>
+            <strong>{formatDateTime(snapshot.timers.picking_deadline)}</strong>
           </div>
           <div>
             <span className="meta-label">Connection</span>
             <strong>{connectionStatus}</strong>
           </div>
         </div>
+
+        {snapshot.timers.result_deadline ? (
+          <p className="status-muted">Result deadline: {formatDateTime(snapshot.timers.result_deadline)}</p>
+        ) : null}
 
         <div className="player-list">
           {snapshot.players.map((player) => (
@@ -494,8 +600,12 @@ export function RoomPage() {
 
             <section className="status-stack support-card">
               <strong>Room preset filter</strong>
+              <span className="status-pill warning">
+                {pickingCountdown === null ? "PICKING" : `AUTO PICK:${pickingCountdown}`}
+              </span>
               <span className="status-muted">Play style: {snapshot.settings.play_style}</span>
               <span className="status-muted">Level filter: {snapshot.settings.level_filter}</span>
+              <span className="status-muted">Timeout auto-picks missing charts after 120 seconds.</span>
               <span className="status-muted">
                 {mySubmittedPick === null
                   ? "You can submit one chart from the list below."
@@ -689,8 +799,16 @@ export function RoomPage() {
                   <strong>{currentRound.round_index + 1}</strong>
                 </div>
                 <div>
+                  <span className="meta-label">Title</span>
+                  <strong>{currentRoundDisplay?.display.title ?? currentRound.expected_key.title_search_key}</strong>
+                </div>
+                <div>
                   <span className="meta-label">Expected</span>
                   <strong>{formatExpectedKey(currentRound.expected_key)}</strong>
+                </div>
+                <div>
+                  <span className="meta-label">Level</span>
+                  <strong>{currentRoundDisplay?.display.level ?? "-"}</strong>
                 </div>
                 <div>
                   <span className="meta-label">Started</span>
@@ -700,7 +818,29 @@ export function RoomPage() {
                   <span className="meta-label">Soft TTL</span>
                   <strong>{currentRound.soft_ttl_seconds}s</strong>
                 </div>
+                <div>
+                  <span className="meta-label">Timeline</span>
+                  <strong>
+                    {playingCountdown === null
+                      ? "-"
+                      : `${playingCountdown.label}:${playingCountdown.remainingSeconds}`}
+                  </strong>
+                </div>
               </div>
+
+              <section className="status-stack support-card">
+                <strong>
+                  {playingCountdown === null
+                    ? "Timeline unavailable"
+                    : `${playingCountdown.label}:${playingCountdown.remainingSeconds}`}
+                </strong>
+                <span className="status-muted">
+                  {playingCountdown?.detail ?? "Countdown becomes available after ROUND_BEGIN."}
+                </span>
+                <span className="status-muted">
+                  MUSIC SELECT runs for {ROUND_MUSIC_SELECT_SECONDS}s, then PLAY START until {ROUND_PLAY_BEGIN_AT_SECONDS}s.
+                </span>
+              </section>
 
               <div className="split-panel">
                 <section>
@@ -858,25 +998,7 @@ export function RoomPage() {
               <h2>Summary</h2>
             </div>
           </div>
-
-          {resultReady ? (
-            <div className="split-panel result-grid">
-              <section>
-                <h3>Summary</h3>
-                <pre>{stringifyJson(resultReady.summary)}</pre>
-              </section>
-              <section>
-                <h3>Per player</h3>
-                <pre>{stringifyJson(resultReady.per_player)}</pre>
-              </section>
-              <section className="full-span">
-                <h3>Per round</h3>
-                <pre>{stringifyJson(resultReady.per_round)}</pre>
-              </section>
-            </div>
-          ) : (
-            <p className="empty-state">Awaiting RESULT_READY payload.</p>
-          )}
+          <ResultSummaryView resultReady={resultReady} />
         </article>
       ) : null}
 
@@ -890,6 +1012,7 @@ export function RoomPage() {
           </div>
           <p>Reason: {snapshot.close_reason ?? "-"}</p>
           <p>Closed at: {formatDateTime(snapshot.closed_at)}</p>
+          <ResultSummaryView resultReady={resultReady} />
           <div className="button-row">
             <button type="button" className="primary-button" onClick={() => roomStore.leaveRoom()}>
               Return to lobby

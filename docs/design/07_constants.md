@@ -13,24 +13,27 @@ Ph1で固定するタイマー値、制約値、表示/運用上の定数を整�
   - READY_CHECK開始から20分で解散
 - `START_MIN_PLAYERS = 2`
   - `players < 2` の間はホストSTART不可
+- `PICKING_TTL_SECONDS = 120`
+  - PICKING開始から120秒で未pickをランダム補完
 
 ## 1.2 ラウンド進行
 - `ROUND_SOFT_TTL_SECONDS = 300`
   - START音声時点から5分で未確定者をTIMEOUT確定
 - `HOST_SKIP_UNLOCK_SECONDS = 240`
   - ラウンド開始後4分経過でホスト代理SKIP可
-- `ROUND_STAGE_COUNTDOWN_AT_SECONDS = 40`
-  - ROUND_BEGINから40秒後に `10..1`
-- `ROUND_START_CALL_AT_SECONDS = 50`
-  - ROUND_BEGINから50秒後に `3,2,1,START`
+- `ROUND_MUSIC_SELECT_SECONDS = 45`
+  - ROUND_BEGINから45秒間は `MUSIC SELECT`
+- `ROUND_STAGE_COUNTDOWN_AT_SECONDS = 35`
+  - ROUND_BEGINから35秒後に `10..1`
+- `ROUND_START_CALL_AT_SECONDS = 52`
+  - ROUND_BEGINから52秒後に `3,2,1,Let's go`
+- `ROUND_PLAY_BEGIN_AT_SECONDS = 55`
+  - ROUND_BEGINから55秒後に実プレイ開始
 
 ## 1.3 マッチ全体
 - `MATCH_TTL_MINUTES = 30`
   - マッチ全体の寿命
-  - TTL到達時は未確定をTIMEOUTとしてRESULTへ遷移
-- `RESULT_TTL_MINUTES = 5`
-  - RESULT表示維持時間
-  - 超過でCLOSED
+  - TTL到達時は未確定をTIMEOUTとして結果を確定し、そのままCLOSEDへ遷移
 
 ## 1.4 再入室
 - `REJOIN_COOLDOWN_SECONDS = 10`

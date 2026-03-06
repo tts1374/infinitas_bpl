@@ -1,10 +1,14 @@
-import type { CurrentRoundSnapshot } from "@infinitas/shared";
+import {
+  ROUND_STAGE_COUNTDOWN_AT_SECONDS,
+  ROUND_START_CALL_AT_SECONDS,
+  type CurrentRoundSnapshot,
+} from "@infinitas/shared";
 import { createExternalStore, useExternalStore } from "../stores/create-store";
 import { roomStore } from "../stores/room-store";
 import { settingsStore } from "../stores/settings-store";
 
-const ROUND_STAGE_COUNTDOWN_AT_MS = 40_000;
-const ROUND_START_CALL_AT_MS = 50_000;
+const ROUND_STAGE_COUNTDOWN_AT_MS = ROUND_STAGE_COUNTDOWN_AT_SECONDS * 1_000;
+const ROUND_START_CALL_AT_MS = ROUND_START_CALL_AT_SECONDS * 1_000;
 const RECENT_CUE_GRACE_MS = 3_000;
 const VOICE_CUE_INTERVAL_MS = 1_000;
 
@@ -96,13 +100,30 @@ function getStageLabel(roundIndex: number): string {
   const stageNumber = roundIndex + 1;
   switch (stageNumber) {
     case 1:
-      return "First stage.";
+      return "1st stage.";
     case 2:
-      return "Second stage.";
+      return "2nd stage.";
     case 3:
       return "Final stage.";
     default:
       return `Stage ${stageNumber}.`;
+  }
+}
+
+function getDifficultyLabel(difficulty: string): string {
+  switch (difficulty) {
+    case "BEGINNER":
+      return "Beginner.";
+    case "NORMAL":
+      return "Normal.";
+    case "HYPER":
+      return "Hyper.";
+    case "ANOTHER":
+      return "Another.";
+    case "LEGGENDARIA":
+      return "Leggendaria.";
+    default:
+      return `${difficulty}.`;
   }
 }
 
@@ -126,17 +147,22 @@ function createVoiceCues(round: CurrentRoundSnapshot): VoiceCue[] {
     return [];
   }
 
+  const snapshot = roomStore.getState().snapshot;
+  const roundDisplay =
+    snapshot?.frozen_rounds.find((entry) => entry.round_index === round.round_index)?.display ?? null;
+  const titleCueText = roundDisplay?.title?.trim() || round.expected_key.title_search_key;
+  const stageTexts = [
+    getStageLabel(round.round_index),
+    titleCueText,
+    `${round.expected_key.play_style}. ${getDifficultyLabel(round.expected_key.difficulty)}`,
+  ].filter((value) => value.length > 0);
+
   return [
-    {
-      phase: "STAGE",
-      dueAtMs: startedAtMs,
-      text: getStageLabel(round.round_index),
-      detail: `Stage cue for round ${round.round_index + 1}.`,
-    },
+    ...createSequentialVoiceCues("STAGE", startedAtMs, stageTexts, round.round_index),
     ...createSequentialVoiceCues(
       "COUNTDOWN",
       startedAtMs + ROUND_STAGE_COUNTDOWN_AT_MS,
-      ["10", "9", "8", "7", "6", "5", "4", "3", "2", "1", "Round begin."],
+      ["10", "9", "8", "7", "6", "5", "4", "3", "2", "1", "Music selected."],
       round.round_index,
     ),
     ...createSequentialVoiceCues(
@@ -165,6 +191,25 @@ function speakCue(roundToken: string, cue: VoiceCue): void {
     return;
   }
 
+  if (typeof SpeechSynthesisUtterance === "undefined") {
+    setVoiceState({
+      phase: "UNAVAILABLE",
+      enabled: settingsStore.getState().saved.voiceEnabled,
+      pendingCues: 0,
+      detail: "Speech synthesis utterances are unavailable in this runtime.",
+      roundToken,
+    });
+    return;
+  }
+
+  setVoiceState({
+    phase: cue.phase,
+    enabled: settingsStore.getState().saved.voiceEnabled,
+    pendingCues: activeTimeoutIds.length,
+    detail: cue.detail,
+    roundToken,
+  });
+
   const utterance = new SpeechSynthesisUtterance(cue.text);
   utterance.lang = "en-US";
   utterance.rate = 1;
@@ -174,7 +219,7 @@ function speakCue(roundToken: string, cue: VoiceCue): void {
       phase: cue.phase,
       enabled: settingsStore.getState().saved.voiceEnabled,
       pendingCues: activeTimeoutIds.length,
-      detail: cue.detail,
+      detail: `Speaking: ${cue.text}`,
       roundToken,
     });
   };
@@ -188,7 +233,17 @@ function speakCue(roundToken: string, cue: VoiceCue): void {
     });
   };
 
-  speechSynthesisApi.speak(utterance);
+  try {
+    speechSynthesisApi.speak(utterance);
+  } catch {
+    setVoiceState({
+      phase: "UNAVAILABLE",
+      enabled: settingsStore.getState().saved.voiceEnabled,
+      pendingCues: activeTimeoutIds.length,
+      detail: `Voice playback failed during ${cue.phase.toLowerCase()} cue.`,
+      roundToken,
+    });
+  }
 }
 
 function scheduleRoundPlayback(roomId: string, round: CurrentRoundSnapshot): void {
@@ -197,6 +252,7 @@ function scheduleRoundPlayback(roomId: string, round: CurrentRoundSnapshot): voi
   const nowMs = Date.now();
 
   let scheduledCount = 0;
+  let nextCue: VoiceCue | null = null;
 
   for (const cue of cues) {
     const delayMs = cue.dueAtMs - nowMs;
@@ -204,6 +260,7 @@ function scheduleRoundPlayback(roomId: string, round: CurrentRoundSnapshot): voi
       continue;
     }
 
+    nextCue ??= cue;
     scheduledCount += 1;
     const timeoutId = window.setTimeout(() => {
       activeTimeoutIds = activeTimeoutIds.filter((value) => value !== timeoutId);
@@ -213,12 +270,12 @@ function scheduleRoundPlayback(roomId: string, round: CurrentRoundSnapshot): voi
   }
 
   setVoiceState({
-    phase: scheduledCount > 0 ? "IDLE" : "START",
+    phase: scheduledCount > 0 ? (nextCue?.phase ?? "START") : "START",
     enabled: true,
     pendingCues: scheduledCount,
     detail:
-      scheduledCount > 0
-        ? `Queued ${scheduledCount} voice cue(s) for round ${round.round_index + 1}.`
+      scheduledCount > 0 && nextCue !== null
+        ? `Queued ${scheduledCount} voice cue(s). Next ${nextCue.phase.toLowerCase()} cue: ${nextCue.text}`
         : `Voice cues already elapsed for round ${round.round_index + 1}.`,
     roundToken,
   });

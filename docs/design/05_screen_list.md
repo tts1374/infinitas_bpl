@@ -231,6 +231,7 @@ Ph1 の画面は以下とする。
 - 選曲候補一覧（10件単位ページング）
 - 選曲済みプレイヤー一覧
 - PICKING 状態表示
+- 120秒カウントダウン
 
 ## 8.3 主な操作
 - 曲検索
@@ -240,6 +241,7 @@ Ph1 の画面は以下とする。
 ## 8.4 備考
 - 同一譜面重複は DO 側で解決
 - 後着重複枠はランダム差し替え
+- timeout 時は未pickプレイヤーをランダム補完
 - 凍結後に `PICK_FROZEN` を受信し PLAYINGへ遷移
 
 ---
@@ -262,6 +264,10 @@ Ph1 の画面は以下とする。
   - SKIPPED
   - TIMEOUT
 - round進行タイマー
+- 演出カウントダウン
+  - `MUSIC SELECT:45`
+  - `PLAY START:10`
+  - `IN PLAY`
 - 音声進行状態
   - Stage
   - countdown
@@ -274,10 +280,11 @@ Ph1 の画面は以下とする。
   - 強制進行（確認ダイアログあり）
 
 ## 9.4 演出仕様
-- Stage:`ROUND_BEGIN` で Stage音声(例:1st stage)
-- countdown:`+40s` で `10..1,Round begin`
-- START:`+50s` で `3,2,1,Let's go`
-- `round_soft_ttl` 起点は Let's go 音声時
+- Stage:`ROUND_BEGIN` で Stage音声(例:`1st stage`)、曲名、play style、難易度
+- countdown:`+35s` で `10..1,Music Selected`
+- `+45s` から表示を `PLAY START:10` に切り替える
+- START:`+52s` で `3,2,1,Let's go`
+- `+55s` 以降をプレイ中とし、`round_soft_ttl` 起点もこの時点とする
 
 ## 9.5 備考
 - 提出は自動監視で反映
@@ -286,11 +293,11 @@ Ph1 の画面は以下とする。
 
 ---
 
-## 10. ルーム画面: RESULT
+## 10. ルーム画面: CLOSED（結果表示）
 
 ## 10.1 目的
 - ラウンド結果と総合結果を表示する
-- 部分結果を含めてローカル保存・表示する
+- `CLOSED` 状態でも結果確認と退室を可能にする
 
 ## 10.2 主な表示項目
 - 総合順位 / 勝敗
@@ -304,12 +311,13 @@ Ph1 の画面は以下とする。
 - 強制進行の有無
 
 ## 10.3 主な操作
-- 閉じる
+- ロビーへ戻る
 - JSON保存確認（自動保存のみでも可）
 - OBS/HTML用の後続導線（Ph1では未実装でも可）
 
 ## 10.4 備考
-- `result_ttl` 超過またはホスト解散で CLOSED
+- 正常終了時は `RESULT_READY` を保持したまま `CLOSED`
+- ホスト解散や timeout close の場合は結果未確定の可能性がある
 
 ---
 
@@ -343,6 +351,6 @@ Ph1 の画面は以下とする。
   - READY_CHECK
   - PICKING
   - PLAYING
-  - RESULT
+  - CLOSED
 - ルーム終了後 -> ロビー一覧へ戻る
 ```

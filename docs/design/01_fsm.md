@@ -22,25 +22,24 @@
 - `READY_CHECK`
 - `PICKING`
 - `PLAYING`
-- `RESULT`
 - `CLOSED`
+- `RESULT`（互換用。通常フローでは使用しない）
 
 ### 状態遷移（概要）
 - ルーム作成完了時に `READY_CHECK` を開始する（新規作成フローでは `LOBBY` に留まらない）
 - `LOBBY` -> `READY_CHECK`（互換用。ホスト操作）
-- `READY_CHECK` -> `PICKING`（ホスト `START`。条件: players>=2）
+- `READY_CHECK` -> `PICKING`（ホスト `START`。条件: players>=2 かつ全員READY）
 - `PICKING` -> `PLAYING`（DOが確定譜面リストを凍結して遷移）
 - `PLAYING` -> `PLAYING`（全員確定で次ラウンドへ）
-- `PLAYING` -> `RESULT`（全ラウンド消化 or match_ttl到達）
-- `RESULT` -> `CLOSED`（ホスト解散 or result_ttl到達）
+- `PLAYING` -> `CLOSED`（全ラウンド消化 or match_ttl到達。`RESULT_READY` は保持したまま閉じる）
 - 任意状態 -> `CLOSED`（ホスト切断/終了、ready_check_ttl超過）
 
 ## 4. タイマー（固定値 / DOが管理）
 - `ready_check_ttl = 20min`（READY_CHECK開始から。超過で解散）
-- `round_soft_ttl = 5min`（各ラウンド開始から。超過で未確定者をTIMEOUT確定）
+- `picking_ttl = 120s`（PICKING開始から。超過で未pick者をランダム補完して凍結）
+- `round_soft_ttl = 5min`（Let's go 以降。超過で未確定者をTIMEOUT確定）
 - `host_skip_unlock_seconds = 240s`（ラウンド開始から4分経過後にホスト代理SKIP可）
 - `match_ttl = 30min`（PICKING開始またはPLAYING開始から。どちら基準かは実装で1つに固定）
-- `result_ttl = 5min`（RESULT開始から。超過でCLOSED）
 - `rejoin_cooldown = 10s`（退出後の同一ルーム再入室抑止。クライアント/UI側でも表示）
 
 ## 5. ルーム作成設定（RoomSettings / Ph1）
@@ -84,6 +83,7 @@
 - 指名は DO の受信時刻（DOが付与）で先着順
 - 同一譜面重複は許可しない
   - 重複検出時、後着の枠だけ DO が同フィルタで「未使用譜面」を抽選し差し替え
+- `picking_ttl` 超過時、未pickプレイヤーには同フィルタ・未使用譜面からランダム割当を行う
 - 確定後に「凍結リスト（frozen_rounds）」を全員へ配布し、以後変更不可
 
 ### 8.2 凍結リスト構築
@@ -123,15 +123,30 @@
 
 ### 9.6 タイムアウト処理
 - `round_soft_ttl` 到達で未確定者は `TIMEOUT`
-- `match_ttl` 到達で進行中ラウンドも含めて未確定を `TIMEOUT` 確定し `RESULT` へ遷移
-- `RESULT` 遷移後は提出を受理しない
+- `match_ttl` 到達で進行中ラウンドも含めて未確定を `TIMEOUT` 確定し `CLOSED` へ遷移
+- `RESULT_READY` 生成後に `CLOSED` へ遷移したルームでは、結果表示のみ継続し提出は受理しない
 
-### 9.7 離脱
+### 9.7 演出タイムライン
+- `round_started_at` は演出開始時刻（`ROUND_BEGIN`）を指す
+- `PLAYING +0s`:
+  - 表示: `MUSIC SELECT:45`
+  - 音声: `1st/2nd/final stage`, `title`, `play_style`, `difficulty`
+- `PLAYING +35s`:
+  - 音声: `10..1, Music Selected`
+- `PLAYING +45s`:
+  - 表示: `PLAY START:10`
+- `PLAYING +52s`:
+  - 音声: `3,2,1, Let's go`
+- `PLAYING +55s`:
+  - 実プレイ開始
+  - `round_soft_ttl` はこの時点から計測する
+
+### 9.8 離脱
 - PLAYING開始後の新規参加は不可
 - PLAYING中に退出したプレイヤーは、その時点で未確定なら `TIMEOUT`、以後のラウンドも `TIMEOUT` として扱う
 - ホスト切断: 即 `CLOSED`
 
-## 10. RESULT（集計）
+## 10. RESULT（集計 payload）
 ### 10.1 勝敗指標
 - `win_metric=SCORE`: EX SCOREが大きいほど勝ち
 - `win_metric=MISSCOUNT`: misscount(bp)が小さいほど勝ち
@@ -153,7 +168,7 @@
 - BO3終了時に同勝ち数なら総合引き分け
 
 ## 11. CLOSED（解散）
-- `RESULT` から `result_ttl` 超過で `CLOSED`
 - ホスト操作で即 `CLOSED` も可
+- 対戦正常終了時は `RESULT_READY` を保持したまま `CLOSED` に入り、ルーム画面上で結果を表示可能とする
 - 部分結果は各クライアントのローカル保存（snapshot）で表示可能とする
 - `CLOSED` 遷移時にKVのロビー情報を削除する
