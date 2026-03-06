@@ -55,3 +55,8 @@
 2. `room-state.ts` に PICKING 状態遷移と凍結ロジックを追加。
 3. `room-object.ts` に PICKING メッセージ処理を追加。
 4. typecheck 実行と最終調整。
+
+## 検証結果
+- `npm ci`
+- `npm --workspace @infinitas/worker run typecheck`
+- `npm run typecheck`
