@@ -55,7 +55,9 @@
 4. build/typecheck 検証と最終調整。
 
 ## 検証結果
-- `npm install`
-- `npm --workspace @infinitas/client run typecheck`
-- `npm --workspace @infinitas/client run build`
-- `npm run typecheck`
+- [x] `npm install`
+- [x] `npm --workspace @infinitas/client run typecheck`
+- [x] `npm --workspace @infinitas/client run build`
+- [x] `npm run typecheck`
+- [ ] `cargo check`
+  - この実行環境では `cargo` コマンド自体が存在せず、Tauri Rust 側のコンパイル確認は未実施。
