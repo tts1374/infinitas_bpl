@@ -4,6 +4,11 @@
 タスクは「動作の証明」ができるまで完了と見なさない。
 ビルド成功・テスト成功・差分妥当性確認を必須とする。
 
+適用原則:
+- すべての変更で「1. 技術的検証」「2. 差分検証」は必須。
+- 「3. FSM/Protocol検証」「4. 監視ソース検証」「5. E2E」は、当該領域に変更がある場合のみ必須。
+- 局所修正では、変更箇所に対して十分な最小検証を行う。
+
 ---
 
 ## 1. 技術的検証
@@ -30,7 +35,7 @@
 
 ---
 
-## 3. FSM/Protocol検証（重要）
+## 3. FSM/Protocol検証（該当変更時のみ必須）
 変更がある場合は必ず確認する:
 - RoomState 遷移（LOBBY->READY_CHECK->PICKING->PLAYING->RESULT->CLOSED）
 - タイマー（20min/5min/30min/5min）動作
@@ -41,7 +46,7 @@
 
 ---
 
-## 4. 監視ソース検証
+## 4. 監視ソース検証（該当変更時のみ必須）
 - inf-notebook: export/recent.json から SCORE/MISSCOUNT 抽出できる
 - inf_daken_counter: today_update.xml から SCORE/MISSCOUNT 抽出できる
 - observed_key == expected_key のみ採用される
@@ -49,7 +54,7 @@
 
 ---
 
-## 5. E2E（最低限）
+## 5. E2E（該当変更時のみ必須）
 - 2人で ARENA: create -> ready -> pick -> play(1ラウンド以上) -> result
 - 2人で BPL(BO3): 同様
 - 重複ピックの差し替え

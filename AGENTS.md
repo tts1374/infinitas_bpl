@@ -16,18 +16,52 @@ If any conflict occurs, **AGENTS.md** takes precedence for execution rules.
 
 ---
 
-## 1. System Architecture (Ph1)
+## 1. Execution Policy
 
-### 1.1 Client
+Primary objective: satisfy the requested change with the **smallest correct diff**.
+
+Rules:
+- Start from the most directly related file(s) only.
+- Do not expand investigation unless the local evidence is insufficient.
+- Do not rewrite, rename, reorder, or broadly refactor unrelated areas.
+- Do not stop at “inspection only” when the requested change is local and implementable in the same pass.
+- Prefer concrete fixes over broad design exploration unless the task explicitly requests design work.
+
+### 1.1 Search Budget
+For the first pass:
+- inspect at most **3 files** or perform at most **3 focused searches**
+- if the cause is still unclear, expand incrementally
+- avoid repository-wide exploration unless clearly necessary
+
+### 1.2 Allowed Default Behavior
+Without explicit request, the default is:
+- local analysis
+- local implementation
+- local validation
+- concise summary of changed files and verification
+
+### 1.3 Prohibited Default Behavior
+Unless the task explicitly requires it:
+- no broad architecture review
+- no speculative “best practice” rewrite
+- no unrelated cleanup
+- no formatting-only changes
+- no mass search across the repo at the start
+
+---
+
+## 2. System Architecture (Ph1)
+
+### 2.1 Client
 - Tauri 2 + React + TypeScript (Vite)
 - Local file watching/parsing in Rust; UI + WS + audio + local storage in TS.
 
-### 1.2 Server
+### 2.2 Server
 - Cloudflare Workers (HTTP entry)
 - Durable Objects (Room FSM + timers + aggregation + WS broadcast)
 - Cloudflare KV (Lobby list lightweight metadata only)
 
-### 1.3 Sources (fixed per device)
+### 2.3 Sources (fixed per device)
 - `inf_daken_counter` (today_update.xml)
 - `inf-notebook` (export/recent.json; records/recent.json optional)
 
@@ -35,7 +69,7 @@ Source is selected before joining a room and MUST NOT be changed while in a room
 
 ---
 
-## 2. Spec Sources of Truth
+## 3. Spec Sources of Truth
 
 These design docs are normative. Implementation MUST match them.
 
@@ -51,136 +85,160 @@ These design docs are normative. Implementation MUST match them.
 
 Rule:
 - If implementation must deviate, update the relevant design doc(s) first, then implement.
+- For local non-contract fixes, do not open unrelated design docs preemptively.
 
 ---
 
-## 3. WORKFLOW Enforcement (MANDATORY)
+## 4. Planning Gate
 
-WORKFLOW.md is not optional guidance.
+Planning requirements are governed by **WORKFLOW.md**.
 
-If any of the Plan-mode gate conditions apply, implementation MUST NOT begin until
-the planning procedure is completed.
+Rules:
+- If WORKFLOW.md requires Plan-mode, do not implement before the plan is written.
+- If WORKFLOW.md does not require Plan-mode, do not create a plan file by default.
+- Do not escalate a local change into Plan-mode unless there is clear evidence that one of the gate conditions applies.
 
-### 3.1 Plan-mode gate（該当したら実装開始禁止）
+### 4.1 Lightweight Pre-Execution Note
+For non-Plan tasks, keep pre-execution notes minimal:
+- target
+- intended files
+- validation method
 
-Plan-mode is mandatory when any of the following apply:
-
-- 作業が複数ステップにまたがる変更
-- アーキテクチャ変更 / 責務再分割 / データモデル変更（Room/FSM/WS schema含む）
-- 互換性に影響する変更（client settings, saved results JSON, KV schema）
-- Durable Objects の状態/タイマー/FSM/集計ロジックの変更
-- WebSocket プロトコル（message type/payload）変更
-- 監視ソース（inf_daken_counter / inf-notebook）のI/O仕様変更
-- CI/CD（.github/workflows）変更
-- デプロイ方式変更（Workers/DO/KV/Wrangler）
-- 依存関係更新（lockfile含む）
-- セキュリティ・再現性・整合性に影響する可能性がある変更
-
-### 3.2 Plan Procedure（必須）
-Follow WORKFLOW.md. Additionally:
-
-- Plan file: `tasks/<branch-or-topic>.md` MUST include:
-  - 目的 / 非目的
-  - 変更点（箇条書き）
-  - 影響範囲（ユーザー / データ / 互換性 / Cloudflare resources）
-  - 実装方針（対象ファイル単位）
-  - テスト観点（E2E: 2人 ARENA/BPL の通し、監視2ソース、TIMEOUT/強制進行）
-  - ロールバック方針
-  - Commit Plan（コミット分割計画）
+Do not produce long planning text for local tasks.
 
 ---
 
-## 4. Work Isolation (MANDATORY)
+## 5. Work Isolation
 
-### 4.1 worktree
-- すべての作業は git worktree で物理分離する。
-- 1 worktree = 1 branch = 1 purpose（1PR1目的）
-- 作業開始時に worktree パスと BASE_SHA を宣言する。
+### 5.1 worktree
+- Use git worktree for isolated work when starting a new implementation task or PR-sized change.
+- 1 worktree = 1 branch = 1 purpose.
 
-### 4.2 Base SHA fixed
-- 作業開始時に BASE_SHA を明示し、PR完了まで固定する。
-- 作業途中の rebase/merge を禁止（レビュー対応の例外が必要ならPlanに明記）。
+### 5.2 Base SHA
+- For PR work, record BASE_SHA at the start.
+- Avoid mid-task rebase/merge unless required for review or conflict resolution.
 
----
-
-## 5. Diff Discipline
-- 変更対象ディレクトリ/ファイルを事前宣言する。
-- 宣言外の変更は禁止。
-- 無関係な整形・並び替え・リネームを行わない。
-- 生成物（dist 等）を直接編集しない（生成はCI/ビルドで再生成）。
+Note:
+- These are execution controls for actual implementation work.
+- They should not block lightweight inspection, review, or drafting tasks.
 
 ---
 
-## 6. Cloudflare-specific Execution Rules
+## 6. Diff Discipline
 
-### 6.1 Worker vs DO responsibilities
+- Keep the diff limited to files required for the task.
+- If the affected files are obvious and local, start implementation without broad pre-declaration.
+- If the task is risky or cross-cutting, declare the intended scope before editing.
+- No unrelated formatting, reordering, rename, or generated-file edits.
+- Do not edit build artifacts directly (`dist`, generated outputs, lockfile unless dependency update is intended).
+
+### 6.1 Scope Escalation
+If additional files become necessary:
+- expand only to the minimum additional scope
+- state why the expansion is necessary
+- keep unrelated changes out
+
+---
+
+## 7. Risk Levels
+
+### 7.1 Normal-risk changes
+Examples:
+- local UI fixes
+- text/i18n fixes
+- local validation changes
+- small client-side logic fixes
+- tests for existing behavior
+
+Default behavior:
+- no plan file unless WORKFLOW.md requires it
+- start from local files
+- validate locally
+- summarize briefly
+
+### 7.2 High-risk changes
+Examples:
+- Room FSM / timers / aggregation
+- WebSocket schema / payload contract
+- settings / snapshot compatibility
+- monitoring source I/O behavior
+- CI/CD / Wrangler / Workers / DO / KV
+- dependency updates
+- cross-layer changes spanning client/worker/shared
+
+Required behavior:
+- follow WORKFLOW Plan-mode if applicable
+- explicitly list affected layers
+- verify against QUALITY.md high-risk checks
+
+---
+
+## 8. Cloudflare-specific Execution Rules
+
+### 8.1 Worker vs DO responsibilities
 - Worker routes must remain thin (routing + KV list).
 - DO owns: FSM, timers, idempotency, expected_key enforcement, aggregation, broadcast.
 
-### 6.2 Idempotency
+### 8.2 Idempotency
 - Client MUST send `client_msg_id` for every WS message.
 - DO MUST de-duplicate by `(player_id, client_msg_id)`.
 
-### 6.3 Lobby (KV)
+### 8.3 Lobby (KV)
 - KV stores only lightweight metadata (no full room state, no secrets).
 - `expires_at` is set at creation time; list API excludes expired entries.
 - DO closure attempts KV deletion; list API still excludes by expires_at as safety.
 
-### 6.4 Failure mode
+### 8.4 Failure mode
 - If DO state is lost, the room is closed with `ROOM_STATE_LOST` and clients show a blocking error dialog.
 - Partial results are displayed from local snapshots.
 
 ---
 
-## 7. Client-specific Execution Rules
+## 9. Client-specific Execution Rules
 
-### 7.1 Monitoring
+### 9.1 Monitoring
 - Monitoring is implemented in Rust (watcher + parser + new-event detection).
 - TS layer only consumes structured events and submits via WS when:
   - `observed_key == expected_key`
   - `round_index == current_round_index`
   - player/round not already confirmed
 
-### 7.2 Source failure
+### 9.2 Source failure
 - If monitoring fails: show `SOURCE_UNAVAILABLE` and guide TECH-skip.
 - No silent fallback (polling fallback is Ph2+ only).
 
-### 7.3 Voice
+### 9.3 Voice
 - Local playback only.
 - Clear queued audio and stop current audio on any state transition / room close.
 
 ---
 
-## 8. READ / WRITE Protocol (Windows: UTF-8 strict)
+## 10. READ / WRITE Protocol (Windows: UTF-8 strict)
 
-目的: Windows起因の文字化け（UTF-16/CP932混入、BOM、改行コード揺れ）を作業プロセスで封じる。
+Purpose: prevent Windows-specific corruption such as UTF-16 / CP932 / BOM / unintended line-ending drift.
 
-### 8.1 Canonical Encoding Rules（このリポジトリの正解）
-- テキストは **UTF-8（BOMなし）** が唯一の許容形式。
-- 改行は **LF** が正。CRLFは例外扱い（許可する場合は対象ファイルを明記）。
-- **UTF-16（LE/BE）禁止**。
-- **CP932/Shift_JIS禁止**。
+### 10.1 Canonical Encoding Rules
+- Text files must be **UTF-8 without BOM**.
+- Line endings are **LF** unless a file is explicitly documented otherwise.
+- **UTF-16 prohibited**
+- **CP932 / Shift_JIS prohibited**
 
-### 8.2 READ（読む時の原則）
-- 表示が崩れる場合は **BOM/UTF-16/CP932** 混入を疑い、エンコーディングを確定してから処理する。
-- BOM/UTF-16の存在自体を不具合とみなし、生成元を修正する。
+### 10.2 Practical Rule
+- Apply strict encoding care when reading/writing files that are being modified.
+- Do not force repository-wide encoding checks before local implementation.
+- If mojibake or abnormal diff appears, treat it as an encoding defect and fix the source of corruption.
 
-判定基準:
-- 先頭行だけ崩れる → BOM疑い
-- 全文が記号になる → UTF-16/CP932疑い
-- diffで全行変更 → CRLF/LF揺れ疑い
+### 10.3 Write Rule
+- Always write with explicit UTF-8 (no BOM).
+- Prefer atomic write (temp -> replace) when using scripts/tools that support it.
+- After writing, verify that `git diff` shows no unintended encoding or line-ending noise.
 
-### 8.3 WRITE（書く時の原則）
-- 書き込みは常に **UTF-8（BOMなし）** を明示する。
-- 保存は原子的（テンポラリ→置換）。
-- 書き込み後に必ず `git diff` で改行/エンコーディングの意図しない変化がないことを確認する。
+### 10.4 Tooling Caution
+- PowerShell default encoding must not be trusted.
+- `Set-Content` / `Out-File` require explicit UTF-8 handling.
+- Node / Python must specify encoding explicitly.
 
-### 8.4 Windows / PowerShell 注意
-- PowerShell は既定エンコーディングがUTF-16寄りになり得るため、指定なし書き込み禁止。
-- PowerShell: `Set-Content` / `Out-File` は UTF-8 指定必須
-- Node/Python: encoding を明示
-
-### 8.5 禁止事項（Violation = 修正してからコミット）
-- UTF-16保存（LE/BE問わず）
-- BOM付きUTF-8保存
-- CRLF/LFの無断変更（必要なら対象と理由をPRに明記）
+### 10.5 Prohibited
+- UTF-16 text output
+- UTF-8 with BOM
+- unintended CRLF/LF drift
