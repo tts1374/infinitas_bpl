@@ -87,6 +87,7 @@
 - ARENA: 参加人数 = ラウンド数（各自1譜面）
 - BPL: BO3固定
   - 2人想定: `P1指名 + P2指名 + ランダム1`（同フィルタ、未使用から抽選）
+  - Ph1暫定: DO内に譜面マスタを持たない間は、ランダム枠に一意なプレースホルダ expected_key を割り当てる
 - 凍結時に各ラウンドへ `expected_key` を確定して埋める
   - `expected_key = (play_style, difficulty, title_search_key)`
 
