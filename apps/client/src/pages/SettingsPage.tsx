@@ -1,4 +1,5 @@
 import { SOURCE_TYPES } from "@infinitas/shared";
+import { sourceStore, useSourceStore } from "../stores/source-store";
 import { settingsStore, useSettingsStore } from "../stores/settings-store";
 import { formatDateTime } from "../utils/format";
 
@@ -23,6 +24,8 @@ export function SettingsPage({ roomJoined }: SettingsPageProps) {
   const draft = useSettingsStore((state) => state.draft);
   const statusMessage = useSettingsStore((state) => state.statusMessage);
   const lastSavedAt = useSettingsStore((state) => state.lastSavedAt);
+  const watcherState = useSourceStore((state) => state.watcherState);
+  const lastWatcherEvent = useSourceStore((state) => state.lastEvent);
 
   return (
     <section className="page-grid">
@@ -147,16 +150,88 @@ export function SettingsPage({ roomJoined }: SettingsPageProps) {
         <div className="panel-footer">
           <div className="status-stack">
             <span className="status-label">Watcher state</span>
-            <strong>PR-9 pending</strong>
-            <span className="status-muted">Watcher / parser integration is not wired yet.</span>
+            <div className="inline-field">
+              <strong>{watcherState.status}</strong>
+              <span className={`status-pill ${getWatcherTone(watcherState.status)}`}>
+                {watcherState.status}
+              </span>
+            </div>
+            <span className="status-muted">{watcherState.detail}</span>
           </div>
           <div className="button-row">
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => {
+                void sourceStore.start(draft, { force: true });
+              }}
+            >
+              Restart watcher
+            </button>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => {
+                void sourceStore.stop();
+              }}
+            >
+              Stop watcher
+            </button>
             <button type="button" className="secondary-button" onClick={() => settingsStore.resetDraft()}>
               Reset draft
             </button>
-            <button type="button" className="primary-button" onClick={() => settingsStore.save()}>
+            <button
+              type="button"
+              className="primary-button"
+              onClick={() => {
+                settingsStore.save();
+                void sourceStore.start(settingsStore.getState().saved, { force: true });
+              }}
+            >
               Save settings
             </button>
+          </div>
+        </div>
+
+        <div className="panel-subsection watcher-block">
+          <div className="meta-grid compact">
+            <div className="status-stack">
+              <span className="status-label">Active source</span>
+              <strong>{watcherState.source ?? "-"}</strong>
+              <span className="status-muted">Saved source and path selection.</span>
+            </div>
+            <div className="status-stack">
+              <span className="status-label">Last watcher update</span>
+              <strong>{formatDateTime(watcherState.lastEventAt)}</strong>
+              <span className="status-muted">State transition or file event.</span>
+            </div>
+            <div className="status-stack">
+              <span className="status-label">Last event kind</span>
+              <strong>{lastWatcherEvent?.kind ?? "-"}</strong>
+              <span className="status-muted">{lastWatcherEvent?.detail ?? "No file events yet."}</span>
+            </div>
+            <div className="status-stack">
+              <span className="status-label">Last file</span>
+              <strong>{lastWatcherEvent?.filePath ?? "-"}</strong>
+              <span className="status-muted">
+                {lastWatcherEvent?.parserOutput
+                  ? `${lastWatcherEvent.parserOutput.fileSizeBytes.toLocaleString()} bytes`
+                  : "Parser payload not available."}
+              </span>
+            </div>
+          </div>
+
+          <div className="status-stack watcher-path-list">
+            <span className="status-label">Watched paths</span>
+            {watcherState.watchedPaths.length === 0 ? (
+              <span className="status-muted">No active watch targets.</span>
+            ) : (
+              watcherState.watchedPaths.map((path) => (
+                <code key={path} className="path-chip">
+                  {path}
+                </code>
+              ))
+            )}
           </div>
         </div>
 
@@ -167,4 +242,16 @@ export function SettingsPage({ roomJoined }: SettingsPageProps) {
       </article>
     </section>
   );
+}
+
+function getWatcherTone(status: string): string {
+  if (status === "RUNNING") {
+    return "ok";
+  }
+
+  if (status === "ERROR" || status === "UNAVAILABLE") {
+    return "danger";
+  }
+
+  return "warning";
 }
