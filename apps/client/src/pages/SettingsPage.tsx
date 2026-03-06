@@ -215,7 +215,7 @@ export function SettingsPage({ roomJoined }: SettingsPageProps) {
               <strong>{lastWatcherEvent?.filePath ?? "-"}</strong>
               <span className="status-muted">
                 {lastWatcherEvent?.parserOutput
-                  ? `${lastWatcherEvent.parserOutput.fileSizeBytes.toLocaleString()} bytes`
+                  ? `${lastWatcherEvent.parserOutput.fileSizeBytes.toLocaleString()} bytes / ${lastWatcherEvent.parserOutput.observations.length} observation(s)`
                   : "Parser payload not available."}
               </span>
             </div>

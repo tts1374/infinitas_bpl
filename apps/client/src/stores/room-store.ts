@@ -102,6 +102,14 @@ function setErrorDialog(title: string, description: string, code?: string, block
   }));
 }
 
+function buildSourceUnavailableDescription(detail: string, roomState: RoomStateSnapshot["room_state"]): string {
+  if (roomState === "PLAYING") {
+    return `${detail} Use TECH skip if this round cannot be auto-submitted.`;
+  }
+
+  return detail;
+}
+
 function closeCurrentClient(sendLeaveMessage: boolean): void {
   const client = activeClient;
   activeClient = null;
@@ -376,6 +384,35 @@ export const roomStore = {
       ...state,
       errorDialog: null,
     }));
+  },
+  noteLocalEvent(message: string): void {
+    if (internalStore.getState().snapshot === null) {
+      return;
+    }
+
+    appendEventLog(message);
+  },
+  reportSourceUnavailable(detail: string): void {
+    const state = internalStore.getState();
+    if (state.snapshot === null || state.snapshot.room_state === "CLOSED") {
+      return;
+    }
+
+    const description = buildSourceUnavailableDescription(detail, state.snapshot.room_state);
+    if (
+      state.errorDialog?.code === "SOURCE_UNAVAILABLE" &&
+      state.errorDialog.description === description
+    ) {
+      return;
+    }
+
+    appendEventLog(`Source unavailable: ${detail}`);
+    setErrorDialog(
+      "Source unavailable",
+      description,
+      "SOURCE_UNAVAILABLE",
+      state.snapshot.room_state === "PLAYING",
+    );
   },
   send<TType extends ClientMessageType>(
     type: TType,

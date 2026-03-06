@@ -1,8 +1,9 @@
-import type { SourceType } from "@infinitas/shared";
+import type { ExpectedKey, SourceType } from "@infinitas/shared";
 import {
   getSourceWatcherState,
   isTauriRuntime,
   listenToSourceWatcherEvents,
+  type ParsedSourceObservationPayload,
   startSourceWatcher,
   stopSourceWatcher,
   type ParsedSourceChangePayload,
@@ -11,8 +12,9 @@ import {
   type SourceWatcherStatePayload,
   type SourceWatcherStatus,
 } from "../services/tauri-bridge";
+import { roomStore } from "./room-store";
 import { createExternalStore, useExternalStore } from "./create-store";
-import type { ClientSettings, SourcePaths } from "./settings-store";
+import { settingsStore, type ClientSettings, type SourcePaths } from "./settings-store";
 
 export interface SourceWatcherState {
   status: SourceWatcherStatus;
@@ -93,6 +95,107 @@ function mapWatcherEvent(payload: SourceWatcherEventPayload): SourceWatcherEvent
   };
 }
 
+function observationMatchesExpected(
+  observation: ParsedSourceObservationPayload,
+  expectedKey: ExpectedKey,
+): boolean {
+  return (
+    observation.difficulty === expectedKey.difficulty &&
+    observation.titleSearchKey === expectedKey.title_search_key
+  );
+}
+
+function handleWatcherError(payload: SourceWatcherEventPayload): void {
+  if (payload.kind !== "ERROR") {
+    return;
+  }
+
+  roomStore.reportSourceUnavailable(payload.detail);
+}
+
+function tryAutoSubmitParsedChange(parsedChange: ParsedSourceChangePayload): void {
+  if (parsedChange.observations.length === 0) {
+    return;
+  }
+
+  const roomState = roomStore.getState();
+  const snapshot = roomState.snapshot;
+  const currentRound = snapshot?.current_round ?? null;
+  if (
+    roomState.connectionStatus !== "CONNECTED" ||
+    snapshot === null ||
+    snapshot.room_state !== "PLAYING" ||
+    currentRound === null
+  ) {
+    return;
+  }
+
+  const savedSettings = settingsStore.getState().saved;
+  if (currentRound.confirmed.some((entry) => entry.player_id === savedSettings.playerId)) {
+    return;
+  }
+
+  const matchedObservation = parsedChange.observations.find((observation) =>
+    observationMatchesExpected(observation, currentRound.expected_key),
+  );
+  if (!matchedObservation) {
+    return;
+  }
+
+  const metricValue =
+    snapshot.settings.win_metric === "SCORE"
+      ? matchedObservation.score
+      : matchedObservation.misscount;
+  if (!Number.isInteger(metricValue) || metricValue < 0) {
+    return;
+  }
+
+  const sent = roomStore.send("RESULT_SUBMIT", {
+    round_index: currentRound.round_index,
+    observed_key: {
+      play_style: currentRound.expected_key.play_style,
+      difficulty: matchedObservation.difficulty,
+      title_search_key: matchedObservation.titleSearchKey,
+    },
+    metric_value: metricValue,
+    source_meta: {
+      source: parsedChange.source,
+      timestamp: matchedObservation.timestamp,
+      difficulty: matchedObservation.difficulty,
+      title: matchedObservation.title,
+      title_search_key: matchedObservation.titleSearchKey,
+      score: matchedObservation.score,
+      misscount: matchedObservation.misscount,
+      file_path: parsedChange.filePath,
+    },
+  });
+
+  if (!sent) {
+    return;
+  }
+
+  roomStore.noteLocalEvent(
+    `Auto-submitted ${snapshot.settings.win_metric} from ${parsedChange.source} (${matchedObservation.timestamp}).`,
+  );
+}
+
+function handleWatcherEvent(payload: SourceWatcherEventPayload): void {
+  internalStore.setState((state) => ({
+    ...state,
+    runtimeReady: true,
+    watcherState: mapWatcherState(payload.state),
+    lastEvent: mapWatcherEvent(payload),
+  }));
+
+  handleWatcherError(payload);
+
+  if (payload.kind !== "FILE_CHANGED" || payload.parserOutput === null) {
+    return;
+  }
+
+  tryAutoSubmitParsedChange(payload.parserOutput);
+}
+
 function getMissingPathMessage(source: SourceType, paths: SourcePaths): string | null {
   if (source === "inf_daken_counter" && paths.dakenTodayUpdateXml.trim().length === 0) {
     return "Set inf_daken_counter / today_update.xml before starting the watcher.";
@@ -131,14 +234,7 @@ async function ensureAttached(): Promise<void> {
       return;
     }
 
-    attachedListener = await listenToSourceWatcherEvents((payload) => {
-      internalStore.setState((state) => ({
-        ...state,
-        runtimeReady: true,
-        watcherState: mapWatcherState(payload.state),
-        lastEvent: mapWatcherEvent(payload),
-      }));
-    });
+    attachedListener = await listenToSourceWatcherEvents(handleWatcherEvent);
 
     const statePayload = await getSourceWatcherState();
     internalStore.setState((state) => ({
@@ -204,6 +300,7 @@ export const sourceStore = {
           lastEventAt: null,
         },
       }));
+      roomStore.reportSourceUnavailable(missingPathMessage);
       return;
     }
 
@@ -225,17 +322,20 @@ export const sourceStore = {
         watcherState: mapWatcherState(payload),
       }));
     } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to start watcher.";
       internalStore.setState((state) => ({
         ...state,
         watcherState: {
           ...state.watcherState,
           status: "ERROR",
           source: settings.source,
-          detail: error instanceof Error ? error.message : "Failed to start watcher.",
+          detail: errorMessage,
           watchedPaths: [],
           lastEventAt: new Date().toISOString(),
         },
       }));
+      roomStore.reportSourceUnavailable(errorMessage);
     }
   },
   async stop(): Promise<void> {

@@ -41,6 +41,7 @@ struct ActiveWatcher {
 
 struct WatchSpec {
     source: SourceType,
+    source_paths: SourcePathsConfig,
     watched_paths: Vec<String>,
     watched_keys: HashSet<String>,
     parent_directories: Vec<PathBuf>,
@@ -206,6 +207,7 @@ impl WatchSpec {
 
         Ok(Self {
             source: request.source.clone(),
+            source_paths: request.source_paths.clone(),
             watched_paths,
             watched_keys,
             parent_directories,
@@ -219,7 +221,7 @@ fn run_watcher_loop(
     spec: WatchSpec,
     shutdown_rx: mpsc::Receiver<()>,
 ) {
-    let parser = create_parser(&spec.source);
+    let mut parser = create_parser(&spec.source, &spec.source_paths);
     let (event_tx, event_rx) = mpsc::channel::<Result<Event, notify::Error>>();
     let watcher_result = create_recommended_watcher(&spec, event_tx);
 
@@ -236,10 +238,7 @@ fn run_watcher_loop(
             publish_error(
                 &app,
                 &inner,
-                &format!(
-                    "Failed to watch {}: {error}",
-                    directory.to_string_lossy()
-                ),
+                &format!("Failed to watch {}: {error}", directory.to_string_lossy()),
                 None,
             );
             return;
@@ -252,7 +251,7 @@ fn run_watcher_loop(
         }
 
         match event_rx.recv_timeout(Duration::from_millis(250)) {
-            Ok(Ok(event)) => handle_notify_event(&app, &inner, &spec, parser.as_ref(), event),
+            Ok(Ok(event)) => handle_notify_event(&app, &inner, &spec, parser.as_mut(), event),
             Ok(Err(error)) => publish_error(&app, &inner, &error.to_string(), None),
             Err(RecvTimeoutError::Timeout) => continue,
             Err(RecvTimeoutError::Disconnected) => {
@@ -282,7 +281,7 @@ fn handle_notify_event(
     app: &AppHandle,
     inner: &Arc<Mutex<ManagerState>>,
     spec: &WatchSpec,
-    parser: &dyn crate::parsers::SourceParser,
+    parser: &mut dyn crate::parsers::SourceParser,
     event: Event,
 ) {
     if !matches!(event.kind, EventKind::Modify(_) | EventKind::Create(_)) {
@@ -299,12 +298,9 @@ fn handle_notify_event(
         };
 
         match parser.parse(&parser_input) {
-            Ok(parsed_change) => {
+            Ok(Some(parsed_change)) => {
                 let occurred_at_ms = now_ms();
-                let detail = format!(
-                    "Detected file change: {}",
-                    parsed_change.file_path
-                );
+                let detail = format!("Detected file change: {}", parsed_change.file_path);
                 let state = update_state(
                     inner,
                     SourceWatcherStatus::Running,
@@ -324,8 +320,9 @@ fn handle_notify_event(
                     },
                 );
             }
+            Ok(None) => {}
             Err(error) => {
-                publish_error(
+                publish_unavailable(
                     app,
                     inner,
                     &error,
@@ -342,13 +339,33 @@ fn publish_error(
     detail: &str,
     file_path: Option<String>,
 ) {
-    let occurred_at_ms = now_ms();
-    let state = update_state(
+    publish_with_status(app, inner, SourceWatcherStatus::Error, detail, file_path);
+}
+
+fn publish_unavailable(
+    app: &AppHandle,
+    inner: &Arc<Mutex<ManagerState>>,
+    detail: &str,
+    file_path: Option<String>,
+) {
+    publish_with_status(
+        app,
         inner,
-        SourceWatcherStatus::Error,
-        detail.to_string(),
-        Some(occurred_at_ms),
+        SourceWatcherStatus::Unavailable,
+        detail,
+        file_path,
     );
+}
+
+fn publish_with_status(
+    app: &AppHandle,
+    inner: &Arc<Mutex<ManagerState>>,
+    status: SourceWatcherStatus,
+    detail: &str,
+    file_path: Option<String>,
+) {
+    let occurred_at_ms = now_ms();
+    let state = update_state(inner, status, detail.to_string(), Some(occurred_at_ms));
 
     emit_event(
         app,

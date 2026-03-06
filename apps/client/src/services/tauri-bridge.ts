@@ -14,10 +14,20 @@ export interface SourceWatcherStatePayload {
   lastEventAtMs: number | null;
 }
 
+export interface ParsedSourceObservationPayload {
+  timestamp: string;
+  difficulty: string;
+  title: string;
+  titleSearchKey: string;
+  score: number;
+  misscount: number;
+}
+
 export interface ParsedSourceChangePayload {
   source: SourceType;
   filePath: string;
   fileSizeBytes: number;
+  observations: ParsedSourceObservationPayload[];
 }
 
 export interface SourceWatcherEventPayload {
