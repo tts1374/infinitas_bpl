@@ -133,15 +133,17 @@ export async function speakNativeTts(request: NativeTtsSpeakRequest): Promise<vo
     throw new Error("Native TTS is available only inside the Tauri desktop app.");
   }
 
-  const { speak } = await import("tauri-plugin-tts-api");
-  await speak({
-    language: null,
-    voiceId: null,
-    rate: null,
-    pitch: null,
-    volume: null,
-    queueMode: null,
-    ...request,
+  const { invoke } = await import("@tauri-apps/api/core");
+  await invoke("plugin:tts|speak", {
+    payload: {
+      text: request.text,
+      language: request.language ?? null,
+      voiceId: request.voiceId ?? null,
+      rate: request.rate ?? 1,
+      pitch: request.pitch ?? 1,
+      volume: request.volume ?? 1,
+      queueMode: request.queueMode ?? "flush",
+    },
   });
 }
 
@@ -150,8 +152,8 @@ export async function stopNativeTts(): Promise<void> {
     return;
   }
 
-  const { stop } = await import("tauri-plugin-tts-api");
-  await stop();
+  const { invoke } = await import("@tauri-apps/api/core");
+  await invoke("plugin:tts|stop");
 }
 
 function createUnavailableState(): SourceWatcherStatePayload {
