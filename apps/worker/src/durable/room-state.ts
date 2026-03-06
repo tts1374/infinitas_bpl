@@ -1,5 +1,6 @@
 import {
   BPL_ROUNDS,
+  HOST_SKIP_UNLOCK_SECONDS,
   MATCH_TTL_MINUTES,
   READY_CHECK_TTL_MINUTES,
   REJOIN_COOLDOWN_SECONDS,
@@ -11,9 +12,11 @@ import {
   type FrozenRound,
   type JsonObject,
   type PlayerRole,
+  type ResultReadyPayload,
   type RoomSettings,
   type RoomState,
   type RoomStateSnapshot,
+  type SkipReason,
   type SourceType,
   type SubmissionReason,
   type SubmissionStatus,
@@ -123,15 +126,37 @@ export interface RoundBeginEvent {
   soft_ttl_seconds: number;
 }
 
+export interface ForceAdvanceAppliedEvent {
+  round_index: number;
+  timed_out_players: string[];
+}
+
 export interface RoundTransitionResult {
   confirmations: RoundConfirmationEvent[];
   round_ended?: RoundEndedEvent;
   round_begin?: RoundBeginEvent;
+  force_advance_applied?: ForceAdvanceAppliedEvent;
+  result_ready?: ResultReadyPayload;
 }
 
 export interface ResultSubmitResult extends RoundTransitionResult {
   ok: boolean;
   reason?: "INVALID_STATE" | "PLAYER_NOT_FOUND" | "RESULT_KEY_MISMATCH" | "ROUND_ALREADY_CONFIRMED";
+}
+
+export interface SkipSelfResult extends RoundTransitionResult {
+  ok: boolean;
+  reason?: "INVALID_STATE" | "PLAYER_NOT_FOUND" | "ROUND_ALREADY_CONFIRMED";
+}
+
+export interface SkipHostAssignResult extends RoundTransitionResult {
+  ok: boolean;
+  reason?: "INVALID_STATE" | "NOT_HOST" | "PLAYER_NOT_FOUND" | "ROUND_ALREADY_CONFIRMED" | "HOST_SKIP_LOCKED";
+}
+
+export interface ForceAdvanceResult extends RoundTransitionResult {
+  ok: boolean;
+  reason?: "INVALID_STATE" | "NOT_HOST";
 }
 
 const DEFAULT_SETTINGS: RoomSettings = {
@@ -220,9 +245,11 @@ export class RoomLobbyState {
   private closeReason: string | null = null;
   private readonly players = new Map<string, InternalPlayer>();
   private readonly picks: InternalPick[] = [];
+  private readonly roundConfirmations = new Map<number, RoundConfirmationEvent[]>();
   private frozenRounds: FrozenRound[] = [];
   private currentRound: CurrentRoundSnapshot | null = null;
   private matchPlayerIds: string[] = [];
+  private resultReadyPayload: ResultReadyPayload | null = null;
 
   constructor(private readonly chartMaster: RoomChartMaster) {}
 
@@ -412,8 +439,10 @@ export class RoomLobbyState {
     this.resultDeadline = null;
     this.matchPlayerIds = this.getPlayersInJoinOrder().map((player) => player.player_id);
     this.picks.length = 0;
+    this.roundConfirmations.clear();
     this.frozenRounds = [];
     this.currentRound = null;
+    this.resultReadyPayload = null;
 
     for (const player of this.players.values()) {
       player.ready = false;
@@ -494,6 +523,10 @@ export class RoomLobbyState {
       return this.matchDeadline;
     }
 
+    if (this.roomState === "RESULT" && this.resultDeadline !== null) {
+      return this.resultDeadline;
+    }
+
     if (this.roomState !== "PLAYING" || this.currentRound === null) {
       return null;
     }
@@ -545,7 +578,7 @@ export class RoomLobbyState {
       submitted_by: "SELF",
       submitted_at: now,
     });
-    const transition = this.applyRoundConfirmations([confirmation], now, false);
+    const transition = this.applyRoundConfirmations([confirmation], now, {});
     if (transition === null) {
       return { ok: false, reason: "INVALID_STATE", confirmations: [] };
     }
@@ -555,7 +588,129 @@ export class RoomLobbyState {
       confirmations: transition.confirmations,
       ...(transition.round_ended === undefined ? {} : { round_ended: transition.round_ended }),
       ...(transition.round_begin === undefined ? {} : { round_begin: transition.round_begin }),
+      ...(transition.result_ready === undefined ? {} : { result_ready: transition.result_ready }),
     };
+  }
+
+  skipSelf(playerId: string, roundIndex: number, reason: SkipReason, now: Date): SkipSelfResult {
+    if (this.roomState !== "PLAYING" || this.currentRound === null) {
+      return { ok: false, reason: "INVALID_STATE", confirmations: [] };
+    }
+
+    if (!this.matchPlayerIds.includes(playerId)) {
+      return { ok: false, reason: "PLAYER_NOT_FOUND", confirmations: [] };
+    }
+
+    if (roundIndex !== this.currentRound.round_index) {
+      return { ok: false, reason: "INVALID_STATE", confirmations: [] };
+    }
+
+    if (this.currentRound.confirmed.some((entry) => entry.player_id === playerId)) {
+      return { ok: false, reason: "ROUND_ALREADY_CONFIRMED", confirmations: [] };
+    }
+
+    const confirmation = this.createSkipConfirmation(roundIndex, playerId, reason, "SELF", now);
+    const transition = this.applyRoundConfirmations([confirmation], now, {});
+    if (transition === null) {
+      return { ok: false, reason: "INVALID_STATE", confirmations: [] };
+    }
+
+    return {
+      ok: true,
+      confirmations: transition.confirmations,
+      ...(transition.round_ended === undefined ? {} : { round_ended: transition.round_ended }),
+      ...(transition.round_begin === undefined ? {} : { round_begin: transition.round_begin }),
+      ...(transition.result_ready === undefined ? {} : { result_ready: transition.result_ready }),
+    };
+  }
+
+  assignHostSkip(
+    playerId: string,
+    roundIndex: number,
+    targetPlayerId: string,
+    reason: SkipReason,
+    now: Date,
+  ): SkipHostAssignResult {
+    if (playerId !== this.hostPlayerId) {
+      return { ok: false, reason: "NOT_HOST", confirmations: [] };
+    }
+
+    if (this.roomState !== "PLAYING" || this.currentRound === null) {
+      return { ok: false, reason: "INVALID_STATE", confirmations: [] };
+    }
+
+    if (roundIndex !== this.currentRound.round_index) {
+      return { ok: false, reason: "INVALID_STATE", confirmations: [] };
+    }
+
+    if (!this.matchPlayerIds.includes(targetPlayerId)) {
+      return { ok: false, reason: "PLAYER_NOT_FOUND", confirmations: [] };
+    }
+
+    if (this.currentRound.confirmed.some((entry) => entry.player_id === targetPlayerId)) {
+      return { ok: false, reason: "ROUND_ALREADY_CONFIRMED", confirmations: [] };
+    }
+
+    if (!this.isHostSkipUnlocked(now)) {
+      return { ok: false, reason: "HOST_SKIP_LOCKED", confirmations: [] };
+    }
+
+    const confirmation = this.createSkipConfirmation(roundIndex, targetPlayerId, reason, "HOST", now);
+    const transition = this.applyRoundConfirmations([confirmation], now, {});
+    if (transition === null) {
+      return { ok: false, reason: "INVALID_STATE", confirmations: [] };
+    }
+
+    return {
+      ok: true,
+      confirmations: transition.confirmations,
+      ...(transition.round_ended === undefined ? {} : { round_ended: transition.round_ended }),
+      ...(transition.round_begin === undefined ? {} : { round_begin: transition.round_begin }),
+      ...(transition.result_ready === undefined ? {} : { result_ready: transition.result_ready }),
+    };
+  }
+
+  forceAdvance(playerId: string, now: Date): ForceAdvanceResult {
+    if (playerId !== this.hostPlayerId) {
+      return { ok: false, reason: "NOT_HOST", confirmations: [] };
+    }
+
+    if (this.roomState !== "PLAYING" || this.currentRound === null) {
+      return { ok: false, reason: "INVALID_STATE", confirmations: [] };
+    }
+
+    const timedOutPlayerIds = this.getUnconfirmedPlayerIds(this.currentRound);
+    if (timedOutPlayerIds.length === 0) {
+      return { ok: false, reason: "INVALID_STATE", confirmations: [] };
+    }
+
+    const confirmations = timedOutPlayerIds.map((targetPlayerId) =>
+      this.createTimeoutConfirmation(this.currentRound?.round_index ?? 0, targetPlayerId, now),
+    );
+    const transition = this.applyRoundConfirmations(confirmations, now, {
+      force_advance_applied: {
+        round_index: this.currentRound.round_index,
+        timed_out_players: [...timedOutPlayerIds],
+      },
+    });
+    if (transition === null) {
+      return { ok: false, reason: "INVALID_STATE", confirmations: [] };
+    }
+
+    return {
+      ok: true,
+      confirmations: transition.confirmations,
+      ...(transition.round_ended === undefined ? {} : { round_ended: transition.round_ended }),
+      ...(transition.round_begin === undefined ? {} : { round_begin: transition.round_begin }),
+      ...(transition.force_advance_applied === undefined
+        ? {}
+        : { force_advance_applied: transition.force_advance_applied }),
+      ...(transition.result_ready === undefined ? {} : { result_ready: transition.result_ready }),
+    };
+  }
+
+  getResultReadyPayload(): ResultReadyPayload | null {
+    return this.resultReadyPayload;
   }
 
   getReadyCheckDeadline(): Date | null {
@@ -575,6 +730,19 @@ export class RoomLobbyState {
     return true;
   }
 
+  closeResultIfExpired(now: Date): boolean {
+    if (
+      this.roomState !== "RESULT" ||
+      this.resultDeadline === null ||
+      now.getTime() < this.resultDeadline.getTime()
+    ) {
+      return false;
+    }
+
+    this.close("RESULT_TIMEOUT", now);
+    return true;
+  }
+
   expireMatchIfNeeded(now: Date): RoundTransitionResult | null {
     if ((this.roomState !== "PICKING" && this.roomState !== "PLAYING") || now.getTime() < this.matchDeadline.getTime()) {
       return null;
@@ -582,13 +750,16 @@ export class RoomLobbyState {
 
     if (this.roomState === "PICKING" || this.currentRound === null) {
       this.enterResult(now);
-      return { confirmations: [] };
+      return {
+        confirmations: [],
+        ...(this.resultReadyPayload === null ? {} : { result_ready: this.resultReadyPayload }),
+      };
     }
 
     const timedOutPlayers = this.getUnconfirmedPlayerIds(this.currentRound).map((playerId) =>
       this.createTimeoutConfirmation(this.currentRound?.round_index ?? 0, playerId, now),
     );
-    return this.applyRoundConfirmations(timedOutPlayers, now, true);
+    return this.applyRoundConfirmations(timedOutPlayers, now, { force_result: true });
   }
 
   expireCurrentRoundIfNeeded(now: Date): RoundTransitionResult | null {
@@ -613,7 +784,7 @@ export class RoomLobbyState {
     const confirmations = unconfirmedPlayerIds.map((playerId) =>
       this.createTimeoutConfirmation(this.currentRound?.round_index ?? 0, playerId, now),
     );
-    return this.applyRoundConfirmations(confirmations, now, false);
+    return this.applyRoundConfirmations(confirmations, now, {});
   }
 
   close(reason: string, now: Date): void {
@@ -711,6 +882,24 @@ export class RoomLobbyState {
     };
   }
 
+  private createSkipConfirmation(
+    roundIndex: number,
+    playerId: string,
+    reason: SkipReason,
+    submittedBy: SubmittedBy,
+    submittedAt: Date,
+  ): RoundConfirmationEvent {
+    return this.createRoundConfirmation({
+      round_index: roundIndex,
+      player_id: playerId,
+      status: "SKIPPED",
+      metric_value: this.getDefaultTerminalMetricValue(this.settings.win_metric),
+      reason,
+      submitted_by: submittedBy,
+      submitted_at: submittedAt,
+    });
+  }
+
   private createTimeoutConfirmation(
     roundIndex: number,
     playerId: string,
@@ -739,30 +928,45 @@ export class RoomLobbyState {
   private applyRoundConfirmations(
     confirmations: RoundConfirmationEvent[],
     now: Date,
-    forceResult: boolean,
+    options: {
+      force_result?: boolean;
+      force_advance_applied?: ForceAdvanceAppliedEvent;
+    },
   ): RoundTransitionResult | null {
     if (this.currentRound === null) {
       return null;
     }
 
+    const clonedConfirmations = confirmations.map(cloneRoundConfirmation);
     this.currentRound.confirmed = [
       ...this.currentRound.confirmed,
-      ...confirmations.map(cloneRoundConfirmation),
+      ...clonedConfirmations,
     ];
 
     const currentRoundIndex = this.currentRound.round_index;
+    const existingRoundConfirmations = this.roundConfirmations.get(currentRoundIndex) ?? [];
+    this.roundConfirmations.set(currentRoundIndex, [...existingRoundConfirmations, ...clonedConfirmations]);
     const result: RoundTransitionResult = {
-      confirmations: confirmations.map(cloneRoundConfirmation),
+      confirmations: clonedConfirmations,
     };
+    if (options.force_advance_applied !== undefined) {
+      result.force_advance_applied = {
+        round_index: options.force_advance_applied.round_index,
+        timed_out_players: [...options.force_advance_applied.timed_out_players],
+      };
+    }
 
-    if (!forceResult && this.currentRound.confirmed.length < this.matchPlayerIds.length) {
+    if (!options.force_result && this.currentRound.confirmed.length < this.matchPlayerIds.length) {
       return result;
     }
 
     result.round_ended = { round_index: currentRoundIndex };
 
-    if (forceResult) {
+    if (options.force_result || this.shouldEnterResultAfterRound(currentRoundIndex)) {
       this.enterResult(now);
+      if (this.resultReadyPayload !== null) {
+        result.result_ready = this.resultReadyPayload;
+      }
       return result;
     }
 
@@ -773,6 +977,9 @@ export class RoomLobbyState {
     }
 
     this.enterResult(now);
+    if (this.resultReadyPayload !== null) {
+      result.result_ready = this.resultReadyPayload;
+    }
     return result;
   }
 
@@ -780,6 +987,7 @@ export class RoomLobbyState {
     this.roomState = "RESULT";
     this.currentRound = null;
     this.resultDeadline = computeResultDeadline(now);
+    this.resultReadyPayload = this.buildResultReadyPayload();
   }
 
   private getPlayersInJoinOrder(): InternalPlayer[] {
@@ -946,5 +1154,284 @@ export class RoomLobbyState {
       confirmed: [],
     };
     return this.currentRound;
+  }
+
+  private isHostSkipUnlocked(now: Date): boolean {
+    if (this.currentRound === null) {
+      return false;
+    }
+
+    const roundStartedAt = new Date(this.currentRound.round_started_at);
+    if (!Number.isFinite(roundStartedAt.getTime())) {
+      return false;
+    }
+
+    return now.getTime() >= roundStartedAt.getTime() + HOST_SKIP_UNLOCK_SECONDS * 1_000;
+  }
+
+  private shouldEnterResultAfterRound(roundIndex: number): boolean {
+    if (this.settings.mode !== "BPL") {
+      return false;
+    }
+
+    const roundWins = this.computeBplWins(roundIndex);
+    return Array.from(roundWins.values()).some((wins) => wins >= 2);
+  }
+
+  private computeBplWins(maxRoundIndex: number): Map<string, number> {
+    const wins = new Map<string, number>();
+    for (const playerId of this.matchPlayerIds) {
+      wins.set(playerId, 0);
+    }
+
+    for (let roundIndex = 0; roundIndex <= maxRoundIndex; roundIndex += 1) {
+      const winnerPlayerId = this.getBplRoundWinnerPlayerId(roundIndex);
+      if (winnerPlayerId === null) {
+        continue;
+      }
+
+      wins.set(winnerPlayerId, (wins.get(winnerPlayerId) ?? 0) + 1);
+    }
+
+    return wins;
+  }
+
+  private getBplRoundWinnerPlayerId(roundIndex: number): string | null {
+    const [firstPlayerId, secondPlayerId] = this.matchPlayerIds;
+    if (firstPlayerId === undefined || secondPlayerId === undefined) {
+      return null;
+    }
+
+    const roundConfirmations = this.roundConfirmations.get(roundIndex) ?? [];
+    const firstResult = roundConfirmations.find((entry) => entry.player_id === firstPlayerId);
+    const secondResult = roundConfirmations.find((entry) => entry.player_id === secondPlayerId);
+    if (firstResult === undefined || secondResult === undefined) {
+      return null;
+    }
+
+    const comparison = this.compareMetricValues(firstResult.metric_value, secondResult.metric_value);
+    if (comparison === 0) {
+      return null;
+    }
+
+    return comparison > 0 ? firstPlayerId : secondPlayerId;
+  }
+
+  private compareMetricValues(left: number, right: number): number {
+    if (left === right) {
+      return 0;
+    }
+
+    if (this.settings.win_metric === "SCORE") {
+      return left > right ? 1 : -1;
+    }
+
+    return left < right ? 1 : -1;
+  }
+
+  private getArenaPointsForRank(rank: number): number {
+    if (rank === 1) {
+      return 2;
+    }
+
+    if (rank === 2) {
+      return 1;
+    }
+
+    return 0;
+  }
+
+  private getPlayerDisplayName(playerId: string): string {
+    return this.players.get(playerId)?.display_name ?? playerId;
+  }
+
+  private buildResultReadyPayload(): ResultReadyPayload {
+    const perPlayerRounds = new Map<string, Array<Record<string, unknown>>>();
+    for (const playerId of this.matchPlayerIds) {
+      perPlayerRounds.set(playerId, []);
+    }
+
+    const completedRounds = this.frozenRounds.filter((round) => round.started_at !== null).length;
+
+    if (this.settings.mode === "ARENA") {
+      const totalPoints = new Map<string, number>();
+      for (const playerId of this.matchPlayerIds) {
+        totalPoints.set(playerId, 0);
+      }
+
+      const rounds = this.frozenRounds.map((round) => {
+        const roundConfirmations = this.roundConfirmations.get(round.round_index) ?? [];
+        const confirmationByPlayer = new Map(roundConfirmations.map((entry) => [entry.player_id, entry]));
+        const rankedPlayers = this.matchPlayerIds
+          .map((playerId) => {
+            const confirmation = confirmationByPlayer.get(playerId);
+            return {
+              player_id: playerId,
+              confirmation,
+            };
+          })
+          .filter(
+            (entry): entry is { player_id: string; confirmation: RoundConfirmationEvent } =>
+              entry.confirmation !== undefined,
+          )
+          .sort((left, right) => {
+            const comparison = this.compareMetricValues(
+              left.confirmation.metric_value,
+              right.confirmation.metric_value,
+            );
+            if (comparison !== 0) {
+              return comparison > 0 ? -1 : 1;
+            }
+
+            return left.player_id.localeCompare(right.player_id);
+          });
+
+        const rankByPlayerId = new Map<string, number>();
+        let previousMetricValue: number | null = null;
+        let previousRank = 0;
+        rankedPlayers.forEach((entry, index) => {
+          if (previousMetricValue !== null && entry.confirmation.metric_value === previousMetricValue) {
+            rankByPlayerId.set(entry.player_id, previousRank);
+            return;
+          }
+
+          const rank = index + 1;
+          previousMetricValue = entry.confirmation.metric_value;
+          previousRank = rank;
+          rankByPlayerId.set(entry.player_id, rank);
+        });
+
+        const results = this.matchPlayerIds.map((playerId) => {
+          const confirmation = confirmationByPlayer.get(playerId);
+          const rank = confirmation === undefined ? null : (rankByPlayerId.get(playerId) ?? null);
+          const arenaPoints = rank === null ? 0 : this.getArenaPointsForRank(rank);
+          totalPoints.set(playerId, (totalPoints.get(playerId) ?? 0) + arenaPoints);
+
+          const roundResult = {
+            round_index: round.round_index,
+            player_id: playerId,
+            display_name: this.getPlayerDisplayName(playerId),
+            status: confirmation?.status ?? null,
+            metric_value: confirmation?.metric_value ?? null,
+            reason: confirmation?.reason ?? null,
+            submitted_at: confirmation?.submitted_at ?? null,
+            submitted_by: confirmation?.submitted_by ?? null,
+            rank,
+            arena_points: arenaPoints,
+          };
+          perPlayerRounds.get(playerId)?.push(roundResult);
+          return roundResult;
+        });
+
+        const winnerPlayerIds = results
+          .filter((entry) => entry.rank === 1)
+          .map((entry) => entry.player_id);
+
+        return {
+          round_index: round.round_index,
+          expected_key: cloneExpectedKey(round.expected_key),
+          display: {
+            title: round.display.title,
+            level: round.display.level,
+          },
+          round_started_at: round.started_at,
+          played: round.started_at !== null,
+          winner_player_ids: winnerPlayerIds,
+          results,
+        };
+      });
+
+      const players = this.matchPlayerIds.map((playerId) => ({
+        player_id: playerId,
+        display_name: this.getPlayerDisplayName(playerId),
+        total_points: totalPoints.get(playerId) ?? 0,
+        rounds: perPlayerRounds.get(playerId) ?? [],
+      }));
+      const highestPoints = players.reduce((maxValue, player) => Math.max(maxValue, player.total_points), 0);
+      const winnerPlayerIds = players
+        .filter((player) => player.total_points === highestPoints)
+        .map((player) => player.player_id);
+
+      return {
+        summary: {
+          mode: this.settings.mode,
+          win_metric: this.settings.win_metric,
+          total_rounds: this.frozenRounds.length,
+          completed_rounds: completedRounds,
+          winner_player_ids: winnerPlayerIds,
+          is_draw: winnerPlayerIds.length !== 1,
+        },
+        per_round: {
+          rounds,
+        },
+        per_player: {
+          players,
+        },
+      };
+    }
+
+    const roundWins = this.computeBplWins(this.frozenRounds.length - 1);
+    const rounds = this.frozenRounds.map((round) => {
+      const roundConfirmations = this.roundConfirmations.get(round.round_index) ?? [];
+      const confirmationByPlayer = new Map(roundConfirmations.map((entry) => [entry.player_id, entry]));
+      const winnerPlayerId = this.getBplRoundWinnerPlayerId(round.round_index);
+      const results = this.matchPlayerIds.map((playerId) => {
+        const confirmation = confirmationByPlayer.get(playerId);
+        const roundResult = {
+          round_index: round.round_index,
+          player_id: playerId,
+          display_name: this.getPlayerDisplayName(playerId),
+          status: confirmation?.status ?? null,
+          metric_value: confirmation?.metric_value ?? null,
+          reason: confirmation?.reason ?? null,
+          submitted_at: confirmation?.submitted_at ?? null,
+          submitted_by: confirmation?.submitted_by ?? null,
+          round_win: winnerPlayerId === playerId,
+        };
+        perPlayerRounds.get(playerId)?.push(roundResult);
+        return roundResult;
+      });
+
+      return {
+        round_index: round.round_index,
+        expected_key: cloneExpectedKey(round.expected_key),
+        display: {
+          title: round.display.title,
+          level: round.display.level,
+        },
+        round_started_at: round.started_at,
+        played: round.started_at !== null,
+        winner_player_ids: winnerPlayerId === null ? [] : [winnerPlayerId],
+        results,
+      };
+    });
+
+    const players = this.matchPlayerIds.map((playerId) => ({
+      player_id: playerId,
+      display_name: this.getPlayerDisplayName(playerId),
+      round_wins: roundWins.get(playerId) ?? 0,
+      rounds: perPlayerRounds.get(playerId) ?? [],
+    }));
+    const highestWins = players.reduce((maxValue, player) => Math.max(maxValue, player.round_wins), 0);
+    const winnerPlayerIds = players
+      .filter((player) => player.round_wins === highestWins)
+      .map((player) => player.player_id);
+
+    return {
+      summary: {
+        mode: this.settings.mode,
+        win_metric: this.settings.win_metric,
+        total_rounds: this.frozenRounds.length,
+        completed_rounds: completedRounds,
+        winner_player_ids: winnerPlayerIds,
+        is_draw: winnerPlayerIds.length !== 1,
+      },
+      per_round: {
+        rounds,
+      },
+      per_player: {
+        players,
+      },
+    };
   }
 }
