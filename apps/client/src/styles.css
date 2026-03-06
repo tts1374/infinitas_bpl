@@ -1,0 +1,64 @@
+:root {
+  color-scheme: light;
+  font-family: "Segoe UI", "Yu Gothic UI", sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color: #162032;
+  background:
+    radial-gradient(circle at top left, rgba(255, 214, 153, 0.6), transparent 30%),
+    radial-gradient(circle at top right, rgba(100, 171, 255, 0.35), transparent 25%),
+    linear-gradient(180deg, #f3efe4 0%, #d8e2f0 100%);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+.app-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 2rem;
+}
+
+.hero-card {
+  width: min(720px, 100%);
+  padding: 2rem;
+  border: 1px solid rgba(22, 32, 50, 0.1);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 30px 60px rgba(22, 32, 50, 0.14);
+}
+
+.hero-card h1 {
+  margin: 0 0 0.75rem;
+  font-size: clamp(2.2rem, 5vw, 3.5rem);
+  line-height: 1;
+}
+
+.hero-card p {
+  margin: 0;
+  max-width: 40rem;
+}
+
+.eyebrow {
+  margin: 0 0 1rem;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #965200;
+}
