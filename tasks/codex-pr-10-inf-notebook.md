@@ -19,6 +19,7 @@
 - Rust 側に `inf-notebook` の `export/recent.json` parser を追加する。
 - last_seen timestamp と observed_key 生成を実装し、SCORE / MISSCOUNT を抽出する。
 - React 側で watcher event を解釈し、`RESULT_SUBMIT` 自動送信と `SOURCE_UNAVAILABLE` 反映を追加する。
+- desktop-only 前提で Rust crate を `rlib` のみにし、repo 既定 toolchain を MSVC に寄せる。
 
 ## 影響範囲
 - ユーザー:
@@ -62,6 +63,6 @@
 - [x] `npm --workspace @infinitas/client run typecheck`
 - [x] `npm --workspace @infinitas/client run build`
 - [x] `npm run typecheck`
-- [ ] `cargo test -p infinitas-client-tauri notebook` (`x86_64-w64-mingw32-clang` link 時に exported symbols 上限へ到達)
+- [x] `cargo test notebook`
 - [x] `cargo check`
 - [x] `cargo check --tests`
