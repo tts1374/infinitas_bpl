@@ -5,11 +5,17 @@ import { createExternalStore, useExternalStore } from "./create-store";
 
 const SETTINGS_STORAGE_KEY = "infinitas.client.settings.v1";
 const DEFAULT_API_BASE_URL = "http://127.0.0.1:8787";
+const DEFAULT_VOICE_VOLUME = 80;
 
 export interface SourcePaths {
   dakenTodayUpdateXml: string;
   notebookExportRecentJson: string;
   notebookRecordsRecentJson: string;
+}
+
+export interface SourceDirectories {
+  dakenDirectory: string;
+  notebookDirectory: string;
 }
 
 export interface ClientSettings {
@@ -18,7 +24,10 @@ export interface ClientSettings {
   displayName: string;
   source: SourceType;
   sourcePaths: SourcePaths;
+  sourceDirectories: SourceDirectories;
   voiceEnabled: boolean;
+  voiceVolume: number;
+  voiceMuted: boolean;
 }
 
 export interface SettingsStoreState {
@@ -34,7 +43,10 @@ interface PartialClientSettings {
   displayName?: string;
   source?: string;
   sourcePaths?: Partial<SourcePaths>;
+  sourceDirectories?: Partial<SourceDirectories>;
   voiceEnabled?: boolean;
+  voiceVolume?: number;
+  voiceMuted?: boolean;
 }
 
 function createDefaultSourcePaths(): SourcePaths {
@@ -42,6 +54,13 @@ function createDefaultSourcePaths(): SourcePaths {
     dakenTodayUpdateXml: "",
     notebookExportRecentJson: "",
     notebookRecordsRecentJson: "",
+  };
+}
+
+function createDefaultSourceDirectories(): SourceDirectories {
+  return {
+    dakenDirectory: "",
+    notebookDirectory: "",
   };
 }
 
@@ -54,41 +73,207 @@ function normalizeBaseUrl(value: string | undefined): string {
   return (trimmed.length === 0 ? DEFAULT_API_BASE_URL : trimmed).replace(/\/+$/, "");
 }
 
+function normalizeDirectory(value: string | undefined): string {
+  const trimmed = value?.trim() ?? "";
+  if (trimmed.length === 0) {
+    return "";
+  }
+
+  if (/^[A-Za-z]:[\\/]?$/.test(trimmed)) {
+    return `${trimmed.slice(0, 2)}\\`;
+  }
+
+  if (/^[\\/]+$/.test(trimmed)) {
+    return "/";
+  }
+
+  return trimmed.replace(/[\\/]+$/, "");
+}
+
+function normalizeVoiceVolume(value: number | undefined): number {
+  if (typeof value !== "number" || Number.isNaN(value)) {
+    return DEFAULT_VOICE_VOLUME;
+  }
+
+  return Math.min(100, Math.max(0, Math.round(value)));
+}
+
+function inferSeparator(path: string): "/" | "\\" {
+  return path.includes("\\") ? "\\" : "/";
+}
+
+function joinPath(directory: string, segments: string[]): string {
+  const normalizedDirectory = normalizeDirectory(directory);
+  if (normalizedDirectory.length === 0) {
+    return "";
+  }
+
+  if (normalizedDirectory === "/") {
+    return `/${segments.join("/")}`;
+  }
+
+  const separator = inferSeparator(normalizedDirectory);
+  if (normalizedDirectory.endsWith(separator)) {
+    return `${normalizedDirectory}${segments.join(separator)}`;
+  }
+
+  return [normalizedDirectory, ...segments].join(separator);
+}
+
+function extractParentDirectory(filePath: string | undefined): string {
+  const trimmed = filePath?.trim() ?? "";
+  if (trimmed.length === 0) {
+    return "";
+  }
+
+  const parent = trimmed.replace(/[\\/][^\\/]+$/, "");
+  return normalizeDirectory(parent === trimmed ? trimmed : parent);
+}
+
+function extractNotebookDirectory(paths: Partial<SourcePaths>): string {
+  const candidate = paths.notebookExportRecentJson?.trim() || paths.notebookRecordsRecentJson?.trim() || "";
+  if (candidate.length === 0) {
+    return "";
+  }
+
+  const withoutSuffix = candidate
+    .replace(/[\\/]export[\\/]recent\.json$/i, "")
+    .replace(/[\\/]records[\\/]recent\.json$/i, "");
+
+  return normalizeDirectory(withoutSuffix === candidate ? extractParentDirectory(candidate) : withoutSuffix);
+}
+
+function deriveSourceDirectories(paths: Partial<SourcePaths>): SourceDirectories {
+  const dakenCandidate = paths.dakenTodayUpdateXml?.trim() ?? "";
+
+  return {
+    dakenDirectory:
+      dakenCandidate.length === 0
+        ? ""
+        : normalizeDirectory(dakenCandidate.replace(/[\\/]today_update\.xml$/i, "")) || extractParentDirectory(dakenCandidate),
+    notebookDirectory: extractNotebookDirectory(paths),
+  };
+}
+
+export function deriveSourcePaths(sourceDirectories: SourceDirectories): SourcePaths {
+  return {
+    dakenTodayUpdateXml:
+      sourceDirectories.dakenDirectory.length === 0
+        ? ""
+        : joinPath(sourceDirectories.dakenDirectory, ["today_update.xml"]),
+    notebookExportRecentJson:
+      sourceDirectories.notebookDirectory.length === 0
+        ? ""
+        : joinPath(sourceDirectories.notebookDirectory, ["export", "recent.json"]),
+    notebookRecordsRecentJson:
+      sourceDirectories.notebookDirectory.length === 0
+        ? ""
+        : joinPath(sourceDirectories.notebookDirectory, ["records", "recent.json"]),
+  };
+}
+
+function normalizeVoiceSettings(rawSettings: PartialClientSettings | null): Pick<ClientSettings, "voiceEnabled" | "voiceMuted" | "voiceVolume"> {
+  const voiceVolume = normalizeVoiceVolume(rawSettings?.voiceVolume);
+  const voiceMuted = rawSettings?.voiceMuted ?? rawSettings?.voiceEnabled === false;
+
+  return {
+    voiceVolume,
+    voiceMuted,
+    voiceEnabled: !voiceMuted && voiceVolume > 0,
+  };
+}
+
 function createDefaultSettings(): ClientSettings {
-  const defaultSourcePaths = createDefaultSourcePaths();
+  const runtimePaths: SourcePaths = {
+    dakenTodayUpdateXml: runtimeConfig.settingsDefaults.sourcePaths.dakenTodayUpdateXml ?? "",
+    notebookExportRecentJson: runtimeConfig.settingsDefaults.sourcePaths.notebookExportRecentJson ?? "",
+    notebookRecordsRecentJson: runtimeConfig.settingsDefaults.sourcePaths.notebookRecordsRecentJson ?? "",
+  };
+  const sourceDirectories = {
+    ...createDefaultSourceDirectories(),
+    ...deriveSourceDirectories(runtimePaths),
+  };
+  const sourcePaths = {
+    ...createDefaultSourcePaths(),
+    ...runtimePaths,
+    ...deriveSourcePaths(sourceDirectories),
+  };
+
   return {
     apiBaseUrl: normalizeBaseUrl(runtimeConfig.settingsDefaults.apiBaseUrl),
     playerId: runtimeConfig.settingsDefaults.playerId?.trim() || crypto.randomUUID(),
     displayName: runtimeConfig.settingsDefaults.displayName?.trim() ?? "",
     source: normalizeSource(runtimeConfig.settingsDefaults.source),
-    sourcePaths: {
-      dakenTodayUpdateXml:
-        runtimeConfig.settingsDefaults.sourcePaths.dakenTodayUpdateXml ??
-        defaultSourcePaths.dakenTodayUpdateXml,
-      notebookExportRecentJson:
-        runtimeConfig.settingsDefaults.sourcePaths.notebookExportRecentJson ??
-        defaultSourcePaths.notebookExportRecentJson,
-      notebookRecordsRecentJson:
-        runtimeConfig.settingsDefaults.sourcePaths.notebookRecordsRecentJson ??
-        defaultSourcePaths.notebookRecordsRecentJson,
-    },
+    sourcePaths,
+    sourceDirectories,
     voiceEnabled: true,
+    voiceVolume: DEFAULT_VOICE_VOLUME,
+    voiceMuted: false,
   };
 }
 
 function normalizeSettings(rawSettings: PartialClientSettings | null): ClientSettings {
   const defaults = createDefaultSettings();
+  const normalizedRawDirectories: Partial<SourceDirectories> = {};
+  if (rawSettings?.sourceDirectories?.dakenDirectory !== undefined) {
+    normalizedRawDirectories.dakenDirectory = normalizeDirectory(rawSettings.sourceDirectories.dakenDirectory);
+  }
+  if (rawSettings?.sourceDirectories?.notebookDirectory !== undefined) {
+    normalizedRawDirectories.notebookDirectory = normalizeDirectory(rawSettings.sourceDirectories.notebookDirectory);
+  }
+  const pathHints: SourcePaths = {
+    ...defaults.sourcePaths,
+    ...rawSettings?.sourcePaths,
+  };
+  const sourceDirectories = {
+    ...defaults.sourceDirectories,
+    ...deriveSourceDirectories(pathHints),
+    ...normalizedRawDirectories,
+  };
+  const sourcePaths = {
+    ...defaults.sourcePaths,
+    ...pathHints,
+    ...deriveSourcePaths(sourceDirectories),
+  };
+  const voiceSettings = normalizeVoiceSettings(rawSettings);
+
   return {
     apiBaseUrl: normalizeBaseUrl(rawSettings?.apiBaseUrl ?? defaults.apiBaseUrl),
     playerId: rawSettings?.playerId?.trim() || defaults.playerId,
     displayName: rawSettings?.displayName?.trim() ?? defaults.displayName,
     source: normalizeSource(rawSettings?.source ?? defaults.source),
-    sourcePaths: {
-      ...defaults.sourcePaths,
-      ...rawSettings?.sourcePaths,
-    },
-    voiceEnabled: rawSettings?.voiceEnabled ?? true,
+    sourcePaths,
+    sourceDirectories,
+    ...voiceSettings,
   };
+}
+
+function syncVoiceDraft(draft: ClientSettings): ClientSettings {
+  const voiceEnabled = !draft.voiceMuted && draft.voiceVolume > 0;
+  return {
+    ...draft,
+    voiceEnabled,
+  };
+}
+
+export function getActiveSourceDirectory(settings: Pick<ClientSettings, "source" | "sourceDirectories">): string {
+  return settings.source === "inf_daken_counter"
+    ? settings.sourceDirectories.dakenDirectory
+    : settings.sourceDirectories.notebookDirectory;
+}
+
+export function isVoicePlaybackEnabled(
+  settings: Pick<ClientSettings, "voiceEnabled" | "voiceMuted" | "voiceVolume">,
+): boolean {
+  return settings.voiceEnabled && !settings.voiceMuted && settings.voiceVolume > 0;
+}
+
+export function getVoicePlaybackVolume(settings: Pick<ClientSettings, "voiceMuted" | "voiceVolume">): number {
+  if (settings.voiceMuted) {
+    return 0;
+  }
+
+  return normalizeVoiceVolume(settings.voiceVolume) / 100;
 }
 
 const initialSettings = normalizeSettings(readJson<PartialClientSettings | null>(SETTINGS_STORAGE_KEY, null));
@@ -105,23 +290,54 @@ export const settingsStore = {
   update<K extends keyof ClientSettings>(key: K, value: ClientSettings[K]): void {
     internalStore.setState((state) => ({
       ...state,
-      draft: {
+      draft: syncVoiceDraft({
         ...state.draft,
         [key]: value,
-      },
+      }),
       statusMessage: null,
     }));
   },
-  updateSourcePath<K extends keyof SourcePaths>(key: K, value: SourcePaths[K]): void {
+  updateSourceDirectory(source: SourceType, directory: string): void {
+    internalStore.setState((state) => {
+      const sourceDirectories =
+        source === "inf_daken_counter"
+          ? {
+              ...state.draft.sourceDirectories,
+              dakenDirectory: normalizeDirectory(directory),
+            }
+          : {
+              ...state.draft.sourceDirectories,
+              notebookDirectory: normalizeDirectory(directory),
+            };
+
+      return {
+        ...state,
+        draft: {
+          ...state.draft,
+          sourceDirectories,
+          sourcePaths: deriveSourcePaths(sourceDirectories),
+        },
+        statusMessage: null,
+      };
+    });
+  },
+  updateVoiceVolume(value: number): void {
     internalStore.setState((state) => ({
       ...state,
-      draft: {
+      draft: syncVoiceDraft({
         ...state.draft,
-        sourcePaths: {
-          ...state.draft.sourcePaths,
-          [key]: value,
-        },
-      },
+        voiceVolume: normalizeVoiceVolume(value),
+      }),
+      statusMessage: null,
+    }));
+  },
+  updateVoiceMuted(value: boolean): void {
+    internalStore.setState((state) => ({
+      ...state,
+      draft: syncVoiceDraft({
+        ...state.draft,
+        voiceMuted: value,
+      }),
       statusMessage: null,
     }));
   },
@@ -134,6 +350,13 @@ export const settingsStore = {
       saved: normalized,
       lastSavedAt: new Date().toISOString(),
       statusMessage: "Saved local settings.",
+    }));
+  },
+  restoreDraftFromSaved(): void {
+    internalStore.setState((state) => ({
+      ...state,
+      draft: state.saved,
+      statusMessage: null,
     }));
   },
   resetDraft(): void {

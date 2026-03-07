@@ -12,7 +12,7 @@ import {
 } from "@infinitas/shared";
 import { createExternalStore, useExternalStore } from "../stores/create-store";
 import { roomStore, type RoomAudioEvent } from "../stores/room-store";
-import { settingsStore } from "../stores/settings-store";
+import { getVoicePlaybackVolume, isVoicePlaybackEnabled, settingsStore } from "../stores/settings-store";
 
 const RECENT_CUE_GRACE_MS = 3_000;
 
@@ -115,13 +115,13 @@ function resetRoomPlayback(roomId: string | null): void {
     return;
   }
 
-  clearPlayback("IDLE", "Sound cues idle.", settingsStore.getState().saved.voiceEnabled);
+  clearPlayback("IDLE", "Sound cues idle.", isVoicePlaybackEnabled(settingsStore.getState().saved));
   activeRoomId = roomId;
   playedEventIds.clear();
   lastPlayedAtByKind.clear();
   setVoiceState({
     phase: "IDLE",
-    enabled: settingsStore.getState().saved.voiceEnabled,
+    enabled: isVoicePlaybackEnabled(settingsStore.getState().saved),
     pendingCues: 0,
     detail: roomId === null ? "Sound cues idle." : `Sound cues reset for room ${roomId}.`,
     roundToken: null,
@@ -201,7 +201,7 @@ function shouldSuppressCue(cue: ScheduledCue): boolean {
 }
 
 async function playCue(cue: ScheduledCue): Promise<void> {
-  if (shouldSuppressCue(cue) || !settingsStore.getState().saved.voiceEnabled) {
+  if (shouldSuppressCue(cue) || !isVoicePlaybackEnabled(settingsStore.getState().saved)) {
     return;
   }
 
@@ -209,6 +209,7 @@ async function playCue(cue: ScheduledCue): Promise<void> {
   lastPlayedAtByKind.set(cue.kind, Date.now());
 
   const audio = new Audio(SOUND_EFFECT_URLS[cue.kind]);
+  audio.volume = getVoicePlaybackVolume(settingsStore.getState().saved);
   activeAudios.add(audio);
   const cleanup = () => {
     activeAudios.delete(audio);
@@ -310,7 +311,7 @@ function syncVoicePlayback(): void {
 
   resetRoomPlayback(snapshot?.room_id ?? null);
 
-  if (!savedSettings.voiceEnabled) {
+  if (!isVoicePlaybackEnabled(savedSettings)) {
     clearPlayback("DISABLED", "Sound notifications are turned off.", false);
     return;
   }
@@ -349,7 +350,7 @@ export const voiceAnnouncerService = {
     unsubscribeSettingsStore?.();
     unsubscribeRoomStore = null;
     unsubscribeSettingsStore = null;
-    clearPlayback("IDLE", "Sound cues idle.", settingsStore.getState().saved.voiceEnabled);
+    clearPlayback("IDLE", "Sound cues idle.", isVoicePlaybackEnabled(settingsStore.getState().saved));
   },
 };
 
