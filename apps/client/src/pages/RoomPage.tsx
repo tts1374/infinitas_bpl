@@ -8,6 +8,7 @@ import {
   type ChartSearchEntry,
   type CurrentRoundSnapshot,
   type ResultReadyPayload,
+  type RoomStateSnapshot,
 } from "@infinitas/shared";
 import { useDeferredValue, useEffect, useRef, useState } from "react";
 import { DebugInjectionPanel } from "../components/DebugInjectionPanel";
@@ -132,6 +133,39 @@ function ResultSummaryView({ resultReady }: { resultReady: ResultReadyPayload | 
       </section>
     </div>
   );
+}
+
+function getLobbyStartIssues(snapshot: RoomStateSnapshot): string[] {
+  const issues: string[] = [];
+
+  if (snapshot.players.length < 2) {
+    issues.push("At least two players are required.");
+  }
+
+  if (snapshot.settings.mode === "BPL" && snapshot.players.length !== 2) {
+    issues.push("BPL mode requires exactly two players.");
+  }
+
+  const notReadyPlayers = snapshot.players.filter((player) => !player.ready);
+  if (notReadyPlayers.length === 1) {
+    issues.push(`${notReadyPlayers[0]?.display_name ?? "A player"} is not READY.`);
+  } else if (notReadyPlayers.length > 1) {
+    issues.push(`${notReadyPlayers.length} players are not READY.`);
+  }
+
+  if (
+    snapshot.result_ready ||
+    snapshot.current_round !== null ||
+    snapshot.picks.length > 0 ||
+    snapshot.frozen_rounds.length > 0 ||
+    snapshot.timers.picking_deadline !== null ||
+    snapshot.timers.match_deadline !== null ||
+    snapshot.timers.result_deadline !== null
+  ) {
+    issues.push("Previous match data is still being cleared.");
+  }
+
+  return issues;
 }
 
 export function RoomPage() {
@@ -332,7 +366,7 @@ export function RoomPage() {
     ? snapshot.players.filter((player) => !confirmedPlayers.has(player.player_id))
     : [];
   const readyPlayersCount = snapshot.players.filter((player) => player.ready).length;
-  const allPlayersReady = snapshot.players.length >= 2 && snapshot.players.every((player) => player.ready);
+  const lobbyStartIssues = snapshot.room_state === "LOBBY" ? getLobbyStartIssues(snapshot) : [];
   const mySubmittedPick = snapshot.picks.find((pick) => pick.player_id === savedSettings.playerId) ?? null;
   const currentRoundDisplay =
     currentRound === null ? null : snapshot.frozen_rounds.find((round) => round.round_index === currentRound.round_index) ?? null;
@@ -490,42 +524,33 @@ export function RoomPage() {
         <article className="panel">
           <div className="panel-header">
             <div>
-              <p className="eyebrow">Lobby</p>
-              <h2>Gather players</h2>
-            </div>
-          </div>
-          <p>Share the room ID and join code, then move to READY_CHECK once everyone is in.</p>
-          <div className="button-row">
-            {isHost ? (
-              <button
-                type="button"
-                className="primary-button"
-                onClick={() => {
-                  roomStore.send("READY_CHECK_OPEN", {});
-                }}
-              >
-                Open READY_CHECK
-              </button>
-            ) : null}
-            <button type="button" className="secondary-button" onClick={() => roomStore.leaveRoom()}>
-              Leave
-            </button>
-          </div>
-        </article>
-      ) : null}
-
-      {snapshot.room_state === "READY_CHECK" ? (
-        <article className="panel">
-          <div className="panel-header">
-            <div>
-              <p className="eyebrow">READY_CHECK</p>
+              <p className="eyebrow">LOBBY</p>
               <h2>Confirm entrants</h2>
             </div>
           </div>
           <p>
-            {readyPlayersCount} / {snapshot.players.length} players are READY. START_MATCH requires at least two
-            players and every current entrant to be READY.
+            {readyPlayersCount} / {snapshot.players.length} players are READY. START requires at least two players
+            and every current entrant to be READY.
           </p>
+          {snapshot.timers.ready_check_deadline ? (
+            <p className="status-muted">Lobby ready deadline: {formatDateTime(snapshot.timers.ready_check_deadline)}</p>
+          ) : null}
+          {isHost ? (
+            lobbyStartIssues.length === 0 ? (
+              <p className="status-muted">All start conditions are satisfied.</p>
+            ) : (
+              <div className="inline-error">
+                <strong>Start requirements</strong>
+                <ul className="plain-list">
+                  {lobbyStartIssues.map((issue) => (
+                    <li key={issue}>{issue}</li>
+                  ))}
+                </ul>
+              </div>
+            )
+          ) : (
+            <p className="status-muted">Waiting for the host to start the match once everyone is READY.</p>
+          )}
           <div className="button-row">
             <button
               type="button"
@@ -542,7 +567,6 @@ export function RoomPage() {
               <button
                 type="button"
                 className="primary-button"
-                disabled={!allPlayersReady}
                 onClick={() => {
                   roomStore.startMatch();
                 }}
@@ -995,6 +1019,15 @@ export function RoomPage() {
             </div>
           </div>
           <ResultSummaryView resultReady={resultReady} />
+          {isHost ? (
+            <div className="button-row">
+              <button type="button" className="primary-button" onClick={() => roomStore.returnToLobby()}>
+                Return to lobby
+              </button>
+            </div>
+          ) : (
+            <p className="status-muted">Waiting for the host to return the room to the lobby.</p>
+          )}
         </article>
       ) : null}
 
@@ -1011,7 +1044,7 @@ export function RoomPage() {
           <ResultSummaryView resultReady={resultReady} />
           <div className="button-row">
             <button type="button" className="primary-button" onClick={() => roomStore.leaveRoom()}>
-              Return to lobby
+              Leave room
             </button>
           </div>
         </article>
