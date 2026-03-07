@@ -1,4 +1,5 @@
 export const SOUND_EFFECT_KEYS = [
+  "round_intro",
   "count_beep",
   "match_found",
   "phase_locked",

@@ -17,6 +17,7 @@ import { settingsStore } from "../stores/settings-store";
 const RECENT_CUE_GRACE_MS = 3_000;
 
 const SOUND_EFFECT_URLS: Record<SoundEffectKey, string> = {
+  round_intro: "/se/round_intro.mp3",
   count_beep: "/se/count_beep.mp3",
   match_found: "/se/match_found.mp3",
   phase_locked: "/se/phase_locked.mp3",
@@ -138,6 +139,12 @@ function createRoundCues(roomId: string, round: CurrentRoundSnapshot): Scheduled
   }
 
   const cues: ScheduledCue[] = [];
+
+  cues.push({
+    kind: "round_intro",
+    eventId: `round_intro:${roomId}:${round.round_index}`,
+    dueAtMs: startedAtMs,
+  });
 
   for (let offset = 0; offset < 10; offset += 1) {
     const secondRemaining = 10 - offset;

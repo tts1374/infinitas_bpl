@@ -141,7 +141,7 @@
 - `round_started_at` は演出開始時刻（`ROUND_BEGIN`）を指す
 - `PLAYING +0s`:
   - 表示: `MUSIC SELECT:45`
-  - 音声: ステージ/曲情報読み上げを入れる場合もよいが、カウントダウン進行には使わない
+  - `round_intro`
 - `PLAYING +35s`:
   - 残り10秒から1秒まで `count_beep`
 - `PLAYING +45s`:

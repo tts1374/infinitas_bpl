@@ -161,6 +161,7 @@ Ph1で固定するタイマー値、制約値、表示/運用上の定数を整�
 - `SOUND_PLAYBACK_LOCAL_ONLY = true`
 
 ## 9.2 必須SE
+- `round_intro`
 - `count_beep`
 - `match_found`
 - `phase_locked`
