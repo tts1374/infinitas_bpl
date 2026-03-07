@@ -73,6 +73,7 @@ export interface PlayerRoundConfirmedPayload {
   reason: SubmissionReason;
   submitted_at: ISO8601String;
   submitted_by: SubmittedBy;
+  source_meta: JsonObject | null;
 }
 
 export interface RoundEndedPayload {
