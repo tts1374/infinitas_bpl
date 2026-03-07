@@ -2,15 +2,17 @@ import { startTransition, useEffect, useState } from "react";
 import { ErrorDialog } from "../components/ErrorDialog";
 import { LobbyPage } from "../pages/LobbyPage";
 import { RoomPage } from "../pages/RoomPage";
+import { StatsPage } from "../pages/StatsPage";
 import { runtimeConfig } from "../runtime/runtime-config";
 import { localResultArchiveService } from "../services/result-archive";
+import { statsArchiveService } from "../services/stats-archive";
 import { voiceAnnouncerService } from "../services/voice-announcer";
 import { SettingsPage } from "../pages/SettingsPage";
 import { roomStore, useRoomStore } from "../stores/room-store";
 import { sourceStore } from "../stores/source-store";
 import { useSettingsStore } from "../stores/settings-store";
 
-type AppView = "lobby" | "settings" | "room";
+type AppView = "lobby" | "settings" | "room" | "stats";
 
 function getStatusTone(connectionStatus: string): string {
   if (connectionStatus === "CONNECTED") {
@@ -50,10 +52,12 @@ export function App() {
   useEffect(() => {
     void sourceStore.attach();
     localResultArchiveService.start();
+    statsArchiveService.start();
     voiceAnnouncerService.start();
 
     return () => {
       voiceAnnouncerService.stop();
+      statsArchiveService.stop();
       localResultArchiveService.stop();
       sourceStore.detach();
     };
@@ -121,6 +125,15 @@ export function App() {
           >
             Room
           </button>
+          <button
+            type="button"
+            className={activeView === "stats" ? "nav-button active" : "nav-button"}
+            onClick={() => {
+              setActiveView("stats");
+            }}
+          >
+            Stats
+          </button>
 
           <div className="side-card">
             <span className="status-label">Room transport</span>
@@ -139,6 +152,7 @@ export function App() {
           ) : null}
           {activeView === "settings" ? <SettingsPage roomJoined={roomSnapshot !== null} /> : null}
           {activeView === "room" ? <RoomPage /> : null}
+          {activeView === "stats" ? <StatsPage /> : null}
         </div>
       </section>
 

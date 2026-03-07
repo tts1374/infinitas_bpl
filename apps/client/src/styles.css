@@ -145,6 +145,7 @@ textarea {
 }
 
 .panel h2,
+.panel h3,
 h1 {
   margin: 0 0 0.75rem;
   line-height: 1.05;
@@ -156,6 +157,11 @@ h1 {
 
 .panel h2 {
   font-size: 1.6rem;
+}
+
+.panel h3 {
+  font-size: 1.1rem;
+  margin-bottom: 0;
 }
 
 .panel p,
@@ -312,6 +318,30 @@ button {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 1rem;
+}
+
+.stats-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.stats-summary-card,
+.stats-subpanel {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.stats-summary-card {
+  padding: 1rem;
+  border-radius: 18px;
+  background: rgba(248, 250, 253, 0.9);
+}
+
+.stats-value {
+  font-size: clamp(1.8rem, 4vw, 2.6rem);
+  line-height: 1;
 }
 
 .player-card {
@@ -492,6 +522,10 @@ pre {
   .filter-grid,
   .meta-grid,
   .meta-grid.compact {
+    grid-template-columns: 1fr;
+  }
+
+  .stats-summary-grid {
     grid-template-columns: 1fr;
   }
 
