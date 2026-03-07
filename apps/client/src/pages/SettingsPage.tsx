@@ -1,257 +1,304 @@
-import { SOURCE_TYPES } from "@infinitas/shared";
-import { sourceStore, useSourceStore } from "../stores/source-store";
-import { settingsStore, useSettingsStore } from "../stores/settings-store";
+import { useEffect, useState } from "react";
+import { ChevronLeft, Database, FolderOpen, Save, User, Volume2, VolumeX } from "lucide-react";
+import { pickDirectory, validateSourceDirectory } from "../services/tauri-bridge";
+import { sourceStore } from "../stores/source-store";
+import { getActiveSourceDirectory, settingsStore, useSettingsStore } from "../stores/settings-store";
 import { formatDateTime } from "../utils/format";
 
 interface SettingsPageProps {
   roomJoined: boolean;
+  onNavigateToLobby: () => void;
 }
 
-async function copyToClipboard(text: string): Promise<boolean> {
-  if (typeof navigator === "undefined" || !navigator.clipboard) {
-    return false;
-  }
+const SOURCE_OPTIONS = [
+  {
+    id: "inf_daken_counter" as const,
+    name: "打鍵カウンタ",
+    description: "today_update.xml を監視",
+    label: "Daken Counter Directory",
+    placeholder: "C:\\Games\\beatmania IIDX INFINITAS\\data",
+  },
+  {
+    id: "inf-notebook" as const,
+    name: "リザルト手帳",
+    description: "recent.json を監視",
+    label: "Result Notebook Directory",
+    placeholder: "C:\\Users\\you\\Documents\\inf-notebook",
+  },
+];
 
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-export function SettingsPage({ roomJoined }: SettingsPageProps) {
+export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProps) {
   const draft = useSettingsStore((state) => state.draft);
   const statusMessage = useSettingsStore((state) => state.statusMessage);
   const lastSavedAt = useSettingsStore((state) => state.lastSavedAt);
-  const watcherState = useSourceStore((state) => state.watcherState);
-  const lastWatcherEvent = useSourceStore((state) => state.lastEvent);
+  const [displayNameError, setDisplayNameError] = useState<string | null>(null);
+  const [validationMessage, setValidationMessage] = useState<string | null>(null);
+
+  const activeDirectory = getActiveSourceDirectory(draft);
+  const activeOption = getSourceOption(draft.source);
+
+  useEffect(() => {
+    settingsStore.restoreDraftFromSaved();
+    setDisplayNameError(null);
+    setValidationMessage(null);
+  }, []);
+
+  async function handleBrowseDirectory(): Promise<void> {
+    try {
+      const selectedDirectory = await pickDirectory();
+      if (selectedDirectory !== null) {
+        settingsStore.updateSourceDirectory(draft.source, selectedDirectory);
+        setValidationMessage(null);
+      }
+    } catch (error) {
+      settingsStore.setStatusMessage(formatUnknownError(error, "Failed to open the directory picker."));
+    }
+  }
+
+  async function handleSave(): Promise<void> {
+    settingsStore.setStatusMessage(null);
+
+    const nextDisplayNameError = validateDisplayName(draft.displayName);
+    if (nextDisplayNameError !== null) {
+      setDisplayNameError(nextDisplayNameError);
+      return;
+    }
+
+    setDisplayNameError(null);
+
+    if (activeDirectory.trim().length === 0) {
+      setValidationMessage("先に監視元フォルダを指定してください。");
+      return;
+    }
+
+    try {
+      setValidationMessage(null);
+      const validation = await validateSourceDirectory({
+        source: draft.source,
+        directoryPath: activeDirectory,
+      });
+
+      if (validation.missingPaths.length > 0) {
+        setValidationMessage(`必須ファイルが見つかりません: ${validation.missingPaths.join(" / ")}`);
+        return;
+      }
+
+      settingsStore.save();
+      await sourceStore.start(settingsStore.getState().saved, { force: false });
+    } catch (error) {
+      setValidationMessage(formatUnknownError(error, "監視元フォルダの検証に失敗しました。"));
+    }
+  }
 
   return (
-    <section className="page-grid">
-      <article className="panel">
-        <div className="panel-header">
-          <div>
-            <p className="eyebrow">Settings</p>
-            <h2>Local player profile</h2>
-          </div>
-          <span className={`status-pill ${roomJoined ? "warning" : "ok"}`}>
-            {roomJoined ? "Source locked in room" : "Ready to edit"}
-          </span>
-        </div>
+    <main className="mx-auto flex w-full max-w-6xl flex-col gap-12">
+      <header className="mb-2">
+        <button
+          type="button"
+          onClick={onNavigateToLobby}
+          className="group mb-4 flex items-center gap-2 text-sm font-bold text-gray-500 transition-colors hover:text-white"
+        >
+          <ChevronLeft size={18} className="transition-transform group-hover:-translate-x-1" />
+          ロビーに戻る
+        </button>
+        <h1 className="text-4xl font-black uppercase tracking-tighter text-white italic">System Settings</h1>
+      </header>
 
-        <div className="form-grid">
-          <label className="field">
-            <span>Display name</span>
+      <div className="space-y-12">
+        <section className="space-y-6">
+          <div className="flex items-center gap-3 border-b border-white/5 pb-4">
+            <User size={20} className="text-cyan-400" />
+            <h2 className="text-sm font-black uppercase tracking-widest text-gray-400">User Profile</h2>
+          </div>
+
+          <div className="max-w-md space-y-2">
+            <label className="text-[10px] font-black uppercase text-gray-500">Display Name</label>
             <input
               type="text"
               value={draft.displayName}
               onChange={(event) => {
-                settingsStore.update("displayName", event.currentTarget.value);
+                const nextValue = event.currentTarget.value;
+                settingsStore.update("displayName", nextValue);
+                setDisplayNameError(validateDisplayName(nextValue));
               }}
-              placeholder="DJ name"
+              placeholder="PLAYER_NAME"
+              className="w-full rounded-xl border border-white/10 bg-[#252526] p-4 font-bold text-white outline-none transition-all placeholder:text-gray-600 focus:border-cyan-500"
             />
-          </label>
+            {displayNameError ? <p className="text-sm font-semibold text-red-400">{displayNameError}</p> : null}
+          </div>
+        </section>
 
-          <label className="field">
-            <span>Worker API URL</span>
-            <input
-              type="url"
-              value={draft.apiBaseUrl}
-              onChange={(event) => {
-                settingsStore.update("apiBaseUrl", event.currentTarget.value);
-              }}
-              placeholder="http://127.0.0.1:8787"
-            />
-          </label>
+        <section className="space-y-6">
+          <div className="flex items-center gap-3 border-b border-white/5 pb-4">
+            <Database size={20} className="text-cyan-400" />
+            <div className="flex flex-wrap items-center gap-3">
+              <h2 className="text-sm font-black uppercase tracking-widest text-gray-400">Data Source</h2>
+              <span
+                className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] ${
+                  roomJoined ? "bg-amber-500/20 text-amber-300" : "bg-cyan-500/10 text-cyan-300"
+                }`}
+              >
+                {roomJoined ? "Locked In Room" : "Ready"}
+              </span>
+            </div>
+          </div>
 
-          <label className="field">
-            <span>Player ID</span>
-            <div className="inline-field">
-              <input type="text" value={draft.playerId} readOnly />
+          <div className="grid max-w-2xl gap-4 md:grid-cols-2">
+            {SOURCE_OPTIONS.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                disabled={roomJoined}
+                onClick={() => {
+                  settingsStore.update("source", option.id);
+                  setValidationMessage(null);
+                }}
+                className={`flex flex-col gap-2 rounded-2xl border p-6 text-left transition-all ${
+                  draft.source === option.id
+                    ? "border-cyan-500 bg-cyan-500/10 shadow-[0_0_20px_rgba(6,182,212,0.1)]"
+                    : "border-white/5 bg-[#252526] hover:border-white/20"
+                } ${roomJoined ? "cursor-not-allowed opacity-70" : ""}`}
+              >
+                <span className={`text-lg font-bold ${draft.source === option.id ? "text-cyan-400" : "text-white"}`}>
+                  {option.name}
+                </span>
+                <span className="text-xs text-gray-500">{option.description}</span>
+              </button>
+            ))}
+          </div>
+
+          <div className="space-y-3">
+            <label className="text-[10px] font-black uppercase italic tracking-wider text-gray-500">
+              {activeOption.label}
+            </label>
+            <div className="flex max-w-3xl flex-col gap-3 md:flex-row">
+              <input
+                type="text"
+                value={activeDirectory}
+                disabled={roomJoined}
+                onChange={(event) => {
+                  settingsStore.updateSourceDirectory(draft.source, event.currentTarget.value);
+                  setValidationMessage(null);
+                }}
+                placeholder={activeOption.placeholder}
+                className="flex-1 rounded-xl border border-white/5 bg-[#151515] px-4 py-3 text-sm font-mono text-gray-300 outline-none placeholder:text-gray-600 disabled:cursor-not-allowed disabled:opacity-70"
+              />
               <button
                 type="button"
-                className="secondary-button"
-                onClick={async () => {
-                  const copied = await copyToClipboard(draft.playerId);
-                  settingsStore.setStatusMessage(copied ? "Player ID copied." : "Clipboard unavailable.");
+                disabled={roomJoined}
+                onClick={() => {
+                  void handleBrowseDirectory();
                 }}
+                className="flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-[#2d2d30] px-6 py-3 text-sm font-bold text-white transition-all active:scale-95 hover:bg-[#353538] disabled:cursor-not-allowed disabled:opacity-70"
               >
-                Copy
+                <FolderOpen size={18} />
+                参照
               </button>
             </div>
-          </label>
-
-          <label className="field">
-            <span>Source</span>
-            <select
-              value={draft.source}
-              disabled={roomJoined}
-              onChange={(event) => {
-                settingsStore.update("source", event.currentTarget.value as (typeof SOURCE_TYPES)[number]);
-              }}
-            >
-              {SOURCE_TYPES.map((source) => (
-                <option key={source} value={source}>
-                  {source}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="field full-width">
-            <span>inf_daken_counter / today_update.xml</span>
-            <input
-              type="text"
-              value={draft.sourcePaths.dakenTodayUpdateXml}
-              onChange={(event) => {
-                settingsStore.updateSourcePath("dakenTodayUpdateXml", event.currentTarget.value);
-              }}
-              placeholder="C:\\path\\to\\today_update.xml"
-            />
-          </label>
-
-          <label className="field full-width">
-            <span>inf-notebook / export/recent.json</span>
-            <input
-              type="text"
-              value={draft.sourcePaths.notebookExportRecentJson}
-              onChange={(event) => {
-                settingsStore.updateSourcePath("notebookExportRecentJson", event.currentTarget.value);
-              }}
-              placeholder="C:\\path\\to\\export\\recent.json"
-            />
-          </label>
-
-          <label className="field full-width">
-            <span>inf-notebook / records/recent.json</span>
-            <input
-              type="text"
-              value={draft.sourcePaths.notebookRecordsRecentJson}
-              onChange={(event) => {
-                settingsStore.updateSourcePath("notebookRecordsRecentJson", event.currentTarget.value);
-              }}
-              placeholder="Optional"
-            />
-          </label>
-
-          <label className="field toggle-field">
-            <span>Sound notifications</span>
-            <input
-              type="checkbox"
-              checked={draft.voiceEnabled}
-              onChange={(event) => {
-                settingsStore.update("voiceEnabled", event.currentTarget.checked);
-              }}
-            />
-          </label>
-        </div>
-
-        <div className="panel-footer">
-          <div className="status-stack">
-            <span className="status-label">Watcher state</span>
-            <div className="inline-field">
-              <strong>{watcherState.status}</strong>
-              <span className={`status-pill ${getWatcherTone(watcherState.status)}`}>
-                {watcherState.status}
-              </span>
-            </div>
-            <span className="status-muted">{watcherState.detail}</span>
+            <p className="text-xs text-gray-500">
+              {draft.source === "inf_daken_counter"
+                ? "選択したフォルダ配下の today_update.xml を自動で監視します。"
+                : "選択したフォルダ配下の export/recent.json と records/recent.json を自動で監視します。"}
+            </p>
+            {validationMessage ? <p className="text-sm font-semibold text-red-400">{validationMessage}</p> : null}
           </div>
-          <div className="button-row">
+
+        </section>
+
+        <section className="space-y-6">
+          <div className="flex items-center gap-3 border-b border-white/5 pb-4">
+            <Volume2 size={20} className="text-cyan-400" />
+            <h2 className="text-sm font-black uppercase tracking-widest text-gray-400">Audio Notice</h2>
+          </div>
+
+          <div className="max-w-md space-y-6 rounded-2xl border border-white/5 bg-[#252526] p-8">
+            <div className="flex items-end justify-between gap-4">
+              <div className="space-y-1">
+                <label className="text-[10px] font-black uppercase text-gray-400">Master Volume</label>
+                <div className="text-3xl font-black italic text-white">
+                  {draft.voiceMuted ? "MUTE" : draft.voiceVolume}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  settingsStore.updateVoiceMuted(!draft.voiceMuted);
+                }}
+                className={`rounded-xl p-3 transition-all ${
+                  draft.voiceMuted
+                    ? "border border-red-500/30 bg-red-500/20 text-red-400"
+                    : "bg-white/5 text-gray-400 hover:text-white"
+                }`}
+              >
+                {draft.voiceMuted ? <VolumeX size={24} /> : <Volume2 size={24} />}
+              </button>
+            </div>
+
+            <input
+              type="range"
+              min="0"
+              max="100"
+              value={draft.voiceVolume}
+              disabled={draft.voiceMuted}
+              onChange={(event) => {
+                settingsStore.updateVoiceVolume(Number(event.currentTarget.value));
+              }}
+              className="h-1.5 w-full cursor-pointer appearance-none rounded-lg bg-[#1e1e1e] accent-cyan-500 disabled:cursor-not-allowed"
+            />
+
+            <div className="flex justify-between text-[10px] font-black uppercase tracking-tighter text-gray-600">
+              <span>Min</span>
+              <span>Max</span>
+            </div>
+          </div>
+        </section>
+
+        <footer className="space-y-3 pt-4">
+          <p className="text-sm text-gray-400">{statusMessage ?? "Ready to save local settings."}</p>
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            
             <button
               type="button"
-              className="secondary-button"
               onClick={() => {
-                void sourceStore.start(draft, { force: true });
+                void handleSave();
               }}
+              className="flex items-center justify-center gap-3 rounded-xl bg-cyan-500 px-10 py-4 font-black text-black shadow-[0_10px_30px_rgba(6,182,212,0.3)] transition-all active:scale-95 hover:bg-cyan-400"
             >
-              Restart watcher
-            </button>
-            <button
-              type="button"
-              className="secondary-button"
-              onClick={() => {
-                void sourceStore.stop();
-              }}
-            >
-              Stop watcher
-            </button>
-            <button type="button" className="secondary-button" onClick={() => settingsStore.resetDraft()}>
-              Reset draft
-            </button>
-            <button
-              type="button"
-              className="primary-button"
-              onClick={() => {
-                settingsStore.save();
-                void sourceStore.start(settingsStore.getState().saved, { force: true });
-              }}
-            >
-              Save settings
+              <Save size={20} />
+              設定を保存して反映
             </button>
           </div>
-        </div>
-
-        <div className="panel-subsection watcher-block">
-          <div className="meta-grid compact">
-            <div className="status-stack">
-              <span className="status-label">Active source</span>
-              <strong>{watcherState.source ?? "-"}</strong>
-              <span className="status-muted">Saved source and path selection.</span>
-            </div>
-            <div className="status-stack">
-              <span className="status-label">Last watcher update</span>
-              <strong>{formatDateTime(watcherState.lastEventAt)}</strong>
-              <span className="status-muted">State transition or file event.</span>
-            </div>
-            <div className="status-stack">
-              <span className="status-label">Last event kind</span>
-              <strong>{lastWatcherEvent?.kind ?? "-"}</strong>
-              <span className="status-muted">{lastWatcherEvent?.detail ?? "No file events yet."}</span>
-            </div>
-            <div className="status-stack">
-              <span className="status-label">Last file</span>
-              <strong>{lastWatcherEvent?.filePath ?? "-"}</strong>
-              <span className="status-muted">
-                {lastWatcherEvent?.parserOutput
-                  ? `${lastWatcherEvent.parserOutput.fileSizeBytes.toLocaleString()} bytes / ${lastWatcherEvent.parserOutput.observations.length} observation(s)`
-                  : "Parser payload not available."}
-              </span>
-            </div>
-          </div>
-
-          <div className="status-stack watcher-path-list">
-            <span className="status-label">Watched paths</span>
-            {watcherState.watchedPaths.length === 0 ? (
-              <span className="status-muted">No active watch targets.</span>
-            ) : (
-              watcherState.watchedPaths.map((path) => (
-                <code key={path} className="path-chip">
-                  {path}
-                </code>
-              ))
-            )}
-          </div>
-        </div>
-
-        <div className="meta-strip">
-          <span>{statusMessage ?? "Idle."}</span>
-          <span>Last saved: {formatDateTime(lastSavedAt)}</span>
-        </div>
-      </article>
-    </section>
+        </footer>
+      </div>
+    </main>
   );
 }
 
-function getWatcherTone(status: string): string {
-  if (status === "RUNNING") {
-    return "ok";
+function getSourceOption(source: "inf_daken_counter" | "inf-notebook") {
+  return SOURCE_OPTIONS.find((option) => option.id === source) ?? SOURCE_OPTIONS[0]!;
+}
+
+function formatUnknownError(error: unknown, fallback: string): string {
+  if (error instanceof Error) {
+    return error.message;
   }
 
-  if (status === "ERROR" || status === "UNAVAILABLE") {
-    return "danger";
+  if (typeof error === "string" && error.trim().length > 0) {
+    return error;
   }
 
-  return "warning";
+  return fallback;
+}
+
+function validateDisplayName(value: string): string | null {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return "Display Name は必須です。";
+  }
+
+  if (Array.from(trimmed).length > 10) {
+    return "Display Name は10文字以内で入力してください。";
+  }
+
+  return null;
 }

@@ -1,13 +1,14 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 :root {
-  color-scheme: light;
+  color-scheme: dark;
   font-family: "Segoe UI", "Yu Gothic UI", sans-serif;
   line-height: 1.5;
   font-weight: 400;
   color: #162032;
-  background:
-    radial-gradient(circle at top left, rgba(255, 214, 153, 0.6), transparent 30%),
-    radial-gradient(circle at top right, rgba(100, 171, 255, 0.35), transparent 25%),
-    linear-gradient(180deg, #f3efe4 0%, #d8e2f0 100%);
+  background: #1e1e1e;
 }
 
 * {
@@ -17,6 +18,11 @@
 body {
   margin: 0;
   min-width: 320px;
+  min-height: 100vh;
+  background: #1e1e1e;
+}
+
+#root {
   min-height: 100vh;
 }
 
@@ -99,6 +105,28 @@ textarea {
 
 .content-stage {
   min-width: 0;
+  flex: 1;
+  overflow-y: auto;
+  padding: 2.5rem;
+  background: #1e1e1e;
+}
+
+.custom-scrollbar {
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+  scrollbar-width: thin;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
 }
 
 .page-grid {
@@ -146,7 +174,7 @@ textarea {
 
 .panel h2,
 .panel h3,
-h1 {
+.app-header h1 {
   margin: 0 0 0.75rem;
   line-height: 1.05;
 }
@@ -264,10 +292,11 @@ dd {
   align-items: flex-start;
 }
 
-input,
-select,
-textarea,
-button {
+.panel input,
+.panel select,
+.panel textarea,
+.panel button,
+.dialog-card button {
   border-radius: 16px;
   border: 1px solid rgba(22, 32, 50, 0.14);
   padding: 0.85rem 0.95rem;
@@ -538,5 +567,9 @@ pre {
   .dialog-actions {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .content-stage {
+    padding: 1.5rem;
   }
 }
