@@ -446,17 +446,17 @@ export function RoomPage() {
         <div className="panel-header">
           <div>
             <p className="eyebrow">Runtime</p>
-            <h2>Voice and local archive</h2>
+            <h2>Sound and local archive</h2>
           </div>
         </div>
 
         <div className="split-panel">
           <section className="status-stack support-card">
             <div className="inline-field">
-              <span className="status-label">Voice playback</span>
+              <span className="status-label">Sound playback</span>
               <span className={`status-pill ${getVoiceTone(voicePhase)}`}>{voicePhase}</span>
             </div>
-            <strong>{savedSettings.voiceEnabled ? "Voice enabled" : "Voice disabled"}</strong>
+            <strong>{savedSettings.voiceEnabled ? "Sound enabled" : "Sound disabled"}</strong>
             <span className="status-muted">{voiceDetail}</span>
             <span className="status-muted">Pending cues: {voicePendingCues}</span>
             <span className="status-muted">Updated: {formatDateTime(voiceLastUpdatedAt)}</span>
@@ -544,7 +544,7 @@ export function RoomPage() {
                 className="primary-button"
                 disabled={!allPlayersReady}
                 onClick={() => {
-                  roomStore.send("START_MATCH", {});
+                  roomStore.startMatch();
                 }}
               >
                 Start match
@@ -585,9 +585,7 @@ export function RoomPage() {
                   disabled={pickChartKey.trim().length === 0 || mySubmittedPick !== null}
                   onClick={() => {
                     if (
-                      roomStore.send("PICK_SUBMIT", {
-                        pick_chart_key: pickChartKey.trim(),
-                      })
+                      roomStore.submitPick(pickChartKey.trim())
                     ) {
                       setPickChartKey("");
                     }
@@ -699,9 +697,7 @@ export function RoomPage() {
                           disabled={mySubmittedPick !== null}
                           onClick={() => {
                             setPickChartKey(chart.chart_key);
-                            roomStore.send("PICK_SUBMIT", {
-                              pick_chart_key: chart.chart_key,
-                            });
+                            roomStore.submitPick(chart.chart_key);
                           }}
                         >
                           Pick
@@ -866,7 +862,7 @@ export function RoomPage() {
                           return;
                         }
 
-                        roomStore.send("RESULT_SUBMIT", {
+                        roomStore.submitResult({
                           round_index: currentRound.round_index,
                           observed_key: currentRound.expected_key,
                           metric_value: parsedMetricValue,
@@ -910,7 +906,7 @@ export function RoomPage() {
                         type="button"
                         className="secondary-button"
                         onClick={() => {
-                          roomStore.send("FORCE_ADVANCE", {});
+                          roomStore.forceAdvance(currentRound.round_index);
                         }}
                       >
                         FORCE_ADVANCE
@@ -969,11 +965,11 @@ export function RoomPage() {
                           type="button"
                           className="secondary-button"
                           onClick={() => {
-                            roomStore.send("SKIP_HOST_ASSIGN", {
-                              round_index: currentRound.round_index,
-                              target_player_id: player.player_id,
-                              reason: hostSkipReason,
-                            });
+                            roomStore.skipHostAssign(
+                              currentRound.round_index,
+                              player.player_id,
+                              hostSkipReason,
+                            );
                           }}
                         >
                           Skip {player.display_name}

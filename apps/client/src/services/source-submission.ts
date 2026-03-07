@@ -194,7 +194,7 @@ export function submitParsedSourceChange(
 
   const observedPlayStyle =
     matchedObservation.playStyle ?? context.currentRound.expected_key.play_style;
-  const sent = roomStore.send("RESULT_SUBMIT", {
+  const sent = roomStore.submitResult({
     round_index: context.currentRound.round_index,
     observed_key: {
       play_style: observedPlayStyle,

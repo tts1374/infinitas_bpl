@@ -136,7 +136,7 @@ export function SettingsPage({ roomJoined }: SettingsPageProps) {
           </label>
 
           <label className="field toggle-field">
-            <span>Voice notifications</span>
+            <span>Sound notifications</span>
             <input
               type="checkbox"
               checked={draft.voiceEnabled}
