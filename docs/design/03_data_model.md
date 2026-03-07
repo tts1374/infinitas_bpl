@@ -21,13 +21,13 @@
 - `host_player_id: string`
 - `room_state: RoomState`
 - `created_at: datetime`
-- `ready_check_deadline: datetime|null`
+- `ready_check_deadline: datetime|null`（LOBBY ready 管理用。ルーム作成時と `RESULT -> LOBBY` 復帰時に張り直す）
 - `picking_deadline: datetime|null`
 - `match_deadline: datetime|null`（`START_MATCH` 成功時、すなわち `PICKING` 開始時点で初めて確定）
 - `result_deadline: datetime|null`（互換用。通常フローでは `null`）
 - `closed_at: datetime|null`
 - `close_reason: ALL_ROUNDS_COMPLETED|MATCH_TTL_EXPIRED|READY_CHECK_TTL_EXPIRED|HOST_DISCONNECTED|HOST_ABORTED|PICKING_ABORTED|FORCE_CLOSED|null`
-- `result_ready_payload: object|null`
+- `result_ready_payload: object|null`（`RESULT` 中は保持し、`RESULT -> LOBBY` 復帰時にクリア）
 - `event_seq: int`
 
 ### 2.2 RoomSettings（Ph1）

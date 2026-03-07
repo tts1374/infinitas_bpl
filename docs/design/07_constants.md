@@ -8,9 +8,9 @@ Ph1で固定するタイマー値、制約値、表示/運用上の定数を整�
 
 ## 1. ルーム/進行定数
 
-## 1.1 READY_CHECK
+## 1.1 LOBBY / READY
 - `READY_CHECK_TTL_MINUTES = 20`
-  - READY_CHECK開始から20分で解散
+  - LOBBY開始または `RESULT -> LOBBY` 復帰から20分で解散
 - `START_MIN_PLAYERS = 2`
   - `players < 2` の間はホストSTART不可
 - `PICKING_TTL_SECONDS = 120`
@@ -33,7 +33,7 @@ Ph1で固定するタイマー値、制約値、表示/運用上の定数を整�
 ## 1.3 マッチ全体
 - `MATCH_TTL_MINUTES = 30`
   - マッチ全体の寿命
-  - TTL到達時は未確定をTIMEOUTとして結果を確定し、そのままCLOSEDへ遷移
+  - TTL到達時は未確定をTIMEOUTとして結果を確定し、必要なら `RESULT` または `CLOSED` へ遷移
 
 ## 1.4 再入室
 - `REJOIN_COOLDOWN_SECONDS = 10`

@@ -43,9 +43,9 @@ export interface SkipHostAssignPayload extends SkipPayload {
 export interface ClientMessagePayloadMap {
   ROOM_JOIN: RoomJoinPayload;
   ROOM_LEAVE: WsEmptyPayload;
-  READY_CHECK_OPEN: WsEmptyPayload;
   READY_SET: ReadySetPayload;
   START_MATCH: RequestIdPayload;
+  RETURN_TO_LOBBY: RequestIdPayload;
   PICK_SUBMIT: PickSubmitPayload;
   RESULT_SUBMIT: ResultSubmitPayload;
   SKIP_SELF: SkipPayload;

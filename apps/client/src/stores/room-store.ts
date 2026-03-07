@@ -154,8 +154,12 @@ function startMatchRejectMessage(reason: string): string {
       return "At least two players are required.";
     case "NOT_ALL_PLAYERS_READY":
       return "All current players must be READY before the match starts.";
+    case "PREVIOUS_MATCH_NOT_CLEARED":
+      return "Previous match data is still being cleared.";
     case "BPL_REQUIRES_TWO_PLAYERS":
       return "BPL mode requires exactly two players.";
+    case "INVALID_STATE":
+      return "Return to the lobby before starting a new match.";
     default:
       return reason;
   }
@@ -196,9 +200,6 @@ function errorTitleFromCode(code: ErrorCode): string {
 
 function formatEvent(message: ServerMessage): string | null {
   switch (message.type) {
-    case "READY_CHECK_OPENED": {
-      return "READY_CHECK opened.";
-    }
     case "READY_STATUS_CHANGED": {
       const payload = message.payload as ServerMessagePayloadMap["READY_STATUS_CHANGED"];
       return `${payload.player_id} ready=${String(payload.ready)}.`;
@@ -281,9 +282,14 @@ function handleServerMessage(client: RoomSocketClient, message: ServerMessage): 
         appendEventLog(`Room closed: ${payload.room_state_snapshot.close_reason ?? "CLOSED"}.`);
       }
 
+      // Authoritative snapshots mark the end of a request cycle, so stale request_ids
+      // must not leak into later rounds or rematches.
+      clearRequestIds();
+
       internalStore.setState((state) => ({
         ...state,
         snapshot: payload.room_state_snapshot,
+        resultReady: payload.room_state_snapshot.result_ready ? state.resultReady : null,
         roomId: payload.room_state_snapshot.room_id,
         connectionStatus: "CONNECTED",
         connectionDetail: `Connected to ${payload.room_state_snapshot.room_state}.`,
@@ -340,6 +346,7 @@ function handleServerMessage(client: RoomSocketClient, message: ServerMessage): 
     }
     case "ROOM_CLOSED": {
       const payload = message.payload as ServerMessagePayloadMap["ROOM_CLOSED"];
+      clearRequestIds();
       updateClosedSnapshot(payload.close_reason, payload.closed_at, payload.result_ready);
       pushAudioEvent({
         kind: "cancel",
@@ -557,6 +564,11 @@ export const roomStore = {
   startMatch(): boolean {
     return this.send("START_MATCH", {
       request_id: getOrCreateRequestId("START_MATCH"),
+    });
+  },
+  returnToLobby(): boolean {
+    return this.send("RETURN_TO_LOBBY", {
+      request_id: getOrCreateRequestId("RETURN_TO_LOBBY"),
     });
   },
   submitPick(pickChartKey: string): boolean {

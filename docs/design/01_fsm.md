@@ -19,20 +19,19 @@
 
 ## 3. ルーム状態（RoomState）
 - `LOBBY`
-- `READY_CHECK`
 - `PICKING`
 - `PLAYING`
+- `RESULT`
 - `CLOSED`
-- `RESULT`（互換用。通常フローでは使用しない）
 
 ### 状態遷移（概要）
-- ルーム作成完了時に `READY_CHECK` を開始する（新規作成フローでは `LOBBY` に留まらない）
-- `LOBBY` -> `READY_CHECK`（互換用。ホスト操作）
-- `READY_CHECK` -> `PICKING`（ホスト `START`。条件: players>=2 かつ全員READY）
+- ルーム作成完了時は `LOBBY` に入る
+- `LOBBY` -> `PICKING`（ホスト `START`。条件: players>=2 かつ全員READY）
 - `PICKING` -> `PLAYING`（DOが確定譜面リストを凍結して遷移）
 - `PLAYING` -> `PLAYING`（全員確定で次ラウンドへ）
-- `PLAYING` -> `CLOSED`（全ラウンド消化 or match_ttl到達。`RESULT_READY` は保持したまま閉じる）
-- 任意状態 -> `CLOSED`（ホスト切断/終了、ready_check_ttl超過）
+- `PLAYING` -> `RESULT`（全ラウンド消化時。`RESULT_READY` を保持）
+- `RESULT` -> `LOBBY`（ホスト操作。再戦準備のため ready / 揮発状態をリセット）
+- 任意状態 -> `CLOSED`（ホスト切断/終了、lobby ready ttl超過、異常終了）
 
 ### CLOSED の内部終了理由（close_reason）
 - `ALL_ROUNDS_COMPLETED`
@@ -46,7 +45,7 @@
 `CLOSED` の UI/SE 分岐は `RoomState` ではなく `close_reason` を正とする。
 
 ## 4. タイマー（固定値 / DOが管理）
-- `ready_check_ttl = 20min`（READY_CHECK開始から。超過で解散）
+- `ready_check_ttl = 20min`（LOBBY開始または `RESULT -> LOBBY` 復帰から。超過で解散）
 - `picking_ttl = 120s`（PICKING開始から。超過で未pick者をランダム補完して凍結）
 - `round_soft_ttl = 5min`（`count_go` 以降。超過で未確定者をTIMEOUT確定）
 - `host_skip_unlock_seconds = 240s`（ラウンド開始から4分経過後にホスト代理SKIP可）
@@ -71,22 +70,27 @@
 
 ## 6. LOBBY（参加・設定閲覧）
 - 参加/退出は自由（最大 `max_players`）
-- ホストのみ `READY_CHECK` を開ける
+- ready 管理は `LOBBY` の内部状態として扱う
+- 全員が `ready=true` になって初めて `START` 条件を満たせる
+- ホスト自身も `ready=true` 必須
+- ホストのみ `START` を実行できる。`START` ボタンは常時表示し、条件未達時は遷移させず不足理由を表示する
 - `visibility=PRIVATE` の場合は join_code必須（入口のWorkerで弾くか、DOで弾くかを統一）
-- Ph1 の通常 create フローではルーム作成直後に `READY_CHECK` へ遷移済みであり、画面滞在は想定しない
+- `RESULT -> LOBBY` 復帰時には以下をクリアする
+  - 全員の ready 状態
+  - 現在曲情報
+  - ラウンド進行情報
+  - 一時スコア
+  - 提出済みフラグ
+  - 中間集計データ
+  - タイブレーク用一時値
+  - `match_ttl` を含む前マッチの寿命管理情報
 
-## 7. READY_CHECK（開始準備）
-### ルール
-- `players < 2` の間は `START` 押下不可（ホストUIでdisabled、DOでも拒否）
-- `ready=false` の参加者が 1 人でもいる間は `START` 押下不可（ホストUIでdisabled、DOでも拒否）
-- `START` はホストのみ（確認ダイアログなしで可）
-- READY_CHECK中は参加・退出可能（最大 `max_players`）
-- `ready_check_ttl` 超過: `CLOSED`（解散）
-
-### 「4募集→2開始」要件
-- `max_players` は募集枠/検索用
-- 実際の人数確定はホスト `START` 時点の参加者数で確定
+### 開始条件
+- `players < 2` の間は `START` 成功不可
+- `ready=false` の参加者が 1 人でもいる間は `START` 成功不可
+- `START` はホストのみ
 - `START` 実行で以後参加不可（席ロック）。退出は可能（退出者は以後TIMEOUT扱い）
+- 前マッチ揮発状態が未クリアなら `START` を拒否する
 
 ## 8. PICKING（指名・凍結）
 ### 8.1 指名ルール
@@ -134,8 +138,8 @@
 
 ### 9.6 タイムアウト処理
 - `round_soft_ttl` 到達で未確定者は `TIMEOUT`
-- `match_ttl` 到達で進行中ラウンドも含めて未確定を `TIMEOUT` 確定し `CLOSED` へ遷移
-- `RESULT_READY` 生成後に `CLOSED` へ遷移したルームでは、結果表示のみ継続し提出は受理しない
+- `match_ttl` 到達で進行中ラウンドも含めて未確定を `TIMEOUT` 確定し、結果確定不能なら `CLOSED`、結果確定済みなら `RESULT` として扱う
+- `RESULT_READY` 生成後の `RESULT` / `CLOSED` では提出系は受理しない
 
 ### 9.7 演出タイムライン
 - `round_started_at` は演出開始時刻（`ROUND_BEGIN`）を指す
@@ -180,9 +184,14 @@
 - 同点（SCORE同値 / MISSCOUNT同値）は「勝ち数加算なし」
 - BO3終了時に同勝ち数なら総合引き分け
 
+### 10.4 再戦復帰
+- ホスト操作で `RESULT -> LOBBY` に戻せる
+- 復帰時は前マッチの ready / round / pick / aggregation / `match_ttl` をすべてクリアする
+- room_id / member 構成 / host / battle context は維持する
+
 ## 11. CLOSED（解散）
 - ホスト操作で即 `CLOSED` も可
-- 対戦正常終了時は `RESULT_READY` を保持したまま `CLOSED` に入り、ルーム画面上で結果を表示可能とする
+- 対戦正常終了時は `RESULT` に入り、必要に応じて `RESULT -> LOBBY` で再戦準備に戻す
 - 部分結果は各クライアントのローカル保存（snapshot）で表示可能とする
 - `CLOSED` 遷移時にKVのロビー情報を削除する
 - `cancel` SE は `close_reason != ALL_ROUNDS_COMPLETED` のときのみ1回だけ鳴らす

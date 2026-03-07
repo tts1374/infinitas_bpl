@@ -474,14 +474,14 @@ export class RoomDurableObject {
         case "ROOM_LEAVE":
           await this.handleRoomLeave(session, true);
           return;
-        case "READY_CHECK_OPEN":
-          await this.handleReadyCheckOpen(session);
-          return;
         case "READY_SET":
           await this.handleReadySet(session, message as ClientMessage<"READY_SET">);
           return;
         case "START_MATCH":
           await this.handleStartMatch(session, message as ClientMessage<"START_MATCH">);
+          return;
+        case "RETURN_TO_LOBBY":
+          await this.handleReturnToLobby(session, message as ClientMessage<"RETURN_TO_LOBBY">);
           return;
         case "PICK_SUBMIT":
           await this.handlePickSubmit(session, message as ClientMessage<"PICK_SUBMIT">);
@@ -614,38 +614,6 @@ export class RoomDurableObject {
     }
   }
 
-  private async handleReadyCheckOpen(session: RoomSocketSession): Promise<void> {
-    if (session.playerId === null) {
-      this.sendError(session.socket, "INVALID_STATE", "Send ROOM_JOIN before this message.");
-      return;
-    }
-
-    const openedAt = new Date();
-    const result = this.roomState.openReadyCheck(session.playerId, openedAt);
-    if (!result.ok) {
-      if (result.reason === "NOT_HOST") {
-        this.sendError(session.socket, "NOT_HOST", "Only the host can open READY_CHECK.");
-        return;
-      }
-
-      this.sendError(session.socket, "INVALID_STATE", "READY_CHECK can only be opened from LOBBY.");
-      return;
-    }
-
-    const deadline = result.ready_check_deadline;
-    if (deadline === undefined) {
-      this.sendError(session.socket, "INVALID_STATE", "READY_CHECK deadline is unavailable.");
-      return;
-    }
-
-    await this.persistRoomRecord();
-    await this.syncAlarm();
-    this.broadcast("READY_CHECK_OPENED", {
-      ready_check_deadline: deadline.toISOString(),
-    });
-    this.broadcastRoomUpdated();
-  }
-
   private async handleReadySet(session: RoomSocketSession, message: ClientMessage<"READY_SET">): Promise<void> {
     if (session.playerId === null) {
       this.sendError(session.socket, "INVALID_STATE", "Send ROOM_JOIN before this message.");
@@ -660,7 +628,7 @@ export class RoomDurableObject {
 
     const result = this.roomState.setPlayerReady(session.playerId, payload.ready);
     if (!result.ok) {
-      this.sendError(session.socket, "INVALID_STATE", "READY_SET is only available during READY_CHECK.");
+      this.sendError(session.socket, "INVALID_STATE", "READY_SET is only available in LOBBY.");
       return;
     }
 
@@ -704,6 +672,9 @@ export class RoomDurableObject {
         case "NOT_ALL_PLAYERS_READY":
           this.sendStartMatchRejected(session.socket, "NOT_ALL_PLAYERS_READY");
           return;
+        case "PREVIOUS_MATCH_NOT_CLEARED":
+          this.sendStartMatchRejected(session.socket, "PREVIOUS_MATCH_NOT_CLEARED");
+          return;
         case "BPL_REQUIRES_TWO_PLAYERS":
           this.sendStartMatchRejected(session.socket, "BPL_REQUIRES_TWO_PLAYERS");
           return;
@@ -721,6 +692,43 @@ export class RoomDurableObject {
       event_id: this.nextEventId("match_found"),
       scheduled_at: new Date().toISOString(),
     });
+    this.broadcastRoomUpdated();
+  }
+
+  private async handleReturnToLobby(
+    session: RoomSocketSession,
+    message: ClientMessage<"RETURN_TO_LOBBY">,
+  ): Promise<void> {
+    if (session.playerId === null) {
+      this.sendError(session.socket, "INVALID_STATE", "Send ROOM_JOIN before this message.");
+      return;
+    }
+
+    const payload = parseRequestIdPayload(message.payload);
+    if (payload === null) {
+      this.sendError(session.socket, "INVALID_STATE", "RETURN_TO_LOBBY payload is invalid.");
+      return;
+    }
+
+    if (this.isDuplicateRequest(session.playerId, message.type, payload.request_id)) {
+      this.sendStateSnapshot(session.socket);
+      return;
+    }
+
+    const result = this.roomState.returnToLobby(session.playerId, new Date());
+    if (!result.ok) {
+      if (result.reason === "NOT_HOST") {
+        this.sendError(session.socket, "NOT_HOST", "Only the host can return the room to LOBBY.");
+        return;
+      }
+
+      this.sendError(session.socket, "INVALID_STATE", "RETURN_TO_LOBBY is only available in RESULT.");
+      return;
+    }
+
+    this.rememberRequest(session.playerId, message.type, payload.request_id);
+    await this.persistRoomRecord();
+    await this.syncAlarm();
     this.broadcastRoomUpdated();
   }
 

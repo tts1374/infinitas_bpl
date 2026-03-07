@@ -45,12 +45,12 @@
 - `ROOM_LEAVE`
   - payload: `{}`
 
-### 3.2 READY_CHECK
-- `READY_CHECK_OPEN`（ホスト）
-  - payload: `{}`
+### 3.2 LOBBY
 - `READY_SET`
   - payload: `{ ready: boolean }`
 - `START_MATCH`（ホスト）
+  - payload: `{ request_id: string }`
+- `RETURN_TO_LOBBY`（ホスト）
   - payload: `{ request_id: string }`
 
 ### 3.3 PICKING
@@ -87,9 +87,7 @@
 - `ROOM_NOTIFICATION`
   - payload: `{ kind: "match_found"|"count_beep"|"phase_locked"|"count_go"|"cancel"|"error", event_id: string, scheduled_at: "ISO8601" }`
 
-### 4.2 READY_CHECK
-- `READY_CHECK_OPENED`
-  - payload: `{ ready_check_deadline: "ISO8601" }`
+### 4.2 LOBBY
 - `READY_STATUS_CHANGED`
   - payload: `{ player_id: string, ready: boolean }`
 - `START_MATCH_REJECTED`
@@ -117,7 +115,7 @@
 - `RESULT_READY`
   - payload: `{ summary: object, per_round: object, per_player: object }`
   - 備考: `per_round.rounds[].results[]` には `status / metric_value / reason / submitted_at / submitted_by / source_meta?` を含めてもよい
-  - 備考: 通常フローでは `PLAYING -> CLOSED` 遷移直前または同時に配信し、`CLOSED` 画面でも保持して表示する
+  - 備考: 通常フローでは `PLAYING -> RESULT` 遷移時に配信し、`RESULT -> LOBBY` 復帰まで保持して表示する
 
 ### 4.6 同期/エラー
 - `STATE_SNAPSHOT`
@@ -151,7 +149,7 @@
 ```json
 {
   "room_id": "string",
-  "room_state": "LOBBY|READY_CHECK|PICKING|PLAYING|RESULT|CLOSED",
+  "room_state": "LOBBY|PICKING|PLAYING|RESULT|CLOSED",
   "settings": { "...": "..." },
   "host_player_id": "string",
   "players": [
@@ -188,7 +186,8 @@
 - 操作系は `(player_id, type, request_id)` でも二重適用しない
 - 先着順: `PICK_SUBMIT` の採用順はDO受信順（DOがaccepted_at付与）
 - 代理SKIP: `now - round_started_at >= 240s` かつ target未確定のみ許可
-- START_MATCH: `players >= 2` かつ `room_state=READY_CHECK` かつ全員READY のみ
+- START_MATCH: `players >= 2` かつ `room_state=LOBBY` かつ全員READY かつ前マッチ揮発状態クリア済みのみ
+- RETURN_TO_LOBBY: `room_state=RESULT` のみ。復帰時は全員readyと前マッチ揮発状態をリセットする
 - RESULT_SUBMIT: `observed_key == expected_key` かつ `round_index == current_round_index` のみ採用（accept_window=0）
 - PICKING timeout: 未pickプレイヤーへランダム割当を行ってから `PICK_FROZEN` / `ROUND_BEGIN` を配信
-- `RESULT_READY` 生成後の `CLOSED` では提出系はすべて拒否（勝敗改変防止）
+- `RESULT_READY` 生成後の `RESULT` / `CLOSED` では提出系はすべて拒否（勝敗改変防止）
