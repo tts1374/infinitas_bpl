@@ -1,10 +1,11 @@
 import type { ErrorCode } from "../errors";
-import type { SubmissionStatus, SubmittedBy } from "../enums";
+import type { CloseReason, SubmissionStatus, SubmittedBy } from "../enums";
 import type { JsonObject, ISO8601String } from "../models/common";
 import type { ExpectedKey } from "../models/expected-key";
 import type { FrozenRound } from "../models/frozen-round";
 import type { RoomStateSnapshot } from "../models/room-state-snapshot";
 import type { SubmissionReason } from "../models/submission";
+import type { SoundEffectKey } from "../constants/audio";
 import type { WsEmptyPayload } from "./common";
 import type { ServerEnvelope } from "./envelope";
 import type { ServerMessageType } from "./message-types";
@@ -22,7 +23,16 @@ export interface RoomUpdatedPayload {
 }
 
 export interface RoomClosedPayload {
-  reason: string;
+  close_reason: CloseReason;
+  closed_at: ISO8601String;
+  result_ready: boolean;
+  event_id: string;
+}
+
+export interface RoomNotificationPayload {
+  kind: SoundEffectKey;
+  event_id: string;
+  scheduled_at: ISO8601String;
 }
 
 export interface ReadyCheckOpenedPayload {
@@ -94,6 +104,7 @@ export interface ServerMessagePayloadMap {
   ROOM_JOIN_REJECTED: RoomRejectedPayload;
   ROOM_UPDATED: RoomUpdatedPayload;
   ROOM_CLOSED: RoomClosedPayload;
+  ROOM_NOTIFICATION: RoomNotificationPayload;
   READY_CHECK_OPENED: ReadyCheckOpenedPayload;
   READY_STATUS_CHANGED: ReadyStatusChangedPayload;
   START_MATCH_REJECTED: RoomRejectedPayload;

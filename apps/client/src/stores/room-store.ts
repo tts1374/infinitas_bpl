@@ -1,4 +1,5 @@
 import type {
+  CloseReason,
   ClientMessagePayloadMap,
   ClientMessageType,
   ErrorCode,
@@ -7,6 +8,7 @@ import type {
   ServerMessage,
   ServerMessagePayloadMap,
   SkipReason,
+  SoundEffectKey,
   SourceType,
 } from "@infinitas/shared";
 import { RoomSocketClient, type SocketConnectionState } from "../services/ws-client";
@@ -36,6 +38,7 @@ export interface RoomStoreState {
   resultReady: ResultReadyPayload | null;
   errorDialog: RoomDialogState | null;
   eventLog: string[];
+  audioEvents: RoomAudioEvent[];
 }
 
 export interface RoomConnectionSettings {
@@ -46,6 +49,14 @@ export interface RoomConnectionSettings {
 }
 
 let activeClient: RoomSocketClient | null = null;
+const requestIdsByKey = new Map<string, string>();
+
+export interface RoomAudioEvent {
+  kind: SoundEffectKey;
+  eventId: string;
+  scheduledAt: string;
+  closeReason?: CloseReason | null;
+}
 
 const initialState: RoomStoreState = {
   roomId: null,
@@ -56,6 +67,7 @@ const initialState: RoomStoreState = {
   resultReady: null,
   errorDialog: null,
   eventLog: [],
+  audioEvents: [],
 };
 
 const internalStore = createExternalStore<RoomStoreState>(initialState);
@@ -78,6 +90,28 @@ function appendEventLog(message: string): void {
   internalStore.setState((state) => ({
     ...state,
     eventLog: [message, ...state.eventLog].slice(0, 12),
+  }));
+}
+
+function clearRequestIds(): void {
+  requestIdsByKey.clear();
+}
+
+function getOrCreateRequestId(key: string): string {
+  const existing = requestIdsByKey.get(key);
+  if (existing !== undefined) {
+    return existing;
+  }
+
+  const nextId = crypto.randomUUID();
+  requestIdsByKey.set(key, nextId);
+  return nextId;
+}
+
+function pushAudioEvent(event: RoomAudioEvent): void {
+  internalStore.setState((state) => ({
+    ...state,
+    audioEvents: [event, ...state.audioEvents].slice(0, 24),
   }));
 }
 
@@ -197,14 +231,18 @@ function formatEvent(message: ServerMessage): string | null {
       return "Result summary ready.";
     case "ROOM_CLOSED": {
       const payload = message.payload as ServerMessagePayloadMap["ROOM_CLOSED"];
-      return `Room closed: ${payload.reason}.`;
+      return `Room closed: ${payload.close_reason}.`;
+    }
+    case "ROOM_NOTIFICATION": {
+      const payload = message.payload as ServerMessagePayloadMap["ROOM_NOTIFICATION"];
+      return `Notification: ${payload.kind}.`;
     }
     default:
       return null;
   }
 }
 
-function updateClosedSnapshot(reason: string, closedAt: string): void {
+function updateClosedSnapshot(closeReason: CloseReason, closedAt: string, resultReady: boolean): void {
   internalStore.setState((state) => ({
     ...state,
     snapshot:
@@ -214,7 +252,8 @@ function updateClosedSnapshot(reason: string, closedAt: string): void {
             ...state.snapshot,
             room_state: "CLOSED",
             closed_at: closedAt,
-            close_reason: reason,
+            close_reason: closeReason,
+            result_ready: resultReady,
           },
   }));
 }
@@ -249,6 +288,15 @@ function handleServerMessage(client: RoomSocketClient, message: ServerMessage): 
         connectionStatus: "CONNECTED",
         connectionDetail: `Connected to ${payload.room_state_snapshot.room_state}.`,
       }));
+      return;
+    }
+    case "ROOM_NOTIFICATION": {
+      const payload = message.payload as ServerMessagePayloadMap["ROOM_NOTIFICATION"];
+      pushAudioEvent({
+        kind: payload.kind,
+        eventId: payload.event_id,
+        scheduledAt: payload.scheduled_at,
+      });
       return;
     }
     case "ROOM_JOIN_REJECTED": {
@@ -292,17 +340,30 @@ function handleServerMessage(client: RoomSocketClient, message: ServerMessage): 
     }
     case "ROOM_CLOSED": {
       const payload = message.payload as ServerMessagePayloadMap["ROOM_CLOSED"];
-      updateClosedSnapshot(payload.reason, message.server_time);
+      updateClosedSnapshot(payload.close_reason, payload.closed_at, payload.result_ready);
+      pushAudioEvent({
+        kind: "cancel",
+        eventId: payload.event_id,
+        scheduledAt: payload.closed_at,
+        closeReason: payload.close_reason,
+      });
       internalStore.setState((state) => ({
         ...state,
         connectionStatus: "CLOSED",
-        connectionDetail: `Room closed: ${payload.reason}.`,
+        connectionDetail: `Room closed: ${payload.close_reason}.`,
       }));
-      setErrorDialog("Room closed", payload.reason, undefined, true);
+      if (payload.close_reason !== "ALL_ROUNDS_COMPLETED") {
+        setErrorDialog("Room closed", payload.close_reason, undefined, true);
+      }
       return;
     }
     case "ERROR": {
       const payload = message.payload as ServerMessagePayloadMap["ERROR"];
+      pushAudioEvent({
+        kind: "error",
+        eventId: `error:${message.server_time}:${payload.code}`,
+        scheduledAt: message.server_time,
+      });
       const snapshot = internalStore.getState().snapshot;
       const description =
         payload.code === "ROOM_STATE_LOST"
@@ -313,7 +374,7 @@ function handleServerMessage(client: RoomSocketClient, message: ServerMessage): 
 
       if (payload.code === "ROOM_STATE_LOST") {
         closeCurrentClient(false);
-        updateClosedSnapshot(payload.code, message.server_time);
+        updateClosedSnapshot("FORCE_CLOSED", message.server_time, internalStore.getState().resultReady !== null);
         appendEventLog("Room state lost. Showing the latest local snapshot.");
       }
 
@@ -348,6 +409,7 @@ export const roomStore = {
     }
 
     closeCurrentClient(false);
+    clearRequestIds();
 
     internalStore.setState({
       ...initialState,
@@ -427,6 +489,7 @@ export const roomStore = {
   },
   leaveRoom(): void {
     closeCurrentClient(true);
+    clearRequestIds();
     internalStore.setState(initialState);
   },
   clearError(): void {
@@ -470,6 +533,11 @@ export const roomStore = {
   ): boolean {
     if (activeClient === null) {
       setErrorDialog("No active room", "Join a room before sending room actions.");
+      pushAudioEvent({
+        kind: "error",
+        eventId: `error:local:${Date.now()}:no-active-room`,
+        scheduledAt: new Date().toISOString(),
+      });
       return false;
     }
 
@@ -478,13 +546,60 @@ export const roomStore = {
       return true;
     } catch (error) {
       setErrorDialog("Send failed", error instanceof Error ? error.message : "Failed to send message.");
+      pushAudioEvent({
+        kind: "error",
+        eventId: `error:local:${Date.now()}:send-failed`,
+        scheduledAt: new Date().toISOString(),
+      });
       return false;
     }
   },
+  startMatch(): boolean {
+    return this.send("START_MATCH", {
+      request_id: getOrCreateRequestId("START_MATCH"),
+    });
+  },
+  submitPick(pickChartKey: string): boolean {
+    return this.send("PICK_SUBMIT", {
+      request_id: getOrCreateRequestId(`PICK_SUBMIT:${pickChartKey}`),
+      pick_chart_key: pickChartKey,
+    });
+  },
+  submitResult(input: {
+    round_index: number;
+    observed_key: ClientMessagePayloadMap["RESULT_SUBMIT"]["observed_key"];
+    metric_value: number;
+    source_meta?: ClientMessagePayloadMap["RESULT_SUBMIT"]["source_meta"];
+  }): boolean {
+    const requestKey =
+      `RESULT_SUBMIT:${input.round_index}:${input.metric_value}:` +
+      `${input.observed_key.play_style}:${input.observed_key.difficulty}:${input.observed_key.title_search_key}`;
+    return this.send("RESULT_SUBMIT", {
+      request_id: getOrCreateRequestId(requestKey),
+      round_index: input.round_index,
+      observed_key: input.observed_key,
+      metric_value: input.metric_value,
+      ...(input.source_meta === undefined ? {} : { source_meta: input.source_meta }),
+    });
+  },
   skipSelf(roundIndex: number, reason: SkipReason): boolean {
     return this.send("SKIP_SELF", {
+      request_id: getOrCreateRequestId(`SKIP_SELF:${roundIndex}:${reason}`),
       round_index: roundIndex,
       reason,
+    });
+  },
+  skipHostAssign(roundIndex: number, targetPlayerId: string, reason: SkipReason): boolean {
+    return this.send("SKIP_HOST_ASSIGN", {
+      request_id: getOrCreateRequestId(`SKIP_HOST_ASSIGN:${roundIndex}:${targetPlayerId}:${reason}`),
+      round_index: roundIndex,
+      target_player_id: targetPlayerId,
+      reason,
+    });
+  },
+  forceAdvance(roundIndex: number): boolean {
+    return this.send("FORCE_ADVANCE", {
+      request_id: getOrCreateRequestId(`FORCE_ADVANCE:${roundIndex}`),
     });
   },
 };

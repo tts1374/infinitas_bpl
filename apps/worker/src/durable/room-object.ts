@@ -11,6 +11,7 @@ import {
   type ErrorCode,
   type ExpectedKey,
   type JsonObject,
+  type RequestIdPayload,
   type RoomJoinPayload,
   type RoomSettings,
   type SkipReason,
@@ -26,6 +27,7 @@ import {
   RoomLobbyState,
   type PickingTimeoutResult,
   type RoomInitializationInput,
+  type RoomStatePersistenceRecord,
   type RoundTransitionResult,
 } from "./room-state";
 import { workerChartMaster } from "../master/chart-master";
@@ -36,17 +38,28 @@ interface RoomSocketSession {
 }
 
 interface DurableObjectStorageLike {
+  get<T>(key: string): Promise<T | undefined>;
+  put<T>(key: string, value: T): Promise<void>;
   deleteAlarm(): Promise<void>;
   setAlarm(scheduledTime: number | Date): Promise<void>;
 }
 
 interface DurableObjectStateLike {
   storage: DurableObjectStorageLike;
+  blockConcurrencyWhile<T>(callback: () => Promise<T>): Promise<T>;
 }
 
 const IDEMPOTENCY_LOG_LIMIT = 300;
+const REQUEST_ID_LOG_LIMIT = 300;
 const OPEN_WEBSOCKET_STATE = 1;
 const SWITCHING_PROTOCOLS_STATUS = 101;
+const ROOM_RECORD_STORAGE_KEY = "room-record";
+
+interface RoomDurableRecord {
+  room_state: RoomStatePersistenceRecord;
+  processed_request_keys: string[];
+  next_event_seq: number;
+}
 
 function isWebSocketUpgradeRequest(request: Request): boolean {
   const upgrade = request.headers.get("upgrade");
@@ -159,18 +172,35 @@ function parseReadySetPayload(payload: unknown): { ready: boolean } | null {
   };
 }
 
-function parsePickSubmitPayload(payload: unknown): { pick_chart_key: string } | null {
+function parseRequestIdPayload(payload: unknown): RequestIdPayload | null {
   if (!isRecord(payload)) {
     return null;
   }
 
-  const pickChartKeyRaw = asOptionalString(payload.pick_chart_key);
-  const pickChartKey = pickChartKeyRaw?.trim() ?? "";
-  if (pickChartKey.length === 0) {
+  const requestId = asOptionalString(payload.request_id)?.trim() ?? "";
+  if (requestId.length === 0) {
     return null;
   }
 
   return {
+    request_id: requestId,
+  };
+}
+
+function parsePickSubmitPayload(payload: unknown): { request_id: string; pick_chart_key: string } | null {
+  if (!isRecord(payload)) {
+    return null;
+  }
+
+  const requestId = asOptionalString(payload.request_id)?.trim() ?? "";
+  const pickChartKeyRaw = asOptionalString(payload.pick_chart_key);
+  const pickChartKey = pickChartKeyRaw?.trim() ?? "";
+  if (requestId.length === 0 || pickChartKey.length === 0) {
+    return null;
+  }
+
+  return {
+    request_id: requestId,
     pick_chart_key: pickChartKey,
   };
 }
@@ -197,16 +227,24 @@ function parseExpectedKey(value: unknown): ExpectedKey | null {
 
 function parseResultSubmitPayload(
   payload: unknown,
-): { round_index: number; observed_key: ExpectedKey; metric_value: number; source_meta: JsonObject | null } | null {
+): {
+  request_id: string;
+  round_index: number;
+  observed_key: ExpectedKey;
+  metric_value: number;
+  source_meta: JsonObject | null;
+} | null {
   if (!isRecord(payload)) {
     return null;
   }
 
+  const requestId = asOptionalString(payload.request_id)?.trim() ?? "";
   const roundIndex = typeof payload.round_index === "number" ? payload.round_index : Number.NaN;
   const metricValue = typeof payload.metric_value === "number" ? payload.metric_value : Number.NaN;
   const observedKey = parseExpectedKey(payload.observed_key);
   const sourceMeta = payload.source_meta;
   if (
+    requestId.length === 0 ||
     !Number.isInteger(roundIndex) ||
     roundIndex < 0 ||
     !Number.isInteger(metricValue) ||
@@ -218,6 +256,7 @@ function parseResultSubmitPayload(
   }
 
   return {
+    request_id: requestId,
     round_index: roundIndex,
     observed_key: observedKey,
     metric_value: metricValue,
@@ -225,18 +264,20 @@ function parseResultSubmitPayload(
   };
 }
 
-function parseSkipPayload(payload: unknown): { round_index: number; reason: SkipReason } | null {
+function parseSkipPayload(payload: unknown): { request_id: string; round_index: number; reason: SkipReason } | null {
   if (!isRecord(payload)) {
     return null;
   }
 
+  const requestId = asOptionalString(payload.request_id)?.trim() ?? "";
   const roundIndex = typeof payload.round_index === "number" ? payload.round_index : Number.NaN;
   const reason = asEnumValue(payload.reason, SKIP_REASONS);
-  if (!Number.isInteger(roundIndex) || roundIndex < 0 || reason === undefined) {
+  if (requestId.length === 0 || !Number.isInteger(roundIndex) || roundIndex < 0 || reason === undefined) {
     return null;
   }
 
   return {
+    request_id: requestId,
     round_index: roundIndex,
     reason,
   };
@@ -244,7 +285,7 @@ function parseSkipPayload(payload: unknown): { round_index: number; reason: Skip
 
 function parseSkipHostAssignPayload(
   payload: unknown,
-): { round_index: number; target_player_id: string; reason: SkipReason } | null {
+): { request_id: string; round_index: number; target_player_id: string; reason: SkipReason } | null {
   const parsedSkip = parseSkipPayload(payload);
   if (parsedSkip === null || !isRecord(payload)) {
     return null;
@@ -256,6 +297,7 @@ function parseSkipHostAssignPayload(
   }
 
   return {
+    request_id: parsedSkip.request_id,
     round_index: parsedSkip.round_index,
     target_player_id: targetPlayerId,
     reason: parsedSkip.reason,
@@ -266,13 +308,32 @@ export class RoomDurableObject {
   private readonly roomState = new RoomLobbyState(workerChartMaster);
   private readonly sessionsBySocket = new Map<WebSocket, RoomSocketSession>();
   private readonly seenClientMessageIds = new Map<string, string[]>();
+  private readonly processedRequestKeySet = new Set<string>();
+  private processedRequestKeys: string[] = [];
+  private nextEventSeq = 0;
+  private readonly readyPromise: Promise<void>;
 
   constructor(
     private readonly state: DurableObjectStateLike,
     private readonly env: WorkerEnv,
-  ) {}
+  ) {
+    this.readyPromise = this.state.blockConcurrencyWhile(async () => {
+      const record = await this.state.storage.get<RoomDurableRecord>(ROOM_RECORD_STORAGE_KEY);
+      if (record === undefined) {
+        return;
+      }
+
+      this.roomState.hydrate(record.room_state);
+      this.processedRequestKeys = [...record.processed_request_keys];
+      for (const key of this.processedRequestKeys) {
+        this.processedRequestKeySet.add(key);
+      }
+      this.nextEventSeq = record.next_event_seq;
+    });
+  }
 
   async fetch(request: Request): Promise<Response> {
+    await this.readyPromise;
     const url = new URL(request.url);
 
     if (url.pathname === "/internal/init" && request.method === "POST") {
@@ -305,6 +366,7 @@ export class RoomDurableObject {
   }
 
   async alarm(): Promise<void> {
+    await this.readyPromise;
     await this.processDueTransitions(new Date());
   }
 
@@ -323,6 +385,7 @@ export class RoomDurableObject {
 
     try {
       this.roomState.initialize(parsed);
+      await this.persistRoomRecord();
       await this.syncAlarm();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to initialize room.";
@@ -406,7 +469,7 @@ export class RoomDurableObject {
 
       switch (message.type) {
         case "ROOM_JOIN":
-          this.handleRoomJoin(session, message as ClientMessage<"ROOM_JOIN">);
+          await this.handleRoomJoin(session, message as ClientMessage<"ROOM_JOIN">);
           return;
         case "ROOM_LEAVE":
           await this.handleRoomLeave(session, true);
@@ -415,10 +478,10 @@ export class RoomDurableObject {
           await this.handleReadyCheckOpen(session);
           return;
         case "READY_SET":
-          this.handleReadySet(session, message as ClientMessage<"READY_SET">);
+          await this.handleReadySet(session, message as ClientMessage<"READY_SET">);
           return;
         case "START_MATCH":
-          await this.handleStartMatch(session);
+          await this.handleStartMatch(session, message as ClientMessage<"START_MATCH">);
           return;
         case "PICK_SUBMIT":
           await this.handlePickSubmit(session, message as ClientMessage<"PICK_SUBMIT">);
@@ -433,7 +496,7 @@ export class RoomDurableObject {
           await this.handleSkipHostAssign(session, message as ClientMessage<"SKIP_HOST_ASSIGN">);
           return;
         case "FORCE_ADVANCE":
-          await this.handleForceAdvance(session);
+          await this.handleForceAdvance(session, message as ClientMessage<"FORCE_ADVANCE">);
           return;
         case "STATE_GET":
           this.sendStateSnapshot(socket);
@@ -463,13 +526,9 @@ export class RoomDurableObject {
     await this.handleRoomLeave(session, false);
   }
 
-  private handleRoomJoin(session: RoomSocketSession, message: ClientMessage<"ROOM_JOIN">): void {
+  private async handleRoomJoin(session: RoomSocketSession, message: ClientMessage<"ROOM_JOIN">): Promise<void> {
     if (!this.roomState.isInitialized()) {
       this.sendJoinRejected(session.socket, "ROOM_STATE_LOST");
-      return;
-    }
-    if (this.roomState.getRoomState() === "CLOSED") {
-      this.sendJoinRejected(session.socket, "ROOM_CLOSED");
       return;
     }
 
@@ -507,6 +566,7 @@ export class RoomDurableObject {
     }
 
     session.playerId = message.player_id;
+    await this.persistRoomRecord();
 
     this.send(session.socket, "ROOM_JOIN_ACCEPTED", {
       room_state_snapshot: this.roomState.toSnapshot(),
@@ -526,7 +586,11 @@ export class RoomDurableObject {
       return;
     }
 
-    const leaveResult = this.roomState.leavePlayer(playerId, new Date());
+    const leaveResult = this.roomState.leavePlayer(
+      playerId,
+      new Date(),
+      closeSocket ? "HOST_ABORTED" : "HOST_DISCONNECTED",
+    );
     if (!leaveResult.changed) {
       if (closeSocket) {
         this.safeCloseSocket(session.socket, 1000, "Left room.");
@@ -535,13 +599,15 @@ export class RoomDurableObject {
     }
 
     if (leaveResult.was_host && !leaveResult.room_was_closed) {
+      await this.persistRoomRecord();
       await this.clearAlarm();
-      this.broadcast("ROOM_CLOSED", { reason: "HOST_LEFT" }, true);
+      this.broadcastRoomClosed(true);
       await this.cleanupLobbyEntry();
       this.disconnectAll(4000, "Host left.");
       return;
     }
 
+    await this.persistRoomRecord();
     this.broadcastRoomUpdated();
     if (closeSocket) {
       this.safeCloseSocket(session.socket, 1000, "Left room.");
@@ -572,6 +638,7 @@ export class RoomDurableObject {
       return;
     }
 
+    await this.persistRoomRecord();
     await this.syncAlarm();
     this.broadcast("READY_CHECK_OPENED", {
       ready_check_deadline: deadline.toISOString(),
@@ -579,7 +646,7 @@ export class RoomDurableObject {
     this.broadcastRoomUpdated();
   }
 
-  private handleReadySet(session: RoomSocketSession, message: ClientMessage<"READY_SET">): void {
+  private async handleReadySet(session: RoomSocketSession, message: ClientMessage<"READY_SET">): Promise<void> {
     if (session.playerId === null) {
       this.sendError(session.socket, "INVALID_STATE", "Send ROOM_JOIN before this message.");
       return;
@@ -597,6 +664,7 @@ export class RoomDurableObject {
       return;
     }
 
+    await this.persistRoomRecord();
     this.broadcast("READY_STATUS_CHANGED", {
       player_id: session.playerId,
       ready: payload.ready,
@@ -604,9 +672,23 @@ export class RoomDurableObject {
     this.broadcastRoomUpdated();
   }
 
-  private async handleStartMatch(session: RoomSocketSession): Promise<void> {
+  private async handleStartMatch(
+    session: RoomSocketSession,
+    message: ClientMessage<"START_MATCH">,
+  ): Promise<void> {
     if (session.playerId === null) {
       this.sendError(session.socket, "INVALID_STATE", "Send ROOM_JOIN before this message.");
+      return;
+    }
+
+    const payload = parseRequestIdPayload(message.payload);
+    if (payload === null) {
+      this.sendError(session.socket, "INVALID_STATE", "START_MATCH payload is invalid.");
+      return;
+    }
+
+    if (this.isDuplicateRequest(session.playerId, message.type, payload.request_id)) {
+      this.sendStateSnapshot(session.socket);
       return;
     }
 
@@ -631,7 +713,14 @@ export class RoomDurableObject {
       }
     }
 
+    this.rememberRequest(session.playerId, message.type, payload.request_id);
+    await this.persistRoomRecord();
     await this.syncAlarm();
+    this.broadcast("ROOM_NOTIFICATION", {
+      kind: "match_found",
+      event_id: this.nextEventId("match_found"),
+      scheduled_at: new Date().toISOString(),
+    });
     this.broadcastRoomUpdated();
   }
 
@@ -647,6 +736,11 @@ export class RoomDurableObject {
       return;
     }
 
+    if (this.isDuplicateRequest(session.playerId, message.type, payload.request_id)) {
+      this.sendStateSnapshot(session.socket);
+      return;
+    }
+
     const result = this.roomState.submitPick(session.playerId, payload.pick_chart_key, new Date());
     if (!result.ok || result.accepted_pick === undefined) {
       this.send(session.socket, "PICK_REJECTED", {
@@ -655,6 +749,8 @@ export class RoomDurableObject {
       return;
     }
 
+    this.rememberRequest(session.playerId, message.type, payload.request_id);
+    await this.persistRoomRecord();
     this.broadcastAcceptedPick(result.accepted_pick);
     this.broadcastFrozenRoundTransition(result.frozen_rounds, result.round_begin);
 
@@ -674,6 +770,11 @@ export class RoomDurableObject {
     const payload = parseResultSubmitPayload(message.payload);
     if (payload === null) {
       this.sendError(session.socket, "INVALID_STATE", "RESULT_SUBMIT payload is invalid.");
+      return;
+    }
+
+    if (this.isDuplicateRequest(session.playerId, message.type, payload.request_id)) {
+      this.sendStateSnapshot(session.socket);
       return;
     }
 
@@ -699,6 +800,7 @@ export class RoomDurableObject {
       }
     }
 
+    this.rememberRequest(session.playerId, message.type, payload.request_id);
     await this.publishRoundTransition(result);
   }
 
@@ -714,6 +816,11 @@ export class RoomDurableObject {
       return;
     }
 
+    if (this.isDuplicateRequest(session.playerId, message.type, payload.request_id)) {
+      this.sendStateSnapshot(session.socket);
+      return;
+    }
+
     const result = this.roomState.skipSelf(session.playerId, payload.round_index, payload.reason, new Date());
     if (!result.ok) {
       switch (result.reason) {
@@ -726,6 +833,7 @@ export class RoomDurableObject {
       }
     }
 
+    this.rememberRequest(session.playerId, message.type, payload.request_id);
     await this.publishRoundTransition(result);
   }
 
@@ -741,6 +849,11 @@ export class RoomDurableObject {
     const payload = parseSkipHostAssignPayload(message.payload);
     if (payload === null) {
       this.sendError(session.socket, "INVALID_STATE", "SKIP_HOST_ASSIGN payload is invalid.");
+      return;
+    }
+
+    if (this.isDuplicateRequest(session.playerId, message.type, payload.request_id)) {
+      this.sendStateSnapshot(session.socket);
       return;
     }
 
@@ -768,12 +881,27 @@ export class RoomDurableObject {
       }
     }
 
+    this.rememberRequest(session.playerId, message.type, payload.request_id);
     await this.publishRoundTransition(result);
   }
 
-  private async handleForceAdvance(session: RoomSocketSession): Promise<void> {
+  private async handleForceAdvance(
+    session: RoomSocketSession,
+    message: ClientMessage<"FORCE_ADVANCE">,
+  ): Promise<void> {
     if (session.playerId === null) {
       this.sendError(session.socket, "INVALID_STATE", "Send ROOM_JOIN before this message.");
+      return;
+    }
+
+    const payload = parseRequestIdPayload(message.payload);
+    if (payload === null) {
+      this.sendError(session.socket, "INVALID_STATE", "FORCE_ADVANCE payload is invalid.");
+      return;
+    }
+
+    if (this.isDuplicateRequest(session.playerId, message.type, payload.request_id)) {
+      this.sendStateSnapshot(session.socket);
       return;
     }
 
@@ -793,6 +921,7 @@ export class RoomDurableObject {
       }
     }
 
+    this.rememberRequest(session.playerId, message.type, payload.request_id);
     await this.publishRoundTransition(result);
   }
 
@@ -924,6 +1053,24 @@ export class RoomDurableObject {
     this.send(socket, "RESULT_READY", payload);
   }
 
+  private buildRoomClosedPayload(): ServerMessagePayloadMap["ROOM_CLOSED"] {
+    const snapshot = this.roomState.toSnapshot();
+    if (snapshot.close_reason == null || snapshot.closed_at == null) {
+      throw new Error("Closed room snapshot is missing close metadata.");
+    }
+
+    return {
+      close_reason: snapshot.close_reason,
+      closed_at: snapshot.closed_at,
+      result_ready: snapshot.result_ready,
+      event_id: this.nextEventId(`cancel:${snapshot.close_reason}`),
+    };
+  }
+
+  private broadcastRoomClosed(includeUnjoined = false): void {
+    this.broadcast("ROOM_CLOSED", this.buildRoomClosedPayload(), includeUnjoined);
+  }
+
   private isDuplicateMessage(playerId: string, clientMessageId: string): boolean {
     const seenIds = this.seenClientMessageIds.get(playerId) ?? [];
     if (seenIds.includes(clientMessageId)) {
@@ -936,6 +1083,35 @@ export class RoomDurableObject {
     }
     this.seenClientMessageIds.set(playerId, seenIds);
     return false;
+  }
+
+  private buildRequestKey(playerId: string, type: string, requestId: string): string {
+    return `${playerId}:${type}:${requestId}`;
+  }
+
+  private isDuplicateRequest(playerId: string, type: string, requestId: string): boolean {
+    return this.processedRequestKeySet.has(this.buildRequestKey(playerId, type, requestId));
+  }
+
+  private rememberRequest(playerId: string, type: string, requestId: string): void {
+    const key = this.buildRequestKey(playerId, type, requestId);
+    if (this.processedRequestKeySet.has(key)) {
+      return;
+    }
+
+    this.processedRequestKeySet.add(key);
+    this.processedRequestKeys.push(key);
+    if (this.processedRequestKeys.length > REQUEST_ID_LOG_LIMIT) {
+      const removed = this.processedRequestKeys.shift();
+      if (removed !== undefined) {
+        this.processedRequestKeySet.delete(removed);
+      }
+    }
+  }
+
+  private nextEventId(kind: string): string {
+    this.nextEventSeq += 1;
+    return `${kind}:${this.roomState.getRoomId()}:${this.nextEventSeq}`;
   }
 
   private disconnectAll(code: number, reason: string): void {
@@ -968,10 +1144,23 @@ export class RoomDurableObject {
     await this.state.storage.setAlarm(nextAlarmAt);
   }
 
+  private async persistRoomRecord(): Promise<void> {
+    const record: RoomDurableRecord = {
+      room_state: this.roomState.toPersistenceRecord(),
+      processed_request_keys: [...this.processedRequestKeys],
+      next_event_seq: this.nextEventSeq,
+    };
+    await this.state.storage.put(ROOM_RECORD_STORAGE_KEY, record);
+  }
+
   private async publishRoundTransition(result: RoundTransitionResult): Promise<void> {
+    await this.persistRoomRecord();
     await this.syncAlarm();
     this.broadcastRoundTransition(result);
     this.broadcastRoomUpdated();
+    if (this.roomState.getRoomState() === "CLOSED") {
+      this.broadcastRoomClosed();
+    }
     await this.cleanupLobbyEntryIfClosed();
   }
 
@@ -982,6 +1171,7 @@ export class RoomDurableObject {
 
     const pickingTransition = this.roomState.expirePickingIfNeeded(now);
     if (pickingTransition !== null) {
+      await this.persistRoomRecord();
       this.broadcastPickingTimeoutTransition(pickingTransition);
       await this.syncAlarm();
       this.broadcastRoomUpdated();
@@ -1008,8 +1198,9 @@ export class RoomDurableObject {
       return false;
     }
 
+    await this.persistRoomRecord();
     await this.clearAlarm();
-    this.broadcast("ROOM_CLOSED", { reason: "READY_CHECK_TIMEOUT" }, true);
+    this.broadcastRoomClosed(true);
     await this.cleanupLobbyEntry();
     this.disconnectAll(4001, "Ready check timed out.");
     return true;

@@ -1,37 +1,39 @@
 import {
+  MATCH_FOUND_MIN_INTERVAL_MS,
+  ROUND_MUSIC_SELECT_SECONDS,
+  ROUND_PLAY_BEGIN_AT_SECONDS,
   ROUND_STAGE_COUNTDOWN_AT_SECONDS,
   ROUND_START_CALL_AT_SECONDS,
+  SOUND_CLEAR_QUEUE_ON_STATE_CHANGE,
+  SOUND_STOP_CURRENT_ON_STATE_CHANGE,
+  type CloseReason,
   type CurrentRoundSnapshot,
+  type SoundEffectKey,
 } from "@infinitas/shared";
 import { createExternalStore, useExternalStore } from "../stores/create-store";
-import { roomStore } from "../stores/room-store";
+import { roomStore, type RoomAudioEvent } from "../stores/room-store";
 import { settingsStore } from "../stores/settings-store";
-import { isTauriRuntime, speakNativeTts, stopNativeTts } from "./tauri-bridge";
 
-const ROUND_STAGE_COUNTDOWN_AT_MS = ROUND_STAGE_COUNTDOWN_AT_SECONDS * 1_000;
-const ROUND_START_CALL_AT_MS = ROUND_START_CALL_AT_SECONDS * 1_000;
 const RECENT_CUE_GRACE_MS = 3_000;
-const VOICE_CUE_INTERVAL_MS = 1_000;
 
-type VoiceCuePhase = "STAGE" | "COUNTDOWN" | "START";
+const SOUND_EFFECT_URLS: Record<SoundEffectKey, string> = {
+  round_intro: "/se/round_intro.mp3",
+  count_beep: "/se/count_beep.mp3",
+  match_found: "/se/match_found.mp3",
+  phase_locked: "/se/phase_locked.mp3",
+  count_go: "/se/count_go.mp3",
+  cancel: "/se/cancel.mp3",
+  error: "/se/error.mp3",
+};
 
-interface VoiceCue {
-  phase: VoiceCuePhase;
+interface ScheduledCue {
+  kind: SoundEffectKey;
+  eventId: string;
   dueAtMs: number;
-  text: string;
-  detail: string;
-  rate?: number;
+  closeReason?: CloseReason | null;
 }
 
-const JAPANESE_TEXT_PATTERN = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uff66-\uff9f]/;
-
-export type VoicePlaybackPhase =
-  | "IDLE"
-  | "DISABLED"
-  | "UNAVAILABLE"
-  | "STAGE"
-  | "COUNTDOWN"
-  | "START";
+export type VoicePlaybackPhase = "IDLE" | "DISABLED" | "ARMED" | "PLAYING" | "ERROR";
 
 export interface VoicePlaybackState {
   phase: VoicePlaybackPhase;
@@ -47,14 +49,20 @@ const internalStore = createExternalStore<VoicePlaybackState>({
   enabled: true,
   roundToken: null,
   pendingCues: 0,
-  detail: "Voice cues idle.",
+  detail: "Sound cues idle.",
   lastUpdatedAt: null,
 });
 
 let unsubscribeRoomStore: (() => void) | null = null;
 let unsubscribeSettingsStore: (() => void) | null = null;
+let activeRoomId: string | null = null;
 let activeRoundToken: string | null = null;
 let activeTimeoutIds: number[] = [];
+
+const playedEventIds = new Set<string>();
+const queuedEventIds = new Set<string>();
+const activeAudios = new Set<HTMLAudioElement>();
+const lastPlayedAtByKind = new Map<SoundEffectKey, number>();
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -68,14 +76,28 @@ function setVoiceState(partialState: Partial<VoicePlaybackState>): void {
   }));
 }
 
-function clearPlayback(nextPhase: VoicePlaybackPhase, detail: string, enabled: boolean): void {
-  for (const timeoutId of activeTimeoutIds) {
-    window.clearTimeout(timeoutId);
+function stopAllAudio(): void {
+  for (const audio of activeAudios) {
+    audio.pause();
+    audio.currentTime = 0;
   }
-  activeTimeoutIds = [];
+  activeAudios.clear();
+}
 
-  void stopNativeTts();
-  if (nextPhase === "IDLE" || nextPhase === "DISABLED" || nextPhase === "UNAVAILABLE") {
+function clearPlayback(nextPhase: VoicePlaybackPhase, detail: string, enabled: boolean): void {
+  if (SOUND_CLEAR_QUEUE_ON_STATE_CHANGE) {
+    for (const timeoutId of activeTimeoutIds) {
+      window.clearTimeout(timeoutId);
+    }
+    activeTimeoutIds = [];
+    queuedEventIds.clear();
+  }
+
+  if (SOUND_STOP_CURRENT_ON_STATE_CHANGE) {
+    stopAllAudio();
+  }
+
+  if (nextPhase === "IDLE" || nextPhase === "DISABLED") {
     activeRoundToken = null;
   }
 
@@ -88,210 +110,227 @@ function clearPlayback(nextPhase: VoicePlaybackPhase, detail: string, enabled: b
   });
 }
 
+function resetRoomPlayback(roomId: string | null): void {
+  if (roomId === activeRoomId) {
+    return;
+  }
+
+  clearPlayback("IDLE", "Sound cues idle.", settingsStore.getState().saved.voiceEnabled);
+  activeRoomId = roomId;
+  playedEventIds.clear();
+  lastPlayedAtByKind.clear();
+  setVoiceState({
+    phase: "IDLE",
+    enabled: settingsStore.getState().saved.voiceEnabled,
+    pendingCues: 0,
+    detail: roomId === null ? "Sound cues idle." : `Sound cues reset for room ${roomId}.`,
+    roundToken: null,
+  });
+}
+
 function buildRoundToken(roomId: string, round: CurrentRoundSnapshot): string {
   return `${roomId}:${round.round_index}:${round.round_started_at}`;
 }
 
-function detectCueLanguage(text: string): "ja-JP" | "en-US" {
-  return JAPANESE_TEXT_PATTERN.test(text) ? "ja-JP" : "en-US";
-}
-
-function getStageLabel(roundIndex: number): string {
-  const stageNumber = roundIndex + 1;
-  switch (stageNumber) {
-    case 1:
-      return "First stage.";
-    case 2:
-      return "Second stage.";
-    case 3:
-      return "Final stage.";
-    default:
-      return `Stage ${stageNumber}.`;
-  }
-}
-
-function getDifficultyLabel(difficulty: string): string {
-  switch (difficulty) {
-    case "BEGINNER":
-      return "Beginner.";
-    case "NORMAL":
-      return "Normal.";
-    case "HYPER":
-      return "Hyper.";
-    case "ANOTHER":
-      return "Another.";
-    case "LEGGENDARIA":
-      return "Leggendaria.";
-    default:
-      return `${difficulty}.`;
-  }
-}
-
-function createSequentialVoiceCues(
-  phase: VoiceCuePhase,
-  startAtMs: number,
-  texts: readonly string[],
-  roundIndex: number,
-): VoiceCue[] {
-  return texts.map((text, index) => ({
-    phase,
-    dueAtMs: startAtMs + index * VOICE_CUE_INTERVAL_MS,
-    text,
-    detail: `${phase} cue ${index + 1}/${texts.length} for round ${roundIndex + 1}: ${text}`,
-  }));
-}
-
-function createVoiceCues(round: CurrentRoundSnapshot): VoiceCue[] {
+function createRoundCues(roomId: string, round: CurrentRoundSnapshot): ScheduledCue[] {
   const startedAtMs = Date.parse(round.round_started_at);
   if (Number.isNaN(startedAtMs)) {
     return [];
   }
 
-  const snapshot = roomStore.getState().snapshot;
-  const roundDisplay =
-    snapshot?.frozen_rounds.find((entry) => entry.round_index === round.round_index)?.display ?? null;
-  const titleCueText = roundDisplay?.title?.trim() || round.expected_key.title_search_key;
-  const stageTexts = [
-    getStageLabel(round.round_index),
-    titleCueText,
-    `${round.expected_key.play_style}. ${getDifficultyLabel(round.expected_key.difficulty)}`,
-  ].filter((value) => value.length > 0);
+  const cues: ScheduledCue[] = [];
 
-  return [
-    ...createSequentialVoiceCues("STAGE", startedAtMs, stageTexts, round.round_index),
-    {
-      phase: "COUNTDOWN",
-      dueAtMs: startedAtMs + ROUND_STAGE_COUNTDOWN_AT_MS,
-      text: "Ten. Nine. Eight. Seven. Six. Five. Four. Three. Two. One. Music selected.",
-      detail: `COUNTDOWN cue for round ${round.round_index + 1}.`,
-      rate: 0.9,
-    },
-    {
-      phase: "START",
-      dueAtMs: startedAtMs + ROUND_START_CALL_AT_MS,
-      text: "Three. Two. One. Let's go.",
-      detail: `START cue for round ${round.round_index + 1}.`,
-      rate: 1,
-    },
-  ];
+  cues.push({
+    kind: "round_intro",
+    eventId: `round_intro:${roomId}:${round.round_index}`,
+    dueAtMs: startedAtMs,
+  });
+
+  for (let offset = 0; offset < 10; offset += 1) {
+    const secondRemaining = 10 - offset;
+    cues.push({
+      kind: "count_beep",
+      eventId: `count_beep:${roomId}:${round.round_index}:music_select:${secondRemaining}`,
+      dueAtMs: startedAtMs + (ROUND_STAGE_COUNTDOWN_AT_SECONDS + offset) * 1_000,
+    });
+  }
+
+  cues.push({
+    kind: "phase_locked",
+    eventId: `phase_locked:${roomId}:${round.round_index}`,
+    dueAtMs: startedAtMs + ROUND_MUSIC_SELECT_SECONDS * 1_000,
+  });
+
+  for (let offset = 0; offset < 3; offset += 1) {
+    const secondRemaining = 3 - offset;
+    cues.push({
+      kind: "count_beep",
+      eventId: `count_beep:${roomId}:${round.round_index}:play_start:${secondRemaining}`,
+      dueAtMs: startedAtMs + (ROUND_START_CALL_AT_SECONDS + offset) * 1_000,
+    });
+  }
+
+  cues.push({
+    kind: "count_go",
+    eventId: `count_go:${roomId}:${round.round_index}`,
+    dueAtMs: startedAtMs + ROUND_PLAY_BEGIN_AT_SECONDS * 1_000,
+  });
+
+  return cues;
 }
 
-async function speakCue(roundToken: string, cue: VoiceCue): Promise<void> {
-  if (roundToken !== activeRoundToken) {
+function shouldSuppressCue(cue: ScheduledCue): boolean {
+  if (playedEventIds.has(cue.eventId)) {
+    return true;
+  }
+
+  if (cue.kind === "cancel" && cue.closeReason === "ALL_ROUNDS_COMPLETED") {
+    playedEventIds.add(cue.eventId);
+    return true;
+  }
+
+  if (cue.kind === "match_found") {
+    const lastPlayedAt = lastPlayedAtByKind.get(cue.kind) ?? 0;
+    if (Date.now() - lastPlayedAt < MATCH_FOUND_MIN_INTERVAL_MS) {
+      playedEventIds.add(cue.eventId);
+      return true;
+    }
+  }
+
+  return false;
+}
+
+async function playCue(cue: ScheduledCue): Promise<void> {
+  if (shouldSuppressCue(cue) || !settingsStore.getState().saved.voiceEnabled) {
     return;
   }
 
-  if (!isTauriRuntime()) {
-    setVoiceState({
-      phase: "UNAVAILABLE",
-      enabled: settingsStore.getState().saved.voiceEnabled,
-      pendingCues: 0,
-      detail: "Native TTS is available only inside the Tauri desktop app.",
-      roundToken,
-    });
-    return;
-  }
+  playedEventIds.add(cue.eventId);
+  lastPlayedAtByKind.set(cue.kind, Date.now());
+
+  const audio = new Audio(SOUND_EFFECT_URLS[cue.kind]);
+  activeAudios.add(audio);
+  const cleanup = () => {
+    activeAudios.delete(audio);
+  };
+  audio.addEventListener("ended", cleanup, { once: true });
+  audio.addEventListener("pause", cleanup, { once: true });
 
   setVoiceState({
-    phase: cue.phase,
-    enabled: settingsStore.getState().saved.voiceEnabled,
+    phase: "PLAYING",
+    enabled: true,
     pendingCues: activeTimeoutIds.length,
-    detail: cue.detail,
-    roundToken,
+    detail: `Playing ${cue.kind}.`,
+    roundToken: activeRoundToken,
   });
 
   try {
-    const cueLanguage = detectCueLanguage(cue.text);
-    await speakNativeTts({
-      text: cue.text,
-      language: cueLanguage,
-      rate: cue.rate ?? 1,
-      pitch: 1,
-      volume: 1,
-      queueMode: "add",
-    });
-    setVoiceState({
-      phase: cue.phase,
-      enabled: settingsStore.getState().saved.voiceEnabled,
-      pendingCues: activeTimeoutIds.length,
-      detail: `Speaking (${cueLanguage}): ${cue.text}`,
-      roundToken,
-    });
+    await audio.play();
   } catch (error) {
+    cleanup();
     setVoiceState({
-      phase: "UNAVAILABLE",
-      enabled: settingsStore.getState().saved.voiceEnabled,
+      phase: "ERROR",
+      enabled: true,
       pendingCues: activeTimeoutIds.length,
-      detail:
-        error instanceof Error
-          ? error.message
-          : `Voice playback failed during ${cue.phase.toLowerCase()} cue.`,
-      roundToken,
+      detail: error instanceof Error ? error.message : `Failed to play ${cue.kind}.`,
+      roundToken: activeRoundToken,
     });
   }
+}
+
+function scheduleCue(cue: ScheduledCue): boolean {
+  if (playedEventIds.has(cue.eventId) || queuedEventIds.has(cue.eventId)) {
+    return false;
+  }
+
+  const delayMs = cue.dueAtMs - Date.now();
+  if (delayMs < -RECENT_CUE_GRACE_MS) {
+    playedEventIds.add(cue.eventId);
+    return false;
+  }
+
+  if (delayMs <= 0) {
+    void playCue(cue);
+    return true;
+  }
+
+  queuedEventIds.add(cue.eventId);
+  const timeoutId = window.setTimeout(() => {
+    activeTimeoutIds = activeTimeoutIds.filter((value) => value !== timeoutId);
+    queuedEventIds.delete(cue.eventId);
+    void playCue(cue);
+  }, delayMs);
+  activeTimeoutIds.push(timeoutId);
+  return true;
 }
 
 function scheduleRoundPlayback(roomId: string, round: CurrentRoundSnapshot): void {
   const roundToken = buildRoundToken(roomId, round);
-  const cues = createVoiceCues(round);
-  const nowMs = Date.now();
-
+  const cues = createRoundCues(roomId, round);
   let scheduledCount = 0;
-  let nextCue: VoiceCue | null = null;
 
   for (const cue of cues) {
-    const delayMs = cue.dueAtMs - nowMs;
-    if (delayMs < -RECENT_CUE_GRACE_MS) {
-      continue;
+    if (scheduleCue(cue)) {
+      scheduledCount += 1;
     }
-
-    nextCue ??= cue;
-    scheduledCount += 1;
-    const timeoutId = window.setTimeout(() => {
-      activeTimeoutIds = activeTimeoutIds.filter((value) => value !== timeoutId);
-      void speakCue(roundToken, cue);
-    }, Math.max(0, delayMs));
-    activeTimeoutIds.push(timeoutId);
   }
 
   setVoiceState({
-    phase: scheduledCount > 0 ? (nextCue?.phase ?? "START") : "START",
+    phase: scheduledCount > 0 ? "ARMED" : "IDLE",
     enabled: true,
     pendingCues: scheduledCount,
     detail:
-      scheduledCount > 0 && nextCue !== null
-        ? `Queued ${scheduledCount} voice cue(s). Next ${nextCue.phase.toLowerCase()} cue: ${nextCue.text}`
-        : `Voice cues already elapsed for round ${round.round_index + 1}.`,
+      scheduledCount > 0
+        ? `Queued ${scheduledCount} sound cue(s) for round ${round.round_index + 1}.`
+        : `Sound cues already elapsed for round ${round.round_index + 1}.`,
     roundToken,
   });
 }
 
+function processAudioEvents(audioEvents: RoomAudioEvent[]): void {
+  for (const event of [...audioEvents].reverse()) {
+    if (playedEventIds.has(event.eventId) || queuedEventIds.has(event.eventId)) {
+      continue;
+    }
+
+    const dueAtMs = Date.parse(event.scheduledAt);
+    scheduleCue({
+      kind: event.kind,
+      eventId: event.eventId,
+      dueAtMs: Number.isNaN(dueAtMs) ? Date.now() : dueAtMs,
+      closeReason: event.closeReason ?? null,
+    });
+  }
+}
+
 function syncVoicePlayback(): void {
   const savedSettings = settingsStore.getState().saved;
+  const roomState = roomStore.getState();
+  const snapshot = roomState.snapshot;
+
+  resetRoomPlayback(snapshot?.room_id ?? null);
+
   if (!savedSettings.voiceEnabled) {
-    clearPlayback("DISABLED", "Voice notifications are turned off.", false);
+    clearPlayback("DISABLED", "Sound notifications are turned off.", false);
     return;
   }
 
-  if (!isTauriRuntime()) {
-    clearPlayback("UNAVAILABLE", "Native TTS is available only inside the Tauri desktop app.", true);
-    return;
-  }
-
-  const snapshot = roomStore.getState().snapshot;
   if (snapshot === null || snapshot.room_state !== "PLAYING" || snapshot.current_round === null) {
-    clearPlayback("IDLE", "Voice cues idle.", true);
+    if (activeRoundToken !== null) {
+      clearPlayback("IDLE", "Sound cues idle.", true);
+    }
+    processAudioEvents(roomState.audioEvents);
     return;
   }
 
   const nextRoundToken = buildRoundToken(snapshot.room_id, snapshot.current_round);
-  if (nextRoundToken === activeRoundToken) {
-    return;
+  if (nextRoundToken !== activeRoundToken) {
+    clearPlayback("IDLE", `Arming sound cues for round ${snapshot.current_round.round_index + 1}.`, true);
+    activeRoundToken = nextRoundToken;
+    scheduleRoundPlayback(snapshot.room_id, snapshot.current_round);
   }
 
-  clearPlayback("IDLE", `Arming voice cues for round ${snapshot.current_round.round_index + 1}.`, true);
-  activeRoundToken = nextRoundToken;
-  scheduleRoundPlayback(snapshot.room_id, snapshot.current_round);
+  processAudioEvents(roomState.audioEvents);
 }
 
 export const voiceAnnouncerService = {
@@ -310,7 +349,7 @@ export const voiceAnnouncerService = {
     unsubscribeSettingsStore?.();
     unsubscribeRoomStore = null;
     unsubscribeSettingsStore = null;
-    clearPlayback("IDLE", "Voice cues idle.", settingsStore.getState().saved.voiceEnabled);
+    clearPlayback("IDLE", "Sound cues idle.", settingsStore.getState().saved.voiceEnabled);
   },
 };
 
