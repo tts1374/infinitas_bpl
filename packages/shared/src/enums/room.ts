@@ -1,6 +1,5 @@
 export const ROOM_STATES = [
   "LOBBY",
-  "READY_CHECK",
   "PICKING",
   "PLAYING",
   "RESULT",

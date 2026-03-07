@@ -71,12 +71,6 @@ export interface LeavePlayerResult {
   room_was_closed: boolean;
 }
 
-export interface ReadyCheckOpenResult {
-  ok: boolean;
-  reason?: "INVALID_STATE" | "NOT_HOST";
-  ready_check_deadline?: Date;
-}
-
 export interface ReadySetResult {
   ok: boolean;
   reason?: "INVALID_STATE" | "PLAYER_NOT_FOUND";
@@ -89,7 +83,13 @@ export interface StartMatchResult {
     | "NOT_HOST"
     | "START_REQUIRES_MIN_PLAYERS"
     | "NOT_ALL_PLAYERS_READY"
+    | "PREVIOUS_MATCH_NOT_CLEARED"
     | "BPL_REQUIRES_TWO_PLAYERS";
+}
+
+export interface ReturnToLobbyResult {
+  ok: boolean;
+  reason?: "INVALID_STATE" | "NOT_HOST";
 }
 
 export interface PickSubmitResult {
@@ -203,7 +203,7 @@ export interface RoomStatePersistenceRecord {
   version: 1;
   initialized: boolean;
   room_id: string;
-  room_state: RoomState;
+  room_state: RoomState | "READY_CHECK";
   settings: RoomSettings;
   host_player_id: string | null;
   created_at: string;
@@ -275,8 +275,8 @@ function computeRejoinUntil(now: Date): Date {
   return new Date(now.getTime() + REJOIN_COOLDOWN_SECONDS * 1_000);
 }
 
-function canNewPlayerJoin(roomState: RoomState): roomState is "LOBBY" | "READY_CHECK" {
-  return roomState === "LOBBY" || roomState === "READY_CHECK";
+function canNewPlayerJoin(roomState: RoomState): roomState is "LOBBY" {
+  return roomState === "LOBBY";
 }
 
 function expectedKeyId(expectedKey: ExpectedKey): string {
@@ -357,7 +357,7 @@ export class RoomLobbyState {
     this.roomId = input.room_id;
     this.settings = { ...input.settings };
     this.createdAt = createdAt;
-    this.roomState = "READY_CHECK";
+    this.roomState = "LOBBY";
     this.readyCheckDeadline = computeReadyCheckDeadline(createdAt);
     this.matchDeadline = null;
   }
@@ -475,29 +475,8 @@ export class RoomLobbyState {
     return { changed: true, was_host: wasHost, room_was_closed: roomWasClosed };
   }
 
-  openReadyCheck(playerId: string, now: Date): ReadyCheckOpenResult {
-    if (playerId !== this.hostPlayerId) {
-      return { ok: false, reason: "NOT_HOST" };
-    }
-
-    if (this.roomState !== "LOBBY") {
-      return { ok: false, reason: "INVALID_STATE" };
-    }
-
-    this.roomState = "READY_CHECK";
-    this.readyCheckDeadline = computeReadyCheckDeadline(now);
-    for (const player of this.players.values()) {
-      player.ready = false;
-    }
-
-    return {
-      ok: true,
-      ready_check_deadline: this.readyCheckDeadline,
-    };
-  }
-
   setPlayerReady(playerId: string, ready: boolean): ReadySetResult {
-    if (this.roomState !== "READY_CHECK") {
+    if (this.roomState !== "LOBBY") {
       return { ok: false, reason: "INVALID_STATE" };
     }
 
@@ -515,8 +494,12 @@ export class RoomLobbyState {
       return { ok: false, reason: "NOT_HOST" };
     }
 
-    if (this.roomState !== "READY_CHECK") {
+    if (this.roomState !== "LOBBY") {
       return { ok: false, reason: "INVALID_STATE" };
+    }
+
+    if (this.hasMatchTransientState()) {
+      return { ok: false, reason: "PREVIOUS_MATCH_NOT_CLEARED" };
     }
 
     if (this.players.size < START_MIN_PLAYERS) {
@@ -536,6 +519,8 @@ export class RoomLobbyState {
     this.pickingDeadline = computePickingDeadline(now);
     this.matchDeadline = computeMatchDeadline(now);
     this.resultDeadline = null;
+    this.closedAt = null;
+    this.closeReason = null;
     this.matchPlayerIds = this.getPlayersInJoinOrder().map((player) => player.player_id);
     this.picks.length = 0;
     this.roundConfirmations.clear();
@@ -547,6 +532,19 @@ export class RoomLobbyState {
       player.ready = false;
     }
 
+    return { ok: true };
+  }
+
+  returnToLobby(playerId: string, now: Date): ReturnToLobbyResult {
+    if (playerId !== this.hostPlayerId) {
+      return { ok: false, reason: "NOT_HOST" };
+    }
+
+    if (this.roomState !== "RESULT") {
+      return { ok: false, reason: "INVALID_STATE" };
+    }
+
+    this.resetLobbyState(now);
     return { ok: true };
   }
 
@@ -614,7 +612,7 @@ export class RoomLobbyState {
   }
 
   getNextAlarmAt(): Date | null {
-    if (this.roomState === "READY_CHECK" && this.readyCheckDeadline !== null) {
+    if (this.roomState === "LOBBY" && this.readyCheckDeadline !== null) {
       return this.readyCheckDeadline;
     }
 
@@ -897,7 +895,7 @@ export class RoomLobbyState {
 
   closeReadyCheckIfExpired(now: Date): boolean {
     if (
-      this.roomState !== "READY_CHECK" ||
+      this.roomState !== "LOBBY" ||
       this.readyCheckDeadline === null ||
       now.getTime() < this.readyCheckDeadline.getTime()
     ) {
@@ -963,8 +961,10 @@ export class RoomLobbyState {
     }
 
     this.roomState = "CLOSED";
+    this.currentRound = null;
     this.readyCheckDeadline = null;
     this.pickingDeadline = null;
+    this.matchDeadline = null;
     this.resultDeadline = null;
     this.closeReason = reason;
     this.closedAt = now;
@@ -1081,7 +1081,7 @@ export class RoomLobbyState {
 
     this.initialized = true;
     this.roomId = record.room_id;
-    this.roomState = record.room_state;
+    this.roomState = record.room_state === "READY_CHECK" ? "LOBBY" : record.room_state;
     this.settings = { ...record.settings };
     this.hostPlayerId = record.host_player_id;
     this.createdAt = parseRequiredDate(record.created_at);
@@ -1267,7 +1267,11 @@ export class RoomLobbyState {
     result.round_ended = { round_index: currentRoundIndex };
 
     if (options.force_result || this.shouldEnterResultAfterRound(currentRoundIndex)) {
-      this.closeWithResult(options.force_result ? "MATCH_TTL_EXPIRED" : "ALL_ROUNDS_COMPLETED", now);
+      if (options.force_result) {
+        this.closeWithResult("MATCH_TTL_EXPIRED", now);
+      } else {
+        this.enterResult(now);
+      }
       if (this.resultReadyPayload !== null) {
         result.result_ready = this.resultReadyPayload;
       }
@@ -1280,11 +1284,23 @@ export class RoomLobbyState {
       return result;
     }
 
-    this.closeWithResult("ALL_ROUNDS_COMPLETED", now);
+    this.enterResult(now);
     if (this.resultReadyPayload !== null) {
       result.result_ready = this.resultReadyPayload;
     }
     return result;
+  }
+
+  private enterResult(now: Date): void {
+    this.resultReadyPayload = this.buildResultReadyPayload();
+    this.currentRound = null;
+    this.roomState = "RESULT";
+    this.readyCheckDeadline = null;
+    this.pickingDeadline = null;
+    this.matchDeadline = null;
+    this.resultDeadline = null;
+    this.closeReason = null;
+    this.closedAt = null;
   }
 
   private closeWithResult(reason: CloseReason, now: Date): void {
@@ -1293,9 +1309,44 @@ export class RoomLobbyState {
     this.roomState = "CLOSED";
     this.readyCheckDeadline = null;
     this.pickingDeadline = null;
+    this.matchDeadline = null;
     this.resultDeadline = null;
     this.closeReason = reason;
     this.closedAt = now;
+  }
+
+  private hasMatchTransientState(): boolean {
+    return (
+      this.picks.length > 0 ||
+      this.roundConfirmations.size > 0 ||
+      this.frozenRounds.length > 0 ||
+      this.currentRound !== null ||
+      this.matchPlayerIds.length > 0 ||
+      this.resultReadyPayload !== null ||
+      this.pickingDeadline !== null ||
+      this.matchDeadline !== null ||
+      this.resultDeadline !== null
+    );
+  }
+
+  private resetLobbyState(now: Date): void {
+    this.roomState = "LOBBY";
+    this.readyCheckDeadline = computeReadyCheckDeadline(now);
+    this.pickingDeadline = null;
+    this.matchDeadline = null;
+    this.resultDeadline = null;
+    this.closedAt = null;
+    this.closeReason = null;
+    this.picks.length = 0;
+    this.roundConfirmations.clear();
+    this.frozenRounds = [];
+    this.currentRound = null;
+    this.matchPlayerIds = [];
+    this.resultReadyPayload = null;
+
+    for (const player of this.players.values()) {
+      player.ready = false;
+    }
   }
 
   private getPlayersInJoinOrder(): InternalPlayer[] {

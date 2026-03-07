@@ -35,10 +35,6 @@ export interface RoomNotificationPayload {
   scheduled_at: ISO8601String;
 }
 
-export interface ReadyCheckOpenedPayload {
-  ready_check_deadline: ISO8601String;
-}
-
 export interface ReadyStatusChangedPayload {
   player_id: string;
   ready: boolean;
@@ -106,7 +102,6 @@ export interface ServerMessagePayloadMap {
   ROOM_UPDATED: RoomUpdatedPayload;
   ROOM_CLOSED: RoomClosedPayload;
   ROOM_NOTIFICATION: RoomNotificationPayload;
-  READY_CHECK_OPENED: ReadyCheckOpenedPayload;
   READY_STATUS_CHANGED: ReadyStatusChangedPayload;
   START_MATCH_REJECTED: RoomRejectedPayload;
   PICK_ACCEPTED: PickAcceptedPayload;
