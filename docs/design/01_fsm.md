@@ -48,7 +48,7 @@
 ## 4. タイマー（固定値 / DOが管理）
 - `ready_check_ttl = 20min`（READY_CHECK開始から。超過で解散）
 - `picking_ttl = 120s`（PICKING開始から。超過で未pick者をランダム補完して凍結）
-- `round_soft_ttl = 5min`（Let's go 以降。超過で未確定者をTIMEOUT確定）
+- `round_soft_ttl = 5min`（`count_go` 以降。超過で未確定者をTIMEOUT確定）
 - `host_skip_unlock_seconds = 240s`（ラウンド開始から4分経過後にホスト代理SKIP可）
 - `match_ttl = 30min`（`START_MATCH` 成功時、すなわち `PICKING` 開始時から固定）
 - `rejoin_cooldown = 10s`（退出後の同一ルーム再入室抑止。クライアント/UI側でも表示）

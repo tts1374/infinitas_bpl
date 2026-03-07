@@ -280,10 +280,12 @@ Ph1 の画面は以下とする。
   - 強制進行（確認ダイアログあり）
 
 ## 9.4 演出仕様
-- Stage:`ROUND_BEGIN` で Stage音声(例:`1st stage`)、曲名、play style、難易度
-- countdown:`+35s` で `10..1,Music Selected`
+- Stage:`ROUND_BEGIN` で `round_intro`。既存のステージ/曲情報読み上げがある場合は併用可
+- countdown:`+35s` から `count_beep` を残り10秒から1秒まで再生
 - `+45s` から表示を `PLAY START:10` に切り替える
-- START:`+52s` で `3,2,1,Let's go`
+- `+45s` で `phase_locked`
+- START:`+52s` から `count_beep` を残り3秒から1秒まで再生
+- `+55s` で `count_go`
 - `+55s` 以降をプレイ中とし、`round_soft_ttl` 起点もこの時点とする
 
 ## 9.5 備考
