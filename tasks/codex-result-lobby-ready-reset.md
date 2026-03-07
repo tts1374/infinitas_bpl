@@ -1,0 +1,31 @@
+- [ ] 設計確認
+  - docs/design/01_fsm.md と docs/design/02_ws_protocol.md の `RESULT -> LOBBY` / ready / START 表示条件を確認し、必要なら先に更新する
+- [ ] 影響範囲特定
+  - BASE_SHA: `d80858a52aa33f5682fb2d0a0241cdc8843e2841`
+  - 対象レイヤ: `apps/worker` Durable Object FSM、`packages/shared` room snapshot / error definitions、`apps/client` room UI / store / focused tests
+  - Cloudflare 影響: Room FSM の `RESULT -> LOBBY` 復帰処理と host 権限の開始判定のみ。KV schema / Worker routing / monitoring source I/O は非対象
+- [ ] 目的
+  - `RESULT -> LOBBY` 復帰時に ready と前マッチ揮発状態を必ずクリアする
+  - host のみ `START` を常時表示し、条件未達時は遷移させず理由を表示する
+- [ ] 非目的
+  - 新しい独立 state の追加
+  - WebSocket message schema の大幅変更
+  - KV / lobby listing / source watcher / dependency 更新
+- [ ] 変更点
+  - worker: `RESULT -> LOBBY` 復帰処理で ready / round / score / submit / aggregation / tiebreak / match TTL をリセットし、開始条件関数を `LOBBY` 条件として整理する
+  - shared: 開始拒否理由の表現が不足していれば最小追加する
+  - client: host の `START` を常時表示し、非 host は実行不可にする。開始拒否理由を room UI に表示する
+  - tests: ready リセット、再戦時の非自動開始、host / non-host の START 挙動を追加または更新する
+- [ ] テスト観点
+  - `PLAYING -> RESULT -> LOBBY` 復帰後に全員 ready が解除される
+  - 復帰直後に `START_MATCH` を押しても条件未達なら `PICKING` に遷移しない
+  - host は `LOBBY` で常に `START` を見られ、非 host は実行できない
+  - 前マッチの揮発データと `match_ttl` が残留しない
+  - room / member / host / battle_type / play_mode は維持される
+- [ ] ロールバック方針
+  - worker/client/shared の論理単位で戻せるよう最小差分を維持する
+  - 想定外回帰が出た場合は `RESULT -> LOBBY` リセット処理と client の START 表示変更を個別に revert できる形にする
+- [ ] コミット分割計画
+  - 1. design/task update if needed
+  - 2. worker/shared FSM + rejection reasons
+  - 3. client UI/store/tests
