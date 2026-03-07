@@ -1,35 +1,21 @@
 import { startTransition, useEffect, useState } from "react";
+import { AppSidebar, type AppView } from "../components/AppSidebar";
 import { ErrorDialog } from "../components/ErrorDialog";
 import { LobbyPage } from "../pages/LobbyPage";
 import { RoomPage } from "../pages/RoomPage";
+import { SettingsPage } from "../pages/SettingsPage";
 import { StatsPage } from "../pages/StatsPage";
-import { runtimeConfig } from "../runtime/runtime-config";
 import { localResultArchiveService } from "../services/result-archive";
 import { statsArchiveService } from "../services/stats-archive";
 import { voiceAnnouncerService } from "../services/voice-announcer";
-import { SettingsPage } from "../pages/SettingsPage";
 import { roomStore, useRoomStore } from "../stores/room-store";
 import { sourceStore } from "../stores/source-store";
 import { useSettingsStore } from "../stores/settings-store";
-
-type AppView = "lobby" | "settings" | "room" | "stats";
-
-function getStatusTone(connectionStatus: string): string {
-  if (connectionStatus === "CONNECTED") {
-    return "ok";
-  }
-  if (connectionStatus === "ERROR" || connectionStatus === "CLOSED") {
-    return "danger";
-  }
-
-  return "warning";
-}
 
 export function App() {
   const savedSettings = useSettingsStore((state) => state.saved);
   const roomSnapshot = useRoomStore((state) => state.snapshot);
   const roomConnectionStatus = useRoomStore((state) => state.connectionStatus);
-  const roomConnectionDetail = useRoomStore((state) => state.connectionDetail);
   const dialog = useRoomStore((state) => state.errorDialog);
   const [activeView, setActiveView] = useState<AppView>("lobby");
 
@@ -67,93 +53,34 @@ export function App() {
     void sourceStore.start(savedSettings, { force: false });
   }, [savedSettings]);
 
+  function navigate(view: AppView): void {
+    startTransition(() => {
+      setActiveView(view);
+    });
+  }
+
   return (
-    <main className="app-shell">
-      <header className="app-header">
-        <div>
-          <p className="eyebrow">PR-12</p>
-          <h1>INFINITAS BPL Client</h1>
-        </div>
-        <div className="header-status">
-          {runtimeConfig.instanceId !== null ? (
-            <div className="status-stack">
-              <span className="status-label">Instance</span>
-              <strong>{runtimeConfig.instanceLabel}</strong>
-              <span className="status-muted">{runtimeConfig.instanceId}</span>
-            </div>
-          ) : null}
-          <div className="status-stack">
-            <span className="status-label">Player</span>
-            <strong>{savedSettings.displayName || "Unnamed player"}</strong>
-            <span className="status-muted">{savedSettings.source}</span>
-          </div>
-          <div className="status-stack">
-            <span className="status-label">Worker API</span>
-            <strong>{savedSettings.apiBaseUrl}</strong>
-            <span className={`status-pill ${getStatusTone(roomConnectionStatus)}`}>{roomConnectionStatus}</span>
-          </div>
-        </div>
-      </header>
+    <main className="flex h-screen w-screen overflow-hidden bg-[#1e1e1e]">
+      <AppSidebar activeView={activeView} hasRoom={roomSnapshot !== null} onNavigate={navigate} />
 
-      <section className="app-layout">
-        <nav className="side-nav">
-          <button
-            type="button"
-            className={activeView === "lobby" ? "nav-button active" : "nav-button"}
-            onClick={() => {
-              setActiveView("lobby");
+      <section className="content-stage custom-scrollbar">
+        {activeView === "lobby" ? (
+          <LobbyPage
+            onEnterRoom={() => {
+              navigate("room");
             }}
-          >
-            Lobby
-          </button>
-          <button
-            type="button"
-            className={activeView === "settings" ? "nav-button active" : "nav-button"}
-            onClick={() => {
-              setActiveView("settings");
+          />
+        ) : null}
+        {activeView === "settings" ? (
+          <SettingsPage
+            roomJoined={roomSnapshot !== null}
+            onNavigateToLobby={() => {
+              navigate("lobby");
             }}
-          >
-            Settings
-          </button>
-          <button
-            type="button"
-            className={activeView === "room" ? "nav-button active" : "nav-button"}
-            disabled={roomSnapshot === null}
-            onClick={() => {
-              setActiveView("room");
-            }}
-          >
-            Room
-          </button>
-          <button
-            type="button"
-            className={activeView === "stats" ? "nav-button active" : "nav-button"}
-            onClick={() => {
-              setActiveView("stats");
-            }}
-          >
-            Stats
-          </button>
-
-          <div className="side-card">
-            <span className="status-label">Room transport</span>
-            <strong>{roomConnectionStatus}</strong>
-            <span className="status-muted">{roomConnectionDetail}</span>
-          </div>
-        </nav>
-
-        <div className="content-stage">
-          {activeView === "lobby" ? (
-            <LobbyPage
-              onEnterRoom={() => {
-                setActiveView("room");
-              }}
-            />
-          ) : null}
-          {activeView === "settings" ? <SettingsPage roomJoined={roomSnapshot !== null} /> : null}
-          {activeView === "room" ? <RoomPage /> : null}
-          {activeView === "stats" ? <StatsPage /> : null}
-        </div>
+          />
+        ) : null}
+        {activeView === "room" ? <RoomPage /> : null}
+        {activeView === "stats" ? <StatsPage /> : null}
       </section>
 
       {dialog ? <ErrorDialog dialog={dialog} onClose={() => roomStore.clearError()} /> : null}

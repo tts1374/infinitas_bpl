@@ -3,7 +3,10 @@ mod models;
 mod parsers;
 mod watchers;
 
-use commands::{get_source_watcher_state, start_source_watcher, stop_source_watcher};
+use commands::{
+    get_source_watcher_state, pick_directory, start_source_watcher, stop_source_watcher,
+    validate_source_directory,
+};
 use commands::save_local_result_json;
 use watchers::SourceWatcherManager;
 
@@ -14,9 +17,11 @@ pub fn run() {
         .manage(SourceWatcherManager::default())
         .invoke_handler(tauri::generate_handler![
             get_source_watcher_state,
+            pick_directory,
             save_local_result_json,
             start_source_watcher,
-            stop_source_watcher
+            stop_source_watcher,
+            validate_source_directory
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

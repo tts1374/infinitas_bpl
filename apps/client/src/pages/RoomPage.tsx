@@ -16,7 +16,7 @@ import { useLocalResultArchiveStore } from "../services/result-archive";
 import { listCharts } from "../services/worker-api-client";
 import { useVoicePlaybackStore } from "../services/voice-announcer";
 import { roomStore, useRoomStore } from "../stores/room-store";
-import { useSettingsStore } from "../stores/settings-store";
+import { isVoicePlaybackEnabled, useSettingsStore } from "../stores/settings-store";
 import { formatDateTime, stringifyJson } from "../utils/format";
 
 function formatExpectedKey(
@@ -490,7 +490,13 @@ export function RoomPage() {
               <span className="status-label">Sound playback</span>
               <span className={`status-pill ${getVoiceTone(voicePhase)}`}>{voicePhase}</span>
             </div>
-            <strong>{savedSettings.voiceEnabled ? "Sound enabled" : "Sound disabled"}</strong>
+            <strong>
+              {savedSettings.voiceMuted
+                ? "Sound muted"
+                : isVoicePlaybackEnabled(savedSettings)
+                  ? `Volume ${savedSettings.voiceVolume}`
+                  : "Sound disabled"}
+            </strong>
             <span className="status-muted">{voiceDetail}</span>
             <span className="status-muted">Pending cues: {voicePendingCues}</span>
             <span className="status-muted">Updated: {formatDateTime(voiceLastUpdatedAt)}</span>
