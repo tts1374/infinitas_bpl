@@ -45,6 +45,15 @@ interface StartSourceWatcherRequest {
   sourcePaths: SourcePaths;
 }
 
+interface ValidateSourceDirectoryRequest {
+  source: SourceType;
+  directoryPath: string;
+}
+
+export interface ValidateSourceDirectoryResponse {
+  missingPaths: string[];
+}
+
 export interface SaveLocalResultJsonRequest {
   roomId: string;
   createdAt: string | null;
@@ -126,6 +135,26 @@ export async function saveLocalResultJson(
 
   const { invoke } = await import("@tauri-apps/api/core");
   return invoke<SaveLocalResultJsonResponse>("save_local_result_json", { request });
+}
+
+export async function pickDirectory(): Promise<string | null> {
+  if (!isTauriRuntime()) {
+    throw new Error("Directory picker is available only inside the Tauri desktop app.");
+  }
+
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<string | null>("pick_directory");
+}
+
+export async function validateSourceDirectory(
+  request: ValidateSourceDirectoryRequest,
+): Promise<ValidateSourceDirectoryResponse> {
+  if (!isTauriRuntime()) {
+    return { missingPaths: [] };
+  }
+
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<ValidateSourceDirectoryResponse>("validate_source_directory", { request });
 }
 
 export async function speakNativeTts(request: NativeTtsSpeakRequest): Promise<void> {
