@@ -1,4 +1,4 @@
-import type { PlayerRole, RoomState, SourceType, SubmissionStatus, SubmittedBy } from "../enums";
+import type { CloseReason, PlayerRole, RoomState, SourceType, SubmissionStatus, SubmittedBy } from "../enums";
 import type { ISO8601String } from "./common";
 import type { ExpectedKey } from "./expected-key";
 import type { FrozenRound } from "./frozen-round";
@@ -38,7 +38,7 @@ export interface CurrentRoundSnapshot {
 export interface RoomTimers {
   ready_check_deadline: ISO8601String | null;
   picking_deadline: ISO8601String | null;
-  match_deadline: ISO8601String;
+  match_deadline: ISO8601String | null;
   result_deadline: ISO8601String | null;
 }
 
@@ -52,7 +52,8 @@ export interface RoomStateSnapshot {
   frozen_rounds: FrozenRound[];
   current_round: CurrentRoundSnapshot | null;
   timers: RoomTimers;
+  result_ready: boolean;
   created_at?: ISO8601String;
   closed_at?: ISO8601String | null;
-  close_reason?: string | null;
+  close_reason?: CloseReason | null;
 }

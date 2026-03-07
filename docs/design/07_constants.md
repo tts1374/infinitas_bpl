@@ -24,11 +24,11 @@ Ph1で固定するタイマー値、制約値、表示/運用上の定数を整�
 - `ROUND_MUSIC_SELECT_SECONDS = 45`
   - ROUND_BEGINから45秒間は `MUSIC SELECT`
 - `ROUND_STAGE_COUNTDOWN_AT_SECONDS = 35`
-  - ROUND_BEGINから35秒後に `10..1`
+  - ROUND_BEGINから35秒後に残り10秒カウント開始（`count_beep`）
 - `ROUND_START_CALL_AT_SECONDS = 52`
-  - ROUND_BEGINから52秒後に `3,2,1,Let's go`
+  - ROUND_BEGINから52秒後に残り3秒カウント開始（`count_beep`）
 - `ROUND_PLAY_BEGIN_AT_SECONDS = 55`
-  - ROUND_BEGINから55秒後に実プレイ開始
+  - ROUND_BEGINから55秒後に実プレイ開始（`count_go`）
 
 ## 1.3 マッチ全体
 - `MATCH_TTL_MINUTES = 30`
@@ -155,19 +155,25 @@ Ph1で固定するタイマー値、制約値、表示/運用上の定数を整�
 
 ---
 
-## 9. 音声通知定数
+## 9. 音通知定数
 
 ## 9.1 再生責務
-- `VOICE_PLAYBACK_LOCAL_ONLY = true`
+- `SOUND_PLAYBACK_LOCAL_ONLY = true`
 
-## 9.2 必須再生イベント
-- `VOICE_STAGE_CALL = true`
-- `VOICE_COUNTDOWN_10_TO_1 = true`
-- `VOICE_START_CALL = true`
+## 9.2 必須SE
+- `count_beep`
+- `match_found`
+- `phase_locked`
+- `count_go`
+- `cancel`
+- `error`
 
-## 9.3 状態遷移時
-- `VOICE_CLEAR_QUEUE_ON_STATE_CHANGE = true`
-- `VOICE_STOP_CURRENT_ON_STATE_CHANGE = true`
+## 9.3 間隔制御
+- `MATCH_FOUND_MIN_INTERVAL_MS = 400`
+
+## 9.4 状態遷移時
+- `SOUND_CLEAR_QUEUE_ON_STATE_CHANGE = true`
+- `SOUND_STOP_CURRENT_ON_STATE_CHANGE = true`
 
 ---
 

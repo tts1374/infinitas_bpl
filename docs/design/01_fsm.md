@@ -34,12 +34,23 @@
 - `PLAYING` -> `CLOSED`（全ラウンド消化 or match_ttl到達。`RESULT_READY` は保持したまま閉じる）
 - 任意状態 -> `CLOSED`（ホスト切断/終了、ready_check_ttl超過）
 
+### CLOSED の内部終了理由（close_reason）
+- `ALL_ROUNDS_COMPLETED`
+- `MATCH_TTL_EXPIRED`
+- `READY_CHECK_TTL_EXPIRED`
+- `HOST_DISCONNECTED`
+- `HOST_ABORTED`
+- `PICKING_ABORTED`
+- `FORCE_CLOSED`
+
+`CLOSED` の UI/SE 分岐は `RoomState` ではなく `close_reason` を正とする。
+
 ## 4. タイマー（固定値 / DOが管理）
 - `ready_check_ttl = 20min`（READY_CHECK開始から。超過で解散）
 - `picking_ttl = 120s`（PICKING開始から。超過で未pick者をランダム補完して凍結）
 - `round_soft_ttl = 5min`（Let's go 以降。超過で未確定者をTIMEOUT確定）
 - `host_skip_unlock_seconds = 240s`（ラウンド開始から4分経過後にホスト代理SKIP可）
-- `match_ttl = 30min`（PICKING開始またはPLAYING開始から。どちら基準かは実装で1つに固定）
+- `match_ttl = 30min`（`START_MATCH` 成功時、すなわち `PICKING` 開始時から固定）
 - `rejoin_cooldown = 10s`（退出後の同一ルーム再入室抑止。クライアント/UI側でも表示）
 
 ## 5. ルーム作成設定（RoomSettings / Ph1）
@@ -130,15 +141,17 @@
 - `round_started_at` は演出開始時刻（`ROUND_BEGIN`）を指す
 - `PLAYING +0s`:
   - 表示: `MUSIC SELECT:45`
-  - 音声: `1st/2nd/final stage`, `title`, `play_style`, `difficulty`
+  - 音声: ステージ/曲情報読み上げを入れる場合もよいが、カウントダウン進行には使わない
 - `PLAYING +35s`:
-  - 音声: `10..1, Music Selected`
+  - 残り10秒から1秒まで `count_beep`
 - `PLAYING +45s`:
   - 表示: `PLAY START:10`
+  - `phase_locked`
 - `PLAYING +52s`:
-  - 音声: `3,2,1, Let's go`
+  - 残り3秒から1秒まで `count_beep`
 - `PLAYING +55s`:
   - 実プレイ開始
+  - `count_go`
   - `round_soft_ttl` はこの時点から計測する
 
 ### 9.8 離脱
@@ -172,3 +185,4 @@
 - 対戦正常終了時は `RESULT_READY` を保持したまま `CLOSED` に入り、ルーム画面上で結果を表示可能とする
 - 部分結果は各クライアントのローカル保存（snapshot）で表示可能とする
 - `CLOSED` 遷移時にKVのロビー情報を削除する
+- `cancel` SE は `close_reason != ALL_ROUNDS_COMPLETED` のときのみ1回だけ鳴らす

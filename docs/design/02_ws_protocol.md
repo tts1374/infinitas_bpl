@@ -51,21 +51,21 @@
 - `READY_SET`
   - payload: `{ ready: boolean }`
 - `START_MATCH`（ホスト）
-  - payload: `{}`
+  - payload: `{ request_id: string }`
 
 ### 3.3 PICKING
 - `PICK_SUBMIT`
-  - payload: `{ pick_chart_key: string }`
+  - payload: `{ request_id: string, pick_chart_key: string }`
 
 ### 3.4 PLAYING（提出/スキップ/強制）
 - `RESULT_SUBMIT`
-  - payload: `{ round_index: number, observed_key: ExpectedKey, metric_value: number, source_meta?: object }`
+  - payload: `{ request_id: string, round_index: number, observed_key: ExpectedKey, metric_value: number, source_meta?: object }`
 - `SKIP_SELF`
-  - payload: `{ round_index: number, reason: "UNOWNED"|"TECH"|"OTHER" }`
+  - payload: `{ request_id: string, round_index: number, reason: "UNOWNED"|"TECH"|"OTHER" }`
 - `SKIP_HOST_ASSIGN`（ホスト）
-  - payload: `{ round_index: number, target_player_id: string, reason: "UNOWNED"|"TECH"|"OTHER" }`
+  - payload: `{ request_id: string, round_index: number, target_player_id: string, reason: "UNOWNED"|"TECH"|"OTHER" }`
 - `FORCE_ADVANCE`（ホスト）
-  - payload: `{}`
+  - payload: `{ request_id: string }`
 
 ### 3.5 状態同期/疎通
 - `STATE_GET`
@@ -83,7 +83,9 @@
 - `ROOM_UPDATED`
   - payload: `{ room_state_snapshot: RoomStateSnapshot }`
 - `ROOM_CLOSED`
-  - payload: `{ reason: string }`
+  - payload: `{ close_reason: CloseReason, closed_at: "ISO8601", result_ready: boolean, event_id: string }`
+- `ROOM_NOTIFICATION`
+  - payload: `{ kind: "match_found"|"count_beep"|"phase_locked"|"count_go"|"cancel"|"error", event_id: string, scheduled_at: "ISO8601" }`
 
 ### 4.2 READY_CHECK
 - `READY_CHECK_OPENED`
@@ -171,15 +173,18 @@
   "timers": {
     "ready_check_deadline": "ISO8601|null",
     "picking_deadline": "ISO8601|null",
-    "match_deadline": "ISO8601",
+    "match_deadline": "ISO8601|null",
     "result_deadline": "ISO8601|null"
-  }
+  },
+  "result_ready": false,
+  "close_reason": "CloseReason|null"
 }
 ```
 
 ## 6. DO側ガード（必須）
 - 状態ガード: 状態に合わない操作は `ERROR` または `*_REJECTED`
 - 冪等化: `(player_id, client_msg_id)` は二重適用しない
+- 操作系は `(player_id, type, request_id)` でも二重適用しない
 - 先着順: `PICK_SUBMIT` の採用順はDO受信順（DOがaccepted_at付与）
 - 代理SKIP: `now - round_started_at >= 240s` かつ target未確定のみ許可
 - START_MATCH: `players >= 2` かつ `room_state=READY_CHECK` かつ全員READY のみ

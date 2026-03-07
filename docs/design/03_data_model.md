@@ -7,7 +7,7 @@
 - 公開ロビー一覧はKVに「軽量メタ」だけを保存し、DO本体の状態とは分離する
 
 ## 1. 永続層の方針（Ph1）
-- DO本体の状態: 原則DOメモリ（必要ならDO Storageに拡張可能）
+- DO本体の状態: DO Storage に永続保存し、alarm / reconnect / hibernation 復帰後も復元可能にする
 - 公開ロビー一覧: Cloudflare KV
 - ローカル復元: クライアントが `RoomStateSnapshot` をラウンド確定ごとにローカル保存（JSON）
 
@@ -23,10 +23,12 @@
 - `created_at: datetime`
 - `ready_check_deadline: datetime|null`
 - `picking_deadline: datetime|null`
-- `match_deadline: datetime`（開始基準は1つに固定。推奨: PICKING開始時点）
+- `match_deadline: datetime|null`（`START_MATCH` 成功時、すなわち `PICKING` 開始時点で初めて確定）
 - `result_deadline: datetime|null`（互換用。通常フローでは `null`）
 - `closed_at: datetime|null`
-- `close_reason: string|null`
+- `close_reason: ALL_ROUNDS_COMPLETED|MATCH_TTL_EXPIRED|READY_CHECK_TTL_EXPIRED|HOST_DISCONNECTED|HOST_ABORTED|PICKING_ABORTED|FORCE_CLOSED|null`
+- `result_ready_payload: object|null`
+- `event_seq: int`
 
 ### 2.2 RoomSettings（Ph1）
 - `mode: ARENA|BPL`
@@ -90,6 +92,12 @@
 - `first_seen_at: datetime`
 - `type: string`
 - `hash: string|null`（payload fingerprint。任意）
+
+### 2.9 RequestIdLog（操作冪等管理）
+- `player_id: string`
+- `type: string`
+- `request_id: string`
+- `first_applied_at: datetime`
 
 ## 3. KV（公開ロビー軽量メタ）
 
