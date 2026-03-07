@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "../../.tmp/client-stats-tests",
+    "rootDir": "../..",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "verbatimModuleSyntax": false
+  },
+  "include": [
+    "src/features/stats/models.ts",
+    "src/features/stats/rating.ts",
+    "src/features/stats/stats.ts",
+    "src/features/stats/stats.test.ts"
+  ],
+  "exclude": []
+}

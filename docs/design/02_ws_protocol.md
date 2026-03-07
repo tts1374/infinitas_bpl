@@ -107,7 +107,7 @@
 - `ROUND_BEGIN`
   - payload: `{ round_index: number, expected_key: ExpectedKey, round_started_at: "ISO8601", soft_ttl_seconds: number }`
 - `PLAYER_ROUND_CONFIRMED`
-  - payload: `{ round_index: number, player_id: string, status: "PLAYED"|"SKIPPED"|"TIMEOUT", metric_value: number, reason?: string|null, submitted_at: "ISO8601", submitted_by: "SELF"|"HOST"|"SYSTEM" }`
+  - payload: `{ round_index: number, player_id: string, status: "PLAYED"|"SKIPPED"|"TIMEOUT", metric_value: number, reason?: string|null, submitted_at: "ISO8601", submitted_by: "SELF"|"HOST"|"SYSTEM", source_meta?: object|null }`
 - `ROUND_ENDED`
   - payload: `{ round_index: number }`
 - `FORCE_ADVANCE_APPLIED`
@@ -116,6 +116,7 @@
 ### 4.5 RESULT
 - `RESULT_READY`
   - payload: `{ summary: object, per_round: object, per_player: object }`
+  - 備考: `per_round.rounds[].results[]` には `status / metric_value / reason / submitted_at / submitted_by / source_meta?` を含めてもよい
   - 備考: 通常フローでは `PLAYING -> CLOSED` 遷移直前または同時に配信し、`CLOSED` 画面でも保持して表示する
 
 ### 4.6 同期/エラー
@@ -167,7 +168,7 @@
     "round_started_at": "ISO8601",
     "soft_ttl_seconds": 300,
     "confirmed": [
-      { "player_id":"string", "status":"PLAYED|SKIPPED|TIMEOUT", "metric_value": 1234, "reason":"UNOWNED|TECH|OTHER|null", "submitted_by":"SELF|HOST|SYSTEM" }
+      { "player_id":"string", "status":"PLAYED|SKIPPED|TIMEOUT", "metric_value": 1234, "reason":"UNOWNED|TECH|OTHER|null", "submitted_at":"ISO8601", "submitted_by":"SELF|HOST|SYSTEM", "source_meta": { "...": "..." } }
     ]
   },
   "timers": {

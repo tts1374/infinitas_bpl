@@ -78,6 +78,10 @@
 - `submitted_by: SELF|HOST|SYSTEM`
 - `source_meta: object|null`（監視ソース由来の補助情報）
 
+備考:
+- `source_meta` はラウンド中の状態同期と `RESULT_READY` 集計へ引き継いでよい
+- 少なくとも `score` / `misscount` / `title` / `title_search_key` / `source` / `timestamp` を保持できる形にする
+
 ### 2.7 UnmatchedTitleLog（未同定ログ）
 - `raw_title: string`
 - `normalized_title_search_key: string`
@@ -211,6 +215,8 @@
 - fingerprint = `(title_key, chart_difficulty, score_cur, bp)` を last_seen として保持
 
 ## 8. ローカル保存（クライアント）
+
+### 8.1 ルーム結果アーカイブ
 - 保存単位: ラウンド確定ごと
 - 保存内容: `RoomStateSnapshot`（WS仕様と同一）
 - 目的: ホスト落ち/切断時でも部分結果表示が可能
@@ -223,3 +229,65 @@
   "room_state_snapshot": { "...": "..." }
 }
 ```
+
+### 8.2 統計アーカイブ
+- 保存主体: client ローカル永続層
+- 目的:
+  - レート再計算
+  - 曲別勝率ランキング
+  - 直近勝敗履歴
+  - 安定度集計
+- 保存対象:
+  - `matches`
+    - `match_id`
+    - `started_at`
+    - `ended_at`
+    - `battle_type: ARENA|BPL|PRIVATE`
+    - `play_mode: SP|DP`
+    - `opponent_count`
+    - `opponent_id / opponent_name`
+    - `match_result: WIN|LOSE|DRAW`
+    - `match_point_total`
+    - `is_rated`
+    - `rating_before`
+    - `rating_after`
+    - `rating_delta`
+    - `is_complete`
+    - `invalid_reason`
+  - `match_games`
+    - `match_game_id`
+    - `match_id`
+    - `played_at`
+    - `game_index`
+    - `chart_id`
+    - `battle_type: ARENA|BPL|PRIVATE`
+    - `play_mode: SP|DP`
+    - `game_result: WIN|LOSE|DRAW`
+    - `round_point`
+    - `my_ex_score`
+    - `opponent_ex_score`
+    - `my_bp`
+    - `opponent_bp`
+    - `result_confirmed_at`
+  - `play_results`
+    - `play_result_id`
+    - `played_at`
+    - `battle_type: ARENA|BPL|PRIVATE`
+    - `play_mode: SP|DP`
+    - `chart_id`
+    - `my_ex_score`
+    - `my_bp`
+  - `personal_bests`
+    - `chart_id`
+    - `play_mode`
+    - `best_ex_score`
+    - `best_bp`
+    - `best_played_at`
+    - `source_play_result_id`
+- 集計ルール:
+  - レート系列は `ARENA_SP` / `ARENA_DP` / `BPL_SP` / `BPL_DP` を分離する
+  - レート更新は `matches` を基準にマッチ単位で行う
+  - ARENA は `match_games` を集約して最終順位を決め、pairwise 擬似対戦で `matches.rating_delta` を算出する
+  - `PRIVATE` はレート対象外だが `play_results` と安定度集計には含める
+  - 曲別勝率ランキングは `match_games` を基準に集計する
+  - 曲識別は表示名ではなく `chart_id` を正とする

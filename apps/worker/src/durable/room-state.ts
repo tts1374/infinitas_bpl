@@ -127,6 +127,7 @@ export interface RoundConfirmationEvent {
   reason: SubmissionReason;
   submitted_at: string;
   submitted_by: SubmittedBy;
+  source_meta: JsonObject | null;
 }
 
 export interface RoundEndedEvent {
@@ -312,6 +313,7 @@ function cloneRoundConfirmation(entry: RoundConfirmationEvent): RoundConfirmatio
     reason: entry.reason,
     submitted_at: entry.submitted_at,
     submitted_by: entry.submitted_by,
+    source_meta: entry.source_meta,
   };
 }
 
@@ -653,7 +655,7 @@ export class RoomLobbyState {
     roundIndex: number,
     observedKey: ExpectedKey,
     metricValue: number,
-    _sourceMeta: JsonObject | null,
+    sourceMeta: JsonObject | null,
     now: Date,
   ): ResultSubmitResult {
     if (this.roomState !== "PLAYING" || this.currentRound === null) {
@@ -684,6 +686,7 @@ export class RoomLobbyState {
       reason: null,
       submitted_by: "SELF",
       submitted_at: now,
+      source_meta: sourceMeta,
     });
     const transition = this.applyRoundConfirmations([confirmation], now, {});
     if (transition === null) {
@@ -1167,6 +1170,7 @@ export class RoomLobbyState {
     reason: SubmissionReason;
     submitted_by: SubmittedBy;
     submitted_at: Date;
+    source_meta: JsonObject | null;
   }): RoundConfirmationEvent {
     return {
       round_index: input.round_index,
@@ -1176,6 +1180,7 @@ export class RoomLobbyState {
       reason: input.reason,
       submitted_by: input.submitted_by,
       submitted_at: input.submitted_at.toISOString(),
+      source_meta: input.source_meta,
     };
   }
 
@@ -1194,6 +1199,7 @@ export class RoomLobbyState {
       reason,
       submitted_by: submittedBy,
       submitted_at: submittedAt,
+      source_meta: null,
     });
   }
 
@@ -1210,6 +1216,7 @@ export class RoomLobbyState {
       reason: "UNMAPPED_TIMEOUT",
       submitted_by: "SYSTEM",
       submitted_at: submittedAt,
+      source_meta: null,
     });
   }
 
@@ -1619,6 +1626,7 @@ export class RoomLobbyState {
             reason: confirmation?.reason ?? null,
             submitted_at: confirmation?.submitted_at ?? null,
             submitted_by: confirmation?.submitted_by ?? null,
+            source_meta: confirmation?.source_meta ?? null,
             rank,
             arena_points: arenaPoints,
           };
@@ -1689,6 +1697,7 @@ export class RoomLobbyState {
           reason: confirmation?.reason ?? null,
           submitted_at: confirmation?.submitted_at ?? null,
           submitted_by: confirmation?.submitted_by ?? null,
+          source_meta: confirmation?.source_meta ?? null,
           round_win: winnerPlayerId === playerId,
         };
         perPlayerRounds.get(playerId)?.push(roundResult);

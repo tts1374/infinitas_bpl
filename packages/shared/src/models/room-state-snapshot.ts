@@ -1,5 +1,5 @@
 import type { CloseReason, PlayerRole, RoomState, SourceType, SubmissionStatus, SubmittedBy } from "../enums";
-import type { ISO8601String } from "./common";
+import type { ISO8601String, JsonObject } from "./common";
 import type { ExpectedKey } from "./expected-key";
 import type { FrozenRound } from "./frozen-round";
 import type { RoomPick } from "./room-pick";
@@ -25,6 +25,7 @@ export interface CurrentRoundConfirmedPlayer {
   reason: SubmissionReason;
   submitted_by: SubmittedBy;
   submitted_at: ISO8601String;
+  source_meta: JsonObject | null;
 }
 
 export interface CurrentRoundSnapshot {
