@@ -53,7 +53,7 @@
 - `rejoin_cooldown = 10s`（退出後の同一ルーム再入室抑止。クライアント/UI側でも表示）
 
 ## 5. ルーム作成設定（RoomSettings / Ph1）
-- `visibility`: `PUBLIC | UNLISTED | PRIVATE`
+- `visibility`: `PUBLIC | PRIVATE`
 - `join_code`: string|null
 - `mode`: `ARENA | BPL`
 - `win_metric`: `SCORE | MISSCOUNT`
@@ -63,9 +63,14 @@
 - `max_players`: `2 | 3 | 4`
 
 ### 公開ロビー（KV）
-- `visibility != PRIVATE` のルームはロビーに掲載（KVへ登録）
-- KVには「軽量メタ」だけを保存（詳細状態はDOが保持）
-  - room_id, join_code有無（値は保存しない）, mode, play_style, level_filter, win_metric, room_comment, max_players, created_at, expires_at
+- `visibility = PUBLIC` のルームだけを公開ロビー候補として扱う
+- KVには「軽量メタ + public_lobby_candidate」だけを保存し、詳細状態はDOを正とする
+  - room_id, visibility, public_lobby_candidate, join_code有無（値は保存しない）, mode, play_style, level_filter, win_metric, room_comment, max_players, created_at, expires_at
+- `public_lobby_candidate = true` の条件は `visibility = PUBLIC` かつ `room_state = LOBBY`
+- `public_lobby_candidate` は `LOBBY` 入り / `LOBBY` 離脱 / ルーム終了（CLOSED）時だけ更新する
+- Worker の一覧APIは KV の候補を読んだ後、対応する DO から `room_state`、`players.length`、`settings.max_players` を導出して人数表示と満員判定を確定する
+- DO 参照成功時に `room_state != LOBBY` または満員と判定できた候補は一覧から除外する
+- DO 参照失敗時は一覧全体を失敗させず候補を残し、人数表示を unavailable として扱う
 - ルーム終了（CLOSED）時にKVから削除
 
 ## 6. LOBBY（参加・設定閲覧）

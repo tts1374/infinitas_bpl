@@ -1,7 +1,8 @@
-import { LEVEL_FILTERS, MODES, PLAY_STYLES, ROOM_LIST_PAGE_SIZE } from "@infinitas/shared";
+import { LEVEL_FILTERS, MODES, PLAY_STYLES, ROOM_LIST_PAGE_SIZE, type RoomListingEntry } from "@infinitas/shared";
 import type { ListRoomsResponse } from "../types/api";
 import type { WorkerEnv } from "../types/env";
 import { listLobbyRooms } from "../kv/lobby-kv";
+import { getLobbyRoomSummary } from "./room-do";
 import { asEnumValue, parsePositiveInt } from "../utils/validation";
 
 function parseLimit(rawLimit: string | null): number {
@@ -48,9 +49,55 @@ export async function listRooms(env: WorkerEnv, url: URL): Promise<ListRoomsResp
   }
 
   const listResult = await listLobbyRooms(env, query);
+  const summaryResults = await Promise.allSettled(
+    listResult.rooms.map((room) => getLobbyRoomSummary(env, room.room_id)),
+  );
+  const rooms: RoomListingEntry[] = [];
+
+  for (const [index, room] of listResult.rooms.entries()) {
+    const summaryResult = summaryResults[index];
+    if (summaryResult !== undefined && summaryResult.status === "fulfilled") {
+      const summary = summaryResult.value;
+      if (summary.room_state !== "LOBBY" || summary.current_members >= summary.max_players) {
+        continue;
+      }
+
+      rooms.push({
+        room_id: room.room_id,
+        visibility: room.visibility,
+        has_join_code: room.has_join_code,
+        mode: room.mode,
+        win_metric: room.win_metric,
+        play_style: room.play_style,
+        level_filter: room.level_filter,
+        room_comment: room.room_comment,
+        current_members: summary.current_members,
+        max_players: summary.max_players,
+        created_at: room.created_at,
+        expires_at: room.expires_at,
+      });
+      continue;
+    }
+
+    rooms.push({
+      room_id: room.room_id,
+      visibility: room.visibility,
+      has_join_code: room.has_join_code,
+      mode: room.mode,
+      win_metric: room.win_metric,
+      play_style: room.play_style,
+      level_filter: room.level_filter,
+      room_comment: room.room_comment,
+      current_members: null,
+      max_players: room.max_players,
+      created_at: room.created_at,
+      expires_at: room.expires_at,
+    });
+  }
 
   return {
-    rooms: listResult.rooms,
+    rooms,
     next_cursor: listResult.nextCursor,
+    active_room_count: listResult.activeRoomCount,
   };
 }

@@ -236,6 +236,14 @@ const DEFAULT_SETTINGS: RoomSettings = {
   max_players: 4,
 };
 
+function normalizeSettingsVisibility(settings: RoomSettings): RoomSettings {
+  const visibility = settings.visibility as RoomSettings["visibility"] | "UNLISTED";
+  return {
+    ...settings,
+    visibility: visibility === "UNLISTED" ? "PRIVATE" : visibility,
+  };
+}
+
 function toIsoString(value: Date | null): string | null {
   return value === null ? null : value.toISOString();
 }
@@ -420,7 +428,7 @@ export class RoomLobbyState {
 
     this.initialized = true;
     this.roomId = input.room_id;
-    this.settings = { ...input.settings };
+    this.settings = normalizeSettingsVisibility({ ...input.settings });
     this.createdAt = createdAt;
     this.roomState = "LOBBY";
     this.readyCheckDeadline = computeReadyCheckDeadline(createdAt);
@@ -1152,7 +1160,7 @@ export class RoomLobbyState {
     this.initialized = true;
     this.roomId = record.room_id;
     this.roomState = record.room_state === "READY_CHECK" ? "LOBBY" : record.room_state;
-    this.settings = { ...record.settings };
+    this.settings = normalizeSettingsVisibility({ ...record.settings });
     this.hostPlayerId = record.host_player_id;
     this.createdAt = parseRequiredDate(record.created_at);
     this.matchDeadline = parseOptionalDate(record.match_deadline);

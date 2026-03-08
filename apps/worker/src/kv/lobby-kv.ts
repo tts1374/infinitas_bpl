@@ -4,34 +4,47 @@ import {
   PLAY_STYLES,
   ROOM_LIST_PAGE_SIZE,
   type RoomListQuery,
-  type RoomListingEntry,
-  type Visibility,
   WIN_METRICS,
 } from "@infinitas/shared";
+import type { MaxPlayersOption } from "@infinitas/shared/constants/room";
+import type { ISO8601String } from "@infinitas/shared/models/common";
 import type { WorkerEnv } from "../types/env";
 import { asEnumValue, isRecord } from "../utils/validation";
 
 const ROOM_KEY_PREFIX = "room:";
 const MAX_SCAN_ITERATIONS = 200;
+const KV_SCAN_PAGE_SIZE = 1000;
+
+export interface StoredLobbyRoomEntry {
+  room_id: string;
+  visibility: "PUBLIC";
+  public_lobby_candidate: boolean;
+  has_join_code: boolean;
+  mode: "ARENA" | "BPL";
+  win_metric: "SCORE" | "MISSCOUNT";
+  play_style: "SP" | "DP";
+  level_filter: "ANY" | "LV8_10" | "LV10" | "LV11" | "LV12";
+  room_comment: string;
+  max_players: MaxPlayersOption;
+  created_at: ISO8601String;
+  expires_at: ISO8601String;
+}
 
 export interface ListLobbyRoomsInput extends RoomListQuery {
   now?: Date;
 }
 
 export interface ListLobbyRoomsOutput {
-  rooms: RoomListingEntry[];
+  rooms: StoredLobbyRoomEntry[];
   nextCursor: string | null;
+  activeRoomCount: number;
 }
 
 function roomKvKey(roomId: string): string {
   return `${ROOM_KEY_PREFIX}${roomId}`;
 }
 
-function isPublicVisibility(visibility: Visibility): visibility is "PUBLIC" | "UNLISTED" {
-  return visibility === "PUBLIC" || visibility === "UNLISTED";
-}
-
-function parseStoredRoomListing(rawValue: string): RoomListingEntry | null {
+function parseStoredRoomListing(rawValue: string): StoredLobbyRoomEntry | null {
   let decoded: unknown;
   try {
     decoded = JSON.parse(rawValue);
@@ -44,7 +57,9 @@ function parseStoredRoomListing(rawValue: string): RoomListingEntry | null {
   }
 
   const roomId = typeof decoded.room_id === "string" ? decoded.room_id : null;
-  const visibility = asEnumValue(decoded.visibility, ["PUBLIC", "UNLISTED", "PRIVATE"] as const);
+  const visibility = asEnumValue(decoded.visibility, ["PUBLIC", "PRIVATE", "UNLISTED"] as const);
+  const publicLobbyCandidate =
+    typeof decoded.public_lobby_candidate === "boolean" ? decoded.public_lobby_candidate : true;
   const hasJoinCode = typeof decoded.has_join_code === "boolean" ? decoded.has_join_code : null;
   const mode = asEnumValue(decoded.mode, MODES);
   const winMetric = asEnumValue(decoded.win_metric, WIN_METRICS);
@@ -61,7 +76,7 @@ function parseStoredRoomListing(rawValue: string): RoomListingEntry | null {
   if (
     roomId === null ||
     visibility === undefined ||
-    !isPublicVisibility(visibility) ||
+    visibility !== "PUBLIC" ||
     hasJoinCode === null ||
     mode === undefined ||
     winMetric === undefined ||
@@ -77,7 +92,8 @@ function parseStoredRoomListing(rawValue: string): RoomListingEntry | null {
 
   return {
     room_id: roomId,
-    visibility,
+    visibility: "PUBLIC",
+    public_lobby_candidate: publicLobbyCandidate,
     has_join_code: hasJoinCode,
     mode,
     win_metric: winMetric,
@@ -90,9 +106,17 @@ function parseStoredRoomListing(rawValue: string): RoomListingEntry | null {
   };
 }
 
-function applyRoomFilters(entry: RoomListingEntry, query: RoomListQuery, nowMs: number): boolean {
+function isUnexpired(entry: StoredLobbyRoomEntry, nowMs: number): boolean {
   const expiresAtMs = Date.parse(entry.expires_at);
   if (!Number.isFinite(expiresAtMs) || expiresAtMs <= nowMs) {
+    return false;
+  }
+
+  return true;
+}
+
+function applyRoomFilters(entry: StoredLobbyRoomEntry, query: RoomListQuery, nowMs: number): boolean {
+  if (!isUnexpired(entry, nowMs) || !entry.public_lobby_candidate) {
     return false;
   }
 
@@ -117,14 +141,83 @@ function applyRoomFilters(entry: RoomListingEntry, query: RoomListQuery, nowMs: 
 
 export async function putLobbyRoom(
   env: WorkerEnv,
-  roomListingEntry: RoomListingEntry,
+  roomListingEntry: StoredLobbyRoomEntry,
 ): Promise<void> {
   const key = roomKvKey(roomListingEntry.room_id);
   await env.ROOM_LOBBY_KV.put(key, JSON.stringify(roomListingEntry));
 }
 
+export async function setLobbyRoomCandidate(
+  env: WorkerEnv,
+  roomId: string,
+  publicLobbyCandidate: boolean,
+): Promise<void> {
+  const key = roomKvKey(roomId);
+  const rawValue = await env.ROOM_LOBBY_KV.get(key, "text");
+  if (rawValue === null) {
+    return;
+  }
+
+  const parsed = parseStoredRoomListing(rawValue);
+  if (parsed === null) {
+    return;
+  }
+
+  if (parsed.public_lobby_candidate === publicLobbyCandidate) {
+    return;
+  }
+
+  await env.ROOM_LOBBY_KV.put(
+    key,
+    JSON.stringify({
+      ...parsed,
+      public_lobby_candidate: publicLobbyCandidate,
+    }),
+  );
+}
+
 export async function deleteLobbyRoom(env: WorkerEnv, roomId: string): Promise<void> {
   await env.ROOM_LOBBY_KV.delete(roomKvKey(roomId));
+}
+
+async function countActiveLobbyRooms(env: WorkerEnv, nowMs: number): Promise<number> {
+  let activeRoomCount = 0;
+  let cursor: string | undefined;
+  let iterations = 0;
+
+  while (iterations < MAX_SCAN_ITERATIONS) {
+    iterations += 1;
+
+    const listOptions: { prefix: string; limit: number; cursor?: string } = {
+      prefix: ROOM_KEY_PREFIX,
+      limit: KV_SCAN_PAGE_SIZE,
+    };
+    if (cursor !== undefined) {
+      listOptions.cursor = cursor;
+    }
+
+    const listResult = await env.ROOM_LOBBY_KV.list(listOptions);
+    const keyNames = listResult.keys.map((key) => key.name);
+    const rawValues = await Promise.all(keyNames.map((keyName) => env.ROOM_LOBBY_KV.get(keyName, "text")));
+    for (const rawValue of rawValues) {
+      if (rawValue === null) {
+        continue;
+      }
+
+      const parsed = parseStoredRoomListing(rawValue);
+      if (parsed !== null && parsed.public_lobby_candidate && isUnexpired(parsed, nowMs)) {
+        activeRoomCount += 1;
+      }
+    }
+
+    if (listResult.list_complete || listResult.cursor === undefined) {
+      break;
+    }
+
+    cursor = listResult.cursor;
+  }
+
+  return activeRoomCount;
 }
 
 export async function listLobbyRooms(
@@ -133,7 +226,8 @@ export async function listLobbyRooms(
 ): Promise<ListLobbyRoomsOutput> {
   const nowMs = (input.now ?? new Date()).getTime();
   const limit = Math.max(1, Math.min(input.limit ?? ROOM_LIST_PAGE_SIZE, ROOM_LIST_PAGE_SIZE));
-  const rooms: RoomListingEntry[] = [];
+  const rooms: StoredLobbyRoomEntry[] = [];
+  const activeRoomCountPromise = countActiveLobbyRooms(env, nowMs);
 
   let cursor = input.cursor;
   let nextCursor: string | null = null;
@@ -186,5 +280,6 @@ export async function listLobbyRooms(
   return {
     rooms,
     nextCursor,
+    activeRoomCount: await activeRoomCountPromise,
   };
 }

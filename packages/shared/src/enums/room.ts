@@ -20,6 +20,6 @@ export const CLOSE_REASONS = [
 
 export type CloseReason = (typeof CLOSE_REASONS)[number];
 
-export const VISIBILITIES = ["PUBLIC", "UNLISTED", "PRIVATE"] as const;
+export const VISIBILITIES = ["PUBLIC", "PRIVATE"] as const;
 
 export type Visibility = (typeof VISIBILITIES)[number];

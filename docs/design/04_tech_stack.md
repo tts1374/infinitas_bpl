@@ -53,7 +53,7 @@ Ph1 では以下を重視する。
 ### 2.3 KV を採用する理由
 - 公開ロビー一覧の軽量メタを保持する用途に十分
 - ルーム本体の状態を DO と分離できる
-- 一覧取得時の責務を明確にできる
+- 一覧取得時の責務を「KV候補取得 + DO詳細照会」に分離できる
 
 ---
 
@@ -116,7 +116,7 @@ Ph1 では以下を重視する。
 - HTTP エンドポイント提供
 - WebSocket Upgrade の入口
 - room_id に応じて DO へルーティング
-- 公開ロビー一覧の取得（KV読み取り）
+- 公開ロビー一覧の取得（KV候補取得 + DO照会 + フィルタ）
 
 ### Durable Object の責務
 - ルーム状態の保持
@@ -129,10 +129,12 @@ Ph1 では以下を重視する。
 - ホスト代理SKIP
 - 結果集計
 - ルーム内ブロードキャスト
+- 一覧API向け詳細状態の参照元（`room_state` / `players.length` / `settings.max_players`）
 
 ### KV の責務
-- 公開ロビー一覧用の軽量メタ保持
-- `visibility != PRIVATE` のルームを登録
+- 公開ロビー一覧用の軽量メタと `public_lobby_candidate` の保持
+- `visibility = PUBLIC` のルームだけを登録
+- `public_lobby_candidate` は `PUBLIC` かつ `LOBBY` の候補フラグとして更新
 - CLOSED 時に削除
 
 ---

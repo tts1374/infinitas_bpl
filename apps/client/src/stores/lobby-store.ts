@@ -15,6 +15,7 @@ export interface LobbyStoreState {
   currentCursor: string | null;
   previousCursors: Array<string | null>;
   nextCursor: string | null;
+  activeRoomCount: number;
   loading: boolean;
   errorMessage: string | null;
   lastLoadedAt: string | null;
@@ -31,6 +32,7 @@ const internalStore = createExternalStore<LobbyStoreState>({
   currentCursor: null,
   previousCursors: [],
   nextCursor: null,
+  activeRoomCount: 0,
   loading: false,
   errorMessage: null,
   lastLoadedAt: null,
@@ -74,6 +76,7 @@ async function loadLobbyPage(
       currentCursor: cursor,
       previousCursors,
       nextCursor: response.next_cursor,
+      activeRoomCount: response.active_room_count,
       loading: false,
       errorMessage: null,
       lastLoadedAt: new Date().toISOString(),
@@ -118,6 +121,30 @@ export const lobbyStore = {
 
     const previousCursor = state.previousCursors[state.previousCursors.length - 1] ?? null;
     await loadLobbyPage(baseUrl, previousCursor, state.previousCursors.slice(0, -1));
+  },
+  async goToPage(baseUrl: string, pageNumber: number): Promise<void> {
+    const state = internalStore.getState();
+    const currentPage = state.previousCursors.length + 1;
+
+    if (pageNumber < 1 || pageNumber === currentPage) {
+      return;
+    }
+
+    if (pageNumber === currentPage + 1) {
+      if (state.nextCursor === null) {
+        return;
+      }
+
+      await loadLobbyPage(baseUrl, state.nextCursor, [...state.previousCursors, state.currentCursor]);
+      return;
+    }
+
+    if (pageNumber > currentPage) {
+      return;
+    }
+
+    const targetCursor = pageNumber === 1 ? null : state.previousCursors[pageNumber - 1] ?? null;
+    await loadLobbyPage(baseUrl, targetCursor, state.previousCursors.slice(0, Math.max(0, pageNumber - 1)));
   },
 };
 

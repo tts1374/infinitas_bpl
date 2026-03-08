@@ -69,13 +69,16 @@ Ph1 の画面は以下とする。
 - 公開ルームの概要を一覧で確認する
 
 ## 3.2 主な表示項目
+- アクティブロビー件数
+  - `public_lobby_candidate = true` の候補件数を表示
 - ルーム一覧（最大10件/ページ）
   - mode (`ARENA` / `BPL`)
   - play_style (`SP` / `DP`)
   - level_filter
+    - 表示ラベル: `制限なし` / `Lv8～10` / `Lv10` / `Lv11` / `Lv12`
   - win_metric (`SCORE` / `MISSCOUNT`)
   - room_comment
-  - max_players
+  - current_members / max_players
   - join_code有無
   - 作成日時
 - ページング / cursor ナビゲーション
@@ -92,7 +95,9 @@ Ph1 の画面は以下とする。
 - 次ページ / 前ページ
 
 ## 3.4 備考
-- `visibility != PRIVATE` のルームのみ表示対象
+- `visibility = PUBLIC` かつ `public_lobby_candidate = true` の候補を一覧対象とする
+- 一覧APIは候補ごとに DO を参照し、`LOBBY` 状態かつ満員でない部屋のみ通常表示する
+- DO 参照失敗時は一覧全体を失敗させず、人数表示を `-- / --` とする
 - `expires_at <= now` のルームは一覧に出さない
 
 ---
@@ -106,7 +111,6 @@ Ph1 の画面は以下とする。
 ## 4.2 入力項目
 - ロビー公開設定
   - `PUBLIC`
-  - `UNLISTED`
   - `PRIVATE`
 - `join_code`
   - 自動生成

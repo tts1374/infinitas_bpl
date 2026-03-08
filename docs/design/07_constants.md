@@ -117,13 +117,15 @@ Ph1で固定するタイマー値、制約値、表示/運用上の定数を整�
 ## 6. ロビー/KV関連定数
 
 ## 6.1 visibility
-- `VISIBILITY_OPTIONS = ["PUBLIC", "UNLISTED", "PRIVATE"]`
+- `VISIBILITY_OPTIONS = ["PUBLIC", "PRIVATE"]`
 
 ## 6.2 KV一覧保持
 - `ROOM_KV_EXPIRES_AT = CREATED_AT + 30 minutes`
   - 作成時点でexpires_at設定
 - `ROOM_LIST_EXCLUDE_EXPIRED = true`
   - `expires_at <= now` は一覧から除外
+- `PUBLIC_LOBBY_CANDIDATE_FIELD = "public_lobby_candidate"`
+  - `visibility = PUBLIC` かつ `room_state = LOBBY` の候補フラグ
 
 ---
 

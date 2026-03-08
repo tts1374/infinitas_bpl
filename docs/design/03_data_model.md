@@ -4,7 +4,7 @@
 - 勝敗判定に必要な最小データを一貫して保持する
 - 誤採用防止（expected一致、accept_window=0）
 - ローカル保存で部分結果を復元できる（ホスト落ちでも表示）
-- 公開ロビー一覧はKVに「軽量メタ」だけを保存し、DO本体の状態とは分離する
+- 公開ロビー一覧はKVに「軽量メタ + public_lobby_candidate」だけを保存し、DO本体の状態とは分離する
 
 ## 1. 永続層の方針（Ph1）
 - DO本体の状態: DO Storage に永続保存し、alarm / reconnect / hibernation 復帰後も復元可能にする
@@ -16,7 +16,7 @@
 ### 2.1 Room（DO状態）
 - `room_id: string`（UUID）
 - `join_code: string|null`
-- `visibility: PUBLIC|UNLISTED|PRIVATE`
+- `visibility: PUBLIC|PRIVATE`
 - `settings: RoomSettings`
 - `host_player_id: string`
 - `room_state: RoomState`
@@ -111,7 +111,8 @@
 ```json
 {
   "room_id": "uuid",
-  "visibility": "PUBLIC|UNLISTED",
+  "visibility": "PUBLIC",
+  "public_lobby_candidate": true,
   "has_join_code": true,
   "mode": "ARENA|BPL",
   "win_metric": "SCORE|MISSCOUNT",
@@ -125,9 +126,17 @@
 ```
 
 ### 3.2 KV更新タイミング
-- ルーム作成: put（expires_at = created_at + ready_check_ttl + match_ttl）
+- ルーム作成: `visibility=PUBLIC` の軽量メタを put（expires_at = created_at + ready_check_ttl + match_ttl）
+- `room_state=LOBBY` 入り: `public_lobby_candidate=true`
+- `room_state!=LOBBY` へ遷移: `public_lobby_candidate=false`
 - ルームCLOSED: delete
-- 任意（Ph1では不要）: 人数・状態を反映したいなら別Keyで集約する（DOに負荷が寄るので後回し）
+
+### 3.3 一覧APIでの導出
+- 一覧APIは KV の `public_lobby_candidate=true` 候補をページ単位で読み出す
+- 各候補について対応する DO を参照し、`room_state`、`players.length`、`settings.max_players` を導出する
+- `current_members` は `players.length` から導出し、DOの別 state として二重管理しない
+- DO 参照成功時に `room_state != LOBBY` または `current_members >= max_players` の候補は除外する
+- DO 参照失敗時は候補を残し、人数表示は unavailable として `-- / --` を表示する
 
 ## 4. キー設計
 
