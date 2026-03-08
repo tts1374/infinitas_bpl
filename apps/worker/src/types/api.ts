@@ -20,6 +20,7 @@ export interface CreateRoomResponse {
 export interface ListRoomsResponse {
   rooms: RoomListingEntry[];
   next_cursor: string | null;
+  active_room_count: number;
 }
 
 export interface ChartSearchResponse {

@@ -5,7 +5,6 @@ import {
   PLAY_STYLES,
   SKIP_REASONS,
   SOURCE_TYPES,
-  VISIBILITIES,
   WIN_METRICS,
   type ClientMessage,
   type ErrorCode,
@@ -13,12 +12,13 @@ import {
   type JsonObject,
   type RequestIdPayload,
   type RoomJoinPayload,
+  type RoomState,
   type RoomSettings,
   type SkipReason,
   type ServerMessagePayloadMap,
   type ServerMessageType,
 } from "@infinitas/shared";
-import { deleteLobbyRoom } from "../kv/lobby-kv";
+import { deleteLobbyRoom, setLobbyRoomCandidate } from "../kv/lobby-kv";
 import { normalizeJoinCode } from "../services/join-code";
 import type { WorkerEnv } from "../types/env";
 import { asEnumValue, asOptionalString, isRecord } from "../utils/validation";
@@ -75,12 +75,21 @@ function jsonResponse(status: number, payload: unknown): Response {
   });
 }
 
+function normalizeVisibility(value: unknown): RoomSettings["visibility"] | undefined {
+  const parsed = asEnumValue(value, ["PUBLIC", "PRIVATE", "UNLISTED"] as const);
+  if (parsed === "UNLISTED") {
+    return "PRIVATE";
+  }
+
+  return parsed;
+}
+
 function parseRoomSettings(value: unknown): RoomSettings | null {
   if (!isRecord(value)) {
     return null;
   }
 
-  const visibility = asEnumValue(value.visibility, VISIBILITIES);
+  const visibility = normalizeVisibility(value.visibility);
   const joinCodeRaw = value.join_code;
   const mode = asEnumValue(value.mode, MODES);
   const winMetric = asEnumValue(value.win_metric, WIN_METRICS);
@@ -339,6 +348,9 @@ export class RoomDurableObject {
     if (url.pathname === "/internal/init" && request.method === "POST") {
       return this.handleInternalInitialize(request);
     }
+    if (url.pathname === "/internal/lobby-summary" && request.method === "GET") {
+      return this.handleInternalLobbySummary();
+    }
 
     if (!isWebSocketUpgradeRequest(request)) {
       return new Response("Expected websocket upgrade request.", { status: 426 });
@@ -395,6 +407,19 @@ export class RoomDurableObject {
     return jsonResponse(200, {
       ok: true,
       room_id: this.roomState.getRoomId(),
+    });
+  }
+
+  private handleInternalLobbySummary(): Response {
+    if (!this.roomState.isInitialized()) {
+      return jsonResponse(404, { error: "Room is not initialized." });
+    }
+
+    const snapshot = this.roomState.toSnapshot();
+    return jsonResponse(200, {
+      room_state: snapshot.room_state,
+      current_members: snapshot.players.length,
+      max_players: snapshot.settings.max_players,
     });
   }
 
@@ -660,6 +685,7 @@ export class RoomDurableObject {
       return;
     }
 
+    const previousState = this.roomState.getRoomState();
     const result = this.roomState.startMatch(session.playerId, new Date());
     if (!result.ok) {
       switch (result.reason) {
@@ -687,6 +713,7 @@ export class RoomDurableObject {
     this.rememberRequest(session.playerId, message.type, payload.request_id);
     await this.persistRoomRecord();
     await this.syncAlarm();
+    await this.syncLobbyCandidateForStateChange(previousState);
     this.broadcast("ROOM_NOTIFICATION", {
       kind: "match_found",
       event_id: this.nextEventId("match_found"),
@@ -715,6 +742,7 @@ export class RoomDurableObject {
       return;
     }
 
+    const previousState = this.roomState.getRoomState();
     const result = this.roomState.returnToLobby(session.playerId, new Date());
     if (!result.ok) {
       if (result.reason === "NOT_HOST") {
@@ -729,6 +757,7 @@ export class RoomDurableObject {
     this.rememberRequest(session.playerId, message.type, payload.request_id);
     await this.persistRoomRecord();
     await this.syncAlarm();
+    await this.syncLobbyCandidateForStateChange(previousState);
     this.broadcastRoomUpdated();
   }
 
@@ -786,6 +815,7 @@ export class RoomDurableObject {
       return;
     }
 
+    const previousState = this.roomState.getRoomState();
     const result = this.roomState.submitResult(
       session.playerId,
       payload.round_index,
@@ -809,7 +839,7 @@ export class RoomDurableObject {
     }
 
     this.rememberRequest(session.playerId, message.type, payload.request_id);
-    await this.publishRoundTransition(result);
+    await this.publishRoundTransition(previousState, result);
   }
 
   private async handleSkipSelf(session: RoomSocketSession, message: ClientMessage<"SKIP_SELF">): Promise<void> {
@@ -829,6 +859,7 @@ export class RoomDurableObject {
       return;
     }
 
+    const previousState = this.roomState.getRoomState();
     const result = this.roomState.skipSelf(session.playerId, payload.round_index, payload.reason, new Date());
     if (!result.ok) {
       switch (result.reason) {
@@ -842,7 +873,7 @@ export class RoomDurableObject {
     }
 
     this.rememberRequest(session.playerId, message.type, payload.request_id);
-    await this.publishRoundTransition(result);
+    await this.publishRoundTransition(previousState, result);
   }
 
   private async handleSkipHostAssign(
@@ -865,6 +896,7 @@ export class RoomDurableObject {
       return;
     }
 
+    const previousState = this.roomState.getRoomState();
     const result = this.roomState.assignHostSkip(
       session.playerId,
       payload.round_index,
@@ -890,7 +922,7 @@ export class RoomDurableObject {
     }
 
     this.rememberRequest(session.playerId, message.type, payload.request_id);
-    await this.publishRoundTransition(result);
+    await this.publishRoundTransition(previousState, result);
   }
 
   private async handleForceAdvance(
@@ -913,6 +945,7 @@ export class RoomDurableObject {
       return;
     }
 
+    const previousState = this.roomState.getRoomState();
     const result = this.roomState.forceAdvance(session.playerId, new Date());
     if (!result.ok) {
       switch (result.reason) {
@@ -930,7 +963,7 @@ export class RoomDurableObject {
     }
 
     this.rememberRequest(session.playerId, message.type, payload.request_id);
-    await this.publishRoundTransition(result);
+    await this.publishRoundTransition(previousState, result);
   }
 
   private findSessionByPlayerId(playerId: string): RoomSocketSession | null {
@@ -1161,9 +1194,10 @@ export class RoomDurableObject {
     await this.state.storage.put(ROOM_RECORD_STORAGE_KEY, record);
   }
 
-  private async publishRoundTransition(result: RoundTransitionResult): Promise<void> {
+  private async publishRoundTransition(previousState: RoomState, result: RoundTransitionResult): Promise<void> {
     await this.persistRoomRecord();
     await this.syncAlarm();
+    await this.syncLobbyCandidateForStateChange(previousState);
     this.broadcastRoundTransition(result);
     this.broadcastRoomUpdated();
     if (this.roomState.getRoomState() === "CLOSED") {
@@ -1177,24 +1211,26 @@ export class RoomDurableObject {
       return true;
     }
 
+    const previousState = this.roomState.getRoomState();
     const pickingTransition = this.roomState.expirePickingIfNeeded(now);
     if (pickingTransition !== null) {
       await this.persistRoomRecord();
       this.broadcastPickingTimeoutTransition(pickingTransition);
       await this.syncAlarm();
+      await this.syncLobbyCandidateForStateChange(previousState);
       this.broadcastRoomUpdated();
       return false;
     }
 
     const matchTransition = this.roomState.expireMatchIfNeeded(now);
     if (matchTransition !== null) {
-      await this.publishRoundTransition(matchTransition);
+      await this.publishRoundTransition(previousState, matchTransition);
       return false;
     }
 
     const roundTransition = this.roomState.expireCurrentRoundIfNeeded(now);
     if (roundTransition !== null) {
-      await this.publishRoundTransition(roundTransition);
+      await this.publishRoundTransition(previousState, roundTransition);
     }
 
     return false;
@@ -1232,5 +1268,29 @@ export class RoomDurableObject {
     }
 
     await this.cleanupLobbyEntry();
+  }
+
+  private async syncLobbyCandidateForStateChange(previousState: RoomState): Promise<void> {
+    if (!this.roomState.isInitialized()) {
+      return;
+    }
+
+    const settings = this.roomState.getSettings();
+    if (settings.visibility !== "PUBLIC") {
+      return;
+    }
+
+    const nextState = this.roomState.getRoomState();
+    const wasCandidate = previousState === "LOBBY";
+    const isCandidate = nextState === "LOBBY";
+    if (wasCandidate === isCandidate || nextState === "CLOSED") {
+      return;
+    }
+
+    try {
+      await setLobbyRoomCandidate(this.env, this.roomState.getRoomId(), isCandidate);
+    } catch {
+      // no-op: stale candidate rows are filtered by DO lookup where possible
+    }
   }
 }

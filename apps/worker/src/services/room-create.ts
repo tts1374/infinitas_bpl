@@ -9,13 +9,11 @@ import {
   ROOM_COMMENT_ALLOW_NEWLINE,
   ROOM_COMMENT_MAX_LENGTH,
   type RoomSettings,
-  VISIBILITIES,
   WIN_METRICS,
 } from "@infinitas/shared";
-import type { RoomListingEntry } from "@infinitas/shared/models/room-listing";
 import type { CreateRoomResponse } from "../types/api";
 import type { WorkerEnv } from "../types/env";
-import { putLobbyRoom } from "../kv/lobby-kv";
+import { putLobbyRoom, type StoredLobbyRoomEntry } from "../kv/lobby-kv";
 import { generateJoinCode, isValidJoinCode, normalizeJoinCode } from "./join-code";
 import { initializeRoomDurableObject } from "./room-do";
 import { asEnumValue, asNullableString, asOptionalString, isRecord } from "../utils/validation";
@@ -24,6 +22,15 @@ interface CreateRoomInput {
   settings: RoomSettings;
   createdAt: Date;
   expiresAt: Date;
+}
+
+function normalizeVisibility(value: unknown): RoomSettings["visibility"] | undefined {
+  const parsed = asEnumValue(value, ["PUBLIC", "PRIVATE", "UNLISTED"] as const);
+  if (parsed === "UNLISTED") {
+    return "PRIVATE";
+  }
+
+  return parsed;
 }
 
 function computeRoomExpiry(createdAt: Date): Date {
@@ -45,15 +52,21 @@ function ensureRoomComment(value: unknown): string {
   return comment;
 }
 
-function ensureJoinCode(raw: unknown): string {
+function ensureJoinCode(raw: unknown, visibility: RoomSettings["visibility"]): string | null {
   const normalized = normalizeJoinCode(asNullableString(raw));
-  const joinCode = normalized ?? generateJoinCode();
+  if (normalized === null) {
+    if (visibility === "PUBLIC") {
+      return null;
+    }
 
-  if (!isValidJoinCode(joinCode)) {
+    return generateJoinCode();
+  }
+
+  if (!isValidJoinCode(normalized)) {
     throw new Error(`join_code must be ${JOIN_CODE_LENGTH} chars and allowed charset only.`);
   }
 
-  return joinCode;
+  return normalized;
 }
 
 function parseCreateRoomPayload(payload: unknown): CreateRoomInput {
@@ -61,7 +74,7 @@ function parseCreateRoomPayload(payload: unknown): CreateRoomInput {
     throw new Error("Invalid JSON payload.");
   }
 
-  const visibility = asEnumValue(payload.visibility, VISIBILITIES);
+  const visibility = normalizeVisibility(payload.visibility);
   const mode = asEnumValue(payload.mode, MODES);
   const winMetric = asEnumValue(payload.win_metric, WIN_METRICS);
   const playStyle = asEnumValue(payload.play_style, PLAY_STYLES);
@@ -90,7 +103,7 @@ function parseCreateRoomPayload(payload: unknown): CreateRoomInput {
     throw new Error("room_comment must be string.");
   }
 
-  const joinCode = ensureJoinCode(payload.join_code);
+  const joinCode = ensureJoinCode(payload.join_code, visibility);
   const roomComment = ensureRoomComment(payload.room_comment);
   const createdAt = new Date();
   const expiresAt = computeRoomExpiry(createdAt);
@@ -111,7 +124,7 @@ function parseCreateRoomPayload(payload: unknown): CreateRoomInput {
   };
 }
 
-function toLobbyEntry(roomId: string, input: CreateRoomInput): RoomListingEntry {
+function toLobbyEntry(roomId: string, input: CreateRoomInput): StoredLobbyRoomEntry {
   if (input.settings.visibility === "PRIVATE") {
     throw new Error("PRIVATE room must not be written to lobby.");
   }
@@ -119,6 +132,7 @@ function toLobbyEntry(roomId: string, input: CreateRoomInput): RoomListingEntry 
   return {
     room_id: roomId,
     visibility: input.settings.visibility,
+    public_lobby_candidate: true,
     has_join_code: input.settings.join_code !== null,
     mode: input.settings.mode,
     win_metric: input.settings.win_metric,
@@ -141,7 +155,7 @@ export async function createRoom(
 
   await initializeRoomDurableObject(env, roomId, parsed.settings, createdAtIso);
 
-  if (parsed.settings.visibility !== "PRIVATE") {
+  if (parsed.settings.visibility === "PUBLIC") {
     await putLobbyRoom(env, toLobbyEntry(roomId, parsed));
   }
 
