@@ -1,6 +1,6 @@
 import type { PlayStyle } from "@infinitas/shared";
 import { useState } from "react";
-import { Activity, BarChart3, History, TrendingUp, ZapOff } from "lucide-react";
+import { Activity, BarChart3, ChevronLeft, History, TrendingUp, ZapOff } from "lucide-react";
 import type { ChartRankingEntry, DetailedMatchHistoryEntry, StatsMatchResult } from "../features/stats/models";
 import {
   getChartRankings,
@@ -315,7 +315,7 @@ function RatingTrendGraph(props: {
                 y={getY(hoveredEntry.rating_after ?? 0) - 24}
                 textAnchor="middle"
                 fill="rgba(0,0,0,0.6)"
-                className="text-[9px] font-black uppercase tracking-tighter"
+                className="text-[9px] font-black uppercase italic tracking-tighter"
               >
                 {battleType === "ARENA"
                   ? `RANK ${getRankText(hoveredEntry.final_rank)}`
@@ -338,9 +338,12 @@ function RatingTrendGraph(props: {
   );
 }
 
-export function StatsPage() {
+interface StatsPageProps {
+  onNavigateToLobby: () => void;
+}
+
+export function StatsPage({ onNavigateToLobby }: StatsPageProps) {
   const archive = useStatsArchiveStore((state) => state.archive);
-  const updatedAt = useStatsArchiveStore((state) => state.updatedAt);
   const [ruleFilter, setRuleFilter] = useState<RuleFilter>("ARENA");
   const [playMode, setPlayMode] = useState<PlayStyle>("SP");
   const [expandedMatchId, setExpandedMatchId] = useState<string | null>(null);
@@ -355,10 +358,19 @@ export function StatsPage() {
     stability.scoreStability === null ? 0 : Math.max(0, Math.min(stability.scoreStability, 100));
 
   return (
-    <section className="w-full space-y-8 text-white">
+    <section className="w-full space-y-8 px-2 pb-2 text-white">
       <div className="flex flex-col items-start justify-between gap-6 border-b border-white/5 pb-8 md:flex-row md:items-end">
         <div className="space-y-4">
-          <h1 className="flex items-center gap-3 text-4xl font-black uppercase tracking-tighter text-white">
+          <button
+            type="button"
+            onClick={onNavigateToLobby}
+            className="group mb-4 flex items-center gap-2 text-sm font-bold text-gray-500 transition-colors hover:text-white"
+          >
+            <ChevronLeft size={18} className="transition-transform group-hover:-translate-x-1" />
+            ロビーに戻る
+          </button>
+
+          <h1 className="flex items-center gap-3 text-4xl font-black italic uppercase tracking-tighter text-white">
             <BarChart3 className="h-8 w-8 text-cyan-500" />
             Battle Statistics
           </h1>
@@ -412,10 +424,6 @@ export function StatsPage() {
             <span className={`text-2xl font-mono font-black ${getDeltaColor(lastDelta)}`}>{formatDelta(lastDelta)}</span>
             <span className="text-6xl font-mono font-black leading-none text-white">{formatRating(currentRating)}</span>
           </div>
-          <div className="mt-3 text-[10px] font-black uppercase tracking-widest text-gray-600">
-            Archive Updated
-          </div>
-          <div className="text-xs font-mono text-gray-500">{updatedAt ? formatDateTime(updatedAt) : "NO DATA"}</div>
         </div>
       </div>
 
@@ -423,7 +431,7 @@ export function StatsPage() {
         <div className="space-y-8 lg:col-span-7">
           <section className="flex min-h-[600px] flex-col overflow-hidden rounded-2xl border border-white/5 bg-[#1a1a1e]">
             <div className="flex items-center justify-between border-b border-white/5 bg-white/5 px-6 py-4">
-              <h2 className="flex items-center gap-2 text-lg font-black uppercase tracking-tight">
+              <h2 className="flex items-center gap-2 text-lg font-black italic uppercase tracking-tight">
                 <History className="h-5 w-5 text-cyan-400" />
                 Match History
               </h2>
@@ -533,6 +541,13 @@ export function StatsPage() {
                     No archived matches yet. Play Arena or BPL battles to populate this panel.
                   </p>
                 </div>
+                <button
+                  type="button"
+                  onClick={onNavigateToLobby}
+                  className="rounded-lg border border-cyan-500/50 bg-cyan-500/10 px-6 py-2 text-[10px] font-black uppercase tracking-widest text-cyan-400 transition-all hover:bg-cyan-500/20"
+                >
+                  Find Match
+                </button>
               </div>
             )}
           </section>
@@ -545,7 +560,7 @@ export function StatsPage() {
             </div>
 
             <div className="relative space-y-6">
-              <h2 className="text-lg font-black uppercase tracking-tighter text-white">Stability Analysis</h2>
+              <h2 className="text-lg font-black italic uppercase tracking-tighter text-white">Stability Analysis</h2>
 
               <div className="space-y-3">
                 <div className="flex items-end justify-between">
@@ -597,7 +612,7 @@ export function StatsPage() {
           <div className="space-y-6">
             <section className="overflow-hidden rounded-2xl border border-white/5 bg-[#1a1a1e] shadow-xl">
               <div className="border-b border-white/5 bg-white/[0.02] px-5 py-3">
-                <h2 className="flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-cyan-400">
+                <h2 className="flex items-center gap-2 text-[11px] font-black italic uppercase tracking-widest text-cyan-400">
                   <TrendingUp className="h-3.5 w-3.5" />
                   Top Performing Songs
                 </h2>
@@ -612,7 +627,7 @@ export function StatsPage() {
 
             <section className="overflow-hidden rounded-2xl border border-white/5 bg-[#1a1a1e] shadow-xl">
               <div className="border-b border-white/5 bg-white/[0.02] px-5 py-3">
-                <h2 className="flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-red-400">
+                <h2 className="flex items-center gap-2 text-[11px] font-black italic uppercase tracking-widest text-red-400">
                   <TrendingUp className="h-3.5 w-3.5 rotate-180" />
                   Challenging Songs
                 </h2>

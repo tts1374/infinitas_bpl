@@ -80,7 +80,13 @@ export function App() {
           />
         ) : null}
         {activeView === "room" ? <RoomPage /> : null}
-        {activeView === "stats" ? <StatsPage /> : null}
+        {activeView === "stats" ? (
+          <StatsPage
+            onNavigateToLobby={() => {
+              navigate("lobby");
+            }}
+          />
+        ) : null}
       </section>
 
       {dialog ? <ErrorDialog dialog={dialog} onClose={() => roomStore.clearError()} /> : null}
