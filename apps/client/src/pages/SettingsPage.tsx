@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ChevronLeft, Database, FolderOpen, Save, User, Volume2, VolumeX } from "lucide-react";
+import { ChevronLeft, Database, FolderOpen, Save, Settings as SettingsIcon, User, Volume2, VolumeX } from "lucide-react";
 import { pickDirectory, validateSourceDirectory } from "../services/tauri-bridge";
 import { sourceStore } from "../stores/source-store";
 import { getActiveSourceDirectory, settingsStore, useSettingsStore } from "../stores/settings-store";
@@ -101,7 +101,10 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
           <ChevronLeft size={18} className="transition-transform group-hover:-translate-x-1" />
           ロビーに戻る
         </button>
-        <h1 className="text-4xl font-black uppercase tracking-tighter text-white italic">System Settings</h1>
+        <h1 className="flex items-center gap-3 text-4xl font-black italic uppercase tracking-tighter text-white">
+          <SettingsIcon className="h-8 w-8 text-cyan-500" />
+          System Settings
+        </h1>
       </header>
 
       <div className="space-y-12">

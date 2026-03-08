@@ -12,7 +12,7 @@ import {
   type RoomListingEntry,
   type RoomSettings,
 } from "@infinitas/shared";
-import { AlertCircle, ChevronLeft, ChevronRight, Eye, Key, Lock, MessageSquare, Plus, RefreshCcw, Search, Trophy, Users, X } from "lucide-react";
+import { AlertCircle, ChevronLeft, ChevronRight, Eye, EyeOff, Key, Lock, MessageSquare, Plus, RefreshCcw, Search, Trophy, Users, X } from "lucide-react";
 import { startTransition, useDeferredValue, useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { createRoom } from "../services/worker-api-client";
@@ -102,6 +102,7 @@ export function LobbyPage({ onEnterRoom }: LobbyPageProps) {
   const [localMessage, setLocalMessage] = useState<string | null>(null);
   const [showManualJoin, setShowManualJoin] = useState(false);
   const [showCreateRoom, setShowCreateRoom] = useState(false);
+  const [showCreateJoinCode, setShowCreateJoinCode] = useState(false);
   const [selectedRoomForJoin, setSelectedRoomForJoin] = useState<RoomListingEntry | null>(null);
   const [joinModalCode, setJoinModalCode] = useState("");
   const [joinModalError, setJoinModalError] = useState<string | null>(null);
@@ -659,22 +660,32 @@ export function LobbyPage({ onEnterRoom }: LobbyPageProps) {
                     <label className="text-xs font-bold text-gray-400">合言葉 (Join Code)</label>
                     {createJoinCodeError ? <span className="text-[10px] font-bold text-red-500">{createJoinCodeError}</span> : null}
                   </div>
-                  <input
-                    type="text"
-                    value={createDraft.join_code ?? ""}
-                    maxLength={JOIN_CODE_LENGTH}
-                    placeholder={createDraft.visibility === "PUBLIC" ? "任意（未入力でパスワードなし）" : "空欄なら自動生成"}
-                    className={`w-full rounded-xl border bg-[#1e1e1e] p-3 font-mono text-sm uppercase text-white outline-none transition-all placeholder:text-gray-700 ${
-                      createJoinCodeError ? "border-red-500" : "border-white/10 focus:border-cyan-500"
-                    }`}
-                    onChange={(event) => {
-                      const nextJoinCode = normalizeJoinCodeInput(event.currentTarget.value);
-                      setCreateDraft((current) => ({
-                        ...current,
-                        join_code: nextJoinCode.length > 0 ? nextJoinCode : null,
-                      }));
-                    }}
-                  />
+                  <div className="relative">
+                    <input
+                      type={showCreateJoinCode ? "text" : "password"}
+                      value={createDraft.join_code ?? ""}
+                      maxLength={JOIN_CODE_LENGTH}
+                      placeholder={createDraft.visibility === "PUBLIC" ? "任意（未入力でパスワードなし）" : "空欄なら自動生成"}
+                      className={`w-full rounded-xl border bg-[#1e1e1e] p-3 pr-12 font-mono text-sm uppercase text-white outline-none transition-all placeholder:text-gray-700 ${
+                        createJoinCodeError ? "border-red-500" : "border-white/10 focus:border-cyan-500"
+                      }`}
+                      onChange={(event) => {
+                        const nextJoinCode = normalizeJoinCodeInput(event.currentTarget.value);
+                        setCreateDraft((current) => ({
+                          ...current,
+                          join_code: nextJoinCode.length > 0 ? nextJoinCode : null,
+                        }));
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowCreateJoinCode((current) => !current)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 transition-colors hover:text-white"
+                      aria-label={showCreateJoinCode ? "合言葉を隠す" : "合言葉を表示"}
+                    >
+                      {showCreateJoinCode ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  </div>
                 </div>
               </section>
               <section className="space-y-2">
