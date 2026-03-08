@@ -26,6 +26,7 @@ import {
   type WinMetric,
 } from "@infinitas/shared";
 import type { ResolvedMasterChart, RoomChartMaster } from "../master/chart-master";
+import { evaluateResultRating } from "./result-rating";
 
 interface InternalPlayer {
   player_id: string;
@@ -220,6 +221,8 @@ export interface RoomStatePersistenceRecord {
   current_round: CurrentRoundSnapshot | null;
   match_player_ids: string[];
   result_ready_payload: ResultReadyPayload | null;
+  result_key_mismatch_detected?: boolean;
+  force_advanced_round_indices?: number[];
 }
 
 const DEFAULT_SETTINGS: RoomSettings = {
@@ -317,6 +320,66 @@ function cloneRoundConfirmation(entry: RoundConfirmationEvent): RoundConfirmatio
   };
 }
 
+function getSourceMetric(sourceMeta: JsonObject | null, key: "score"): number | null {
+  if (sourceMeta === null) {
+    return null;
+  }
+
+  const value = (sourceMeta as Record<string, unknown>)[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function getConfirmationExScore(
+  confirmation: RoundConfirmationEvent | undefined,
+  winMetric: WinMetric,
+): number | null {
+  if (confirmation === undefined) {
+    return null;
+  }
+
+  return getSourceMetric(confirmation.source_meta, "score") ??
+    (winMetric === "SCORE" ? confirmation.metric_value : null);
+}
+
+function resolveArenaWinnerPlayerIds(
+  players: Array<{
+    player_id: string;
+    total_points: number;
+    total_ex_score: number | null;
+    last_confirmed_at: string | null;
+  }>,
+): string[] {
+  if (players.length === 0) {
+    return [];
+  }
+
+  const highestPoints = players.reduce((maxValue, player) => Math.max(maxValue, player.total_points), 0);
+  let leaders = players.filter((player) => player.total_points === highestPoints);
+  if (leaders.length <= 1) {
+    return leaders.map((player) => player.player_id);
+  }
+
+  if (leaders.every((player) => player.total_ex_score !== null)) {
+    const highestExScore = leaders.reduce(
+      (maxValue, player) => Math.max(maxValue, player.total_ex_score ?? Number.NEGATIVE_INFINITY),
+      Number.NEGATIVE_INFINITY,
+    );
+    leaders = leaders.filter((player) => player.total_ex_score === highestExScore);
+    if (leaders.length <= 1) {
+      return leaders.map((player) => player.player_id);
+    }
+  }
+
+  if (leaders.every((player) => player.last_confirmed_at !== null)) {
+    const earliestConfirmation =
+      [...leaders].map((player) => player.last_confirmed_at ?? "").sort((left, right) => left.localeCompare(right))[0] ??
+      null;
+    leaders = leaders.filter((player) => player.last_confirmed_at === earliestConfirmation);
+  }
+
+  return leaders.map((player) => player.player_id);
+}
+
 export class RoomLobbyState {
   private initialized = false;
   private roomId = "";
@@ -337,6 +400,8 @@ export class RoomLobbyState {
   private currentRound: CurrentRoundSnapshot | null = null;
   private matchPlayerIds: string[] = [];
   private resultReadyPayload: ResultReadyPayload | null = null;
+  private resultKeyMismatchDetected = false;
+  private readonly forceAdvancedRoundIndices = new Set<number>();
 
   constructor(private readonly chartMaster: RoomChartMaster) {}
 
@@ -527,6 +592,8 @@ export class RoomLobbyState {
     this.frozenRounds = [];
     this.currentRound = null;
     this.resultReadyPayload = null;
+    this.resultKeyMismatchDetected = false;
+    this.forceAdvancedRoundIndices.clear();
 
     for (const player of this.players.values()) {
       player.ready = false;
@@ -673,6 +740,7 @@ export class RoomLobbyState {
     }
 
     if (!this.isSameExpectedKey(this.currentRound.expected_key, observedKey)) {
+      this.resultKeyMismatchDetected = true;
       return { ok: false, reason: "RESULT_KEY_MISMATCH", confirmations: [] };
     }
 
@@ -1071,6 +1139,8 @@ export class RoomLobbyState {
             },
       match_player_ids: [...this.matchPlayerIds],
       result_ready_payload: this.resultReadyPayload,
+      result_key_mismatch_detected: this.resultKeyMismatchDetected,
+      force_advanced_round_indices: Array.from(this.forceAdvancedRoundIndices).sort((left, right) => left - right),
     };
   }
 
@@ -1139,6 +1209,11 @@ export class RoomLobbyState {
           };
     this.matchPlayerIds = [...record.match_player_ids];
     this.resultReadyPayload = record.result_ready_payload;
+    this.resultKeyMismatchDetected = record.result_key_mismatch_detected === true;
+    this.forceAdvancedRoundIndices.clear();
+    for (const roundIndex of record.force_advanced_round_indices ?? []) {
+      this.forceAdvancedRoundIndices.add(roundIndex);
+    }
   }
 
   private getCurrentRoundDeadline(): Date | null {
@@ -1254,6 +1329,7 @@ export class RoomLobbyState {
       confirmations: clonedConfirmations,
     };
     if (options.force_advance_applied !== undefined) {
+      this.forceAdvancedRoundIndices.add(options.force_advance_applied.round_index);
       result.force_advance_applied = {
         round_index: options.force_advance_applied.round_index,
         timed_out_players: [...options.force_advance_applied.timed_out_players],
@@ -1343,6 +1419,8 @@ export class RoomLobbyState {
     this.currentRound = null;
     this.matchPlayerIds = [];
     this.resultReadyPayload = null;
+    this.resultKeyMismatchDetected = false;
+    this.forceAdvancedRoundIndices.clear();
 
     for (const player of this.players.values()) {
       player.ready = false;
@@ -1616,8 +1694,12 @@ export class RoomLobbyState {
 
     if (this.settings.mode === "ARENA") {
       const totalPoints = new Map<string, number>();
+      const totalExScore = new Map<string, number | null>();
+      const lastConfirmedAt = new Map<string, string | null>();
       for (const playerId of this.matchPlayerIds) {
         totalPoints.set(playerId, 0);
+        totalExScore.set(playerId, 0);
+        lastConfirmedAt.set(playerId, null);
       }
 
       const rounds = this.frozenRounds.map((round) => {
@@ -1667,6 +1749,17 @@ export class RoomLobbyState {
           const rank = confirmation === undefined ? null : (rankByPlayerId.get(playerId) ?? null);
           const arenaPoints = rank === null ? 0 : this.getArenaPointsForRank(rank);
           totalPoints.set(playerId, (totalPoints.get(playerId) ?? 0) + arenaPoints);
+          const exScore = getConfirmationExScore(confirmation, this.settings.win_metric);
+          totalExScore.set(
+            playerId,
+            exScore === null || totalExScore.get(playerId) === null ? null : (totalExScore.get(playerId) ?? 0) + exScore,
+          );
+          if (
+            confirmation?.submitted_at !== undefined &&
+            ((lastConfirmedAt.get(playerId) ?? null) === null || (lastConfirmedAt.get(playerId) ?? "") < confirmation.submitted_at)
+          ) {
+            lastConfirmedAt.set(playerId, confirmation.submitted_at);
+          }
 
           const roundResult = {
             round_index: round.round_index,
@@ -1707,12 +1800,25 @@ export class RoomLobbyState {
         player_id: playerId,
         display_name: this.getPlayerDisplayName(playerId),
         total_points: totalPoints.get(playerId) ?? 0,
+        total_ex_score: totalExScore.get(playerId) ?? null,
+        last_confirmed_at: lastConfirmedAt.get(playerId) ?? null,
         rounds: perPlayerRounds.get(playerId) ?? [],
       }));
-      const highestPoints = players.reduce((maxValue, player) => Math.max(maxValue, player.total_points), 0);
-      const winnerPlayerIds = players
-        .filter((player) => player.total_points === highestPoints)
-        .map((player) => player.player_id);
+      const winnerPlayerIds = resolveArenaWinnerPlayerIds(players);
+      const ratingDecision = evaluateResultRating({
+        visibility: this.settings.visibility,
+        total_rounds: this.frozenRounds.length,
+        completed_rounds: completedRounds,
+        winner_player_ids: winnerPlayerIds,
+        rounds: rounds.map((round) => ({
+          played: round.played,
+          results: round.results.map((result) => ({
+            status: result.status,
+          })),
+        })),
+        mismatch_observed_key: this.resultKeyMismatchDetected,
+        force_advanced: this.forceAdvancedRoundIndices.size > 0,
+      });
 
       return {
         summary: {
@@ -1722,6 +1828,7 @@ export class RoomLobbyState {
           completed_rounds: completedRounds,
           winner_player_ids: winnerPlayerIds,
           is_draw: winnerPlayerIds.length !== 1,
+          ...ratingDecision,
         },
         per_round: {
           rounds,
@@ -1779,6 +1886,20 @@ export class RoomLobbyState {
     const winnerPlayerIds = players
       .filter((player) => player.round_wins === highestWins)
       .map((player) => player.player_id);
+    const ratingDecision = evaluateResultRating({
+      visibility: this.settings.visibility,
+      total_rounds: this.frozenRounds.length,
+      completed_rounds: completedRounds,
+      winner_player_ids: winnerPlayerIds,
+      rounds: rounds.map((round) => ({
+        played: round.played,
+        results: round.results.map((result) => ({
+          status: result.status,
+        })),
+      })),
+      mismatch_observed_key: this.resultKeyMismatchDetected,
+      force_advanced: this.forceAdvancedRoundIndices.size > 0,
+    });
 
     return {
       summary: {
@@ -1788,6 +1909,7 @@ export class RoomLobbyState {
         completed_rounds: completedRounds,
         winner_player_ids: winnerPlayerIds,
         is_draw: winnerPlayerIds.length !== 1,
+        ...ratingDecision,
       },
       per_round: {
         rounds,

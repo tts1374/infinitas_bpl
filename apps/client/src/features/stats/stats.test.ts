@@ -11,7 +11,7 @@ function runCase(name: string, fn: () => void): void {
     throw error;
   }
 }
-import type { PlayStyle, RoomStateSnapshot } from "@infinitas/shared";
+import type { PlayStyle, ResultReadyPayload, RoomStateSnapshot } from "@infinitas/shared";
 import {
   createEmptyStatsArchive,
   type MatchGame,
@@ -160,7 +160,44 @@ function makeSnapshot(session: RoomStatsSession, closeReason: "ALL_ROUNDS_COMPLE
   };
 }
 
-function recordClosedMatch(archive: StatsArchive, session: RoomStatsSession): StatsArchive {
+function makeResultReady(input: {
+  session: RoomStatsSession;
+  isRated: boolean;
+  ratedBlockReason: ResultReadyPayload["summary"]["rated_block_reason"];
+  winnerPlayerIds?: string[];
+  completedRounds?: number;
+  totalRounds?: number;
+}): ResultReadyPayload {
+  const winnerPlayerIds = input.winnerPlayerIds ?? [MY_PLAYER_ID];
+
+  return {
+    summary: {
+      mode: input.session.settings.mode,
+      win_metric: input.session.settings.win_metric,
+      total_rounds: input.totalRounds ?? input.session.rounds.length,
+      completed_rounds: input.completedRounds ?? input.session.rounds.length,
+      winner_player_ids: winnerPlayerIds,
+      is_draw: winnerPlayerIds.length !== 1,
+      is_rated: input.isRated,
+      rated_block_reason: input.ratedBlockReason,
+      rating_before: null,
+      rating_after: null,
+      rating_delta: null,
+    },
+    per_round: {
+      rounds: [],
+    },
+    per_player: {
+      players: [],
+    },
+  };
+}
+
+function recordClosedMatch(
+  archive: StatsArchive,
+  session: RoomStatsSession,
+  resultReady: ResultReadyPayload | null = null,
+): StatsArchive {
   const processedAt = iso(58);
   const withSession = reduceArchiveWithSession(archive, {
     session,
@@ -171,6 +208,7 @@ function recordClosedMatch(archive: StatsArchive, session: RoomStatsSession): St
   return reduceArchiveWithClosedMatch(withSession, {
     session,
     snapshot: makeSnapshot(session),
+    resultReady,
     myPlayerId: MY_PLAYER_ID,
     processedAt: iso(59),
   });
@@ -450,6 +488,46 @@ runCase("ARENA final standing resolves ties by EX total, then confirmation time,
   assert.equal(sharedRankArchive.matches[0]?.final_rank, 1);
   assert.equal(sharedRankArchive.matches[0]?.match_result, "DRAW");
   assert.equal(sharedRankArchive.matches[0]?.rating_after, 1500);
+});
+
+runCase("DO-provided unrated decision blocks local rating updates", () => {
+  const session = makeSession({
+    roomId: "bpl-mismatch-unrated",
+    battleType: "BPL",
+    playMode: "SP",
+    playerIds: [MY_PLAYER_ID, "opponent"],
+    mode: "BPL",
+    rounds: [
+      makeRound(0, "SP", [
+        makeResult({ playerId: MY_PLAYER_ID, metricValue: 2200, submittedAt: iso(50), bp: 10 }),
+        makeResult({ playerId: "opponent", metricValue: 2100, submittedAt: iso(51), bp: 13 }),
+      ]),
+      makeRound(1, "SP", [
+        makeResult({ playerId: MY_PLAYER_ID, metricValue: 2000, submittedAt: iso(52), bp: 16 }),
+        makeResult({ playerId: "opponent", metricValue: 2150, submittedAt: iso(53), bp: 12 }),
+      ]),
+      makeRound(2, "SP", [
+        makeResult({ playerId: MY_PLAYER_ID, metricValue: 2300, submittedAt: iso(54), bp: 9 }),
+        makeResult({ playerId: "opponent", metricValue: 1900, submittedAt: iso(55), bp: 17 }),
+      ]),
+    ],
+  });
+
+  const archive = recordClosedMatch(
+    createEmptyStatsArchive(),
+    session,
+    makeResultReady({
+      session,
+      isRated: false,
+      ratedBlockReason: "mismatch_observed_key",
+      winnerPlayerIds: [MY_PLAYER_ID],
+    }),
+  );
+
+  assert.equal(archive.matches[0]?.is_rated, false);
+  assert.equal(archive.matches[0]?.invalid_reason, "mismatch_observed_key");
+  assert.equal(archive.matches[0]?.rating_after, null);
+  assert.equal(getCurrentRating(archive, "BPL", "SP"), null);
 });
 
 runCase("chart rankings require three matches and stay separated by chart id, rule, and mode", () => {

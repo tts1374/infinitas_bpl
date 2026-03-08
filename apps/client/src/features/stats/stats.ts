@@ -55,6 +55,10 @@ function asNullableNumber(value: unknown): number | null {
   return value === null ? null : asNumber(value);
 }
 
+function asBoolean(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
+}
+
 function asSubmissionStatus(value: unknown): SubmissionStatus | null {
   return value === "PLAYED" || value === "SKIPPED" || value === "TIMEOUT" ? value : null;
 }
@@ -282,6 +286,49 @@ function buildSessionRoundFromResultReady(resultReady: ResultReadyPayload): Sess
   }
 
   return rounds.sort((left, right) => left.round_index - right.round_index);
+}
+
+function readResultReadyDecision(resultReady: ResultReadyPayload | null): {
+  isRated: boolean | null;
+  ratedBlockReason: string | null;
+} {
+  if (resultReady === null) {
+    return {
+      isRated: null,
+      ratedBlockReason: null,
+    };
+  }
+
+  const summaryRecord = asRecord(resultReady.summary);
+  return {
+    isRated: asBoolean(summaryRecord?.is_rated),
+    ratedBlockReason: asNullableString(summaryRecord?.rated_block_reason),
+  };
+}
+
+function resolveMatchRatingDecision(input: {
+  resultReady: ResultReadyPayload | null;
+  canRate: boolean;
+  fallbackInvalidReason: string | null;
+}): {
+  isRated: boolean;
+  invalidReason: string | null;
+} {
+  const summaryDecision = readResultReadyDecision(input.resultReady);
+  if (summaryDecision.isRated !== null) {
+    return {
+      isRated: summaryDecision.isRated && input.canRate,
+      invalidReason:
+        summaryDecision.isRated && input.canRate
+          ? null
+          : summaryDecision.ratedBlockReason ?? input.fallbackInvalidReason,
+    };
+  }
+
+  return {
+    isRated: input.canRate && input.fallbackInvalidReason === null,
+    invalidReason: input.fallbackInvalidReason,
+  };
 }
 
 export function captureRoomStatsSession(
@@ -686,6 +733,7 @@ function buildArenaStandings(
 function deriveArenaMatchRecord(
   session: RoomStatsSession,
   snapshot: RoomStateSnapshot,
+  resultReady: ResultReadyPayload | null,
   myPlayerId: string,
 ): MatchRecord {
   const completeRounds = session.rounds.filter((round) => getRoundComplete(round, session.players.length));
@@ -727,6 +775,11 @@ function deriveArenaMatchRecord(
         : tieBreakMissingEx
           ? "MISSING_EX_TIEBREAK"
           : null;
+  const ratingDecision = resolveMatchRatingDecision({
+    resultReady,
+    canRate: ratingScore !== null,
+    fallbackInvalidReason: invalidReason,
+  });
 
   return {
     match_id: session.room_id,
@@ -744,15 +797,15 @@ function deriveArenaMatchRecord(
     opponent_count: opponentCount,
     opponent_id: null,
     opponent_name: null,
-    is_rated: getBattleType(session.settings) !== "PRIVATE" && invalidReason === null && ratingScore !== null,
+    is_rated: ratingDecision.isRated,
     is_complete: isComplete,
     match_result: ratingScore === null ? "DRAW" : getGameResultFromScore(ratingScore),
     match_point_total: myStanding?.total_points ?? 0,
-    rating_score: ratingScore,
+    rating_score: ratingDecision.isRated ? ratingScore : null,
     rating_before: null,
     rating_after: null,
     rating_delta: null,
-    invalid_reason: invalidReason,
+    invalid_reason: ratingDecision.invalidReason,
     final_rank: myStanding?.final_rank ?? null,
     participant_count: session.players.length,
   };
@@ -762,6 +815,7 @@ function deriveBplMatchRecord(
   session: RoomStatsSession,
   matchGames: MatchGame[],
   snapshot: RoomStateSnapshot,
+  resultReady: ResultReadyPayload | null,
   myPlayerId: string,
 ): MatchRecord {
   const startedAt = sortByTimeAscending(matchGames)[0]?.played_at ?? snapshot.created_at ?? new Date().toISOString();
@@ -780,6 +834,11 @@ function deriveBplMatchRecord(
       : !isComplete
         ? "INCOMPLETE_MATCH"
         : null;
+  const ratingDecision = resolveMatchRatingDecision({
+    resultReady,
+    canRate: true,
+    fallbackInvalidReason: invalidReason,
+  });
 
   return {
     match_id: session.room_id,
@@ -790,15 +849,15 @@ function deriveBplMatchRecord(
     opponent_count: opponent ? 1 : 0,
     opponent_id: opponent?.player_id ?? null,
     opponent_name: opponent?.display_name ?? null,
-    is_rated: getBattleType(session.settings) !== "PRIVATE" && invalidReason === null,
+    is_rated: ratingDecision.isRated,
     is_complete: isComplete,
     match_result: matchResult,
     match_point_total: selfTotal,
-    rating_score: getResultScore(matchResult),
+    rating_score: ratingDecision.isRated ? getResultScore(matchResult) : null,
     rating_before: null,
     rating_after: null,
     rating_delta: null,
-    invalid_reason: invalidReason,
+    invalid_reason: ratingDecision.invalidReason,
     final_rank: matchResult === "WIN" ? 1 : matchResult === "LOSE" ? 2 : 1,
     participant_count: snapshot.players.length,
   };
@@ -843,6 +902,7 @@ export function reduceArchiveWithClosedMatch(
   input: {
     session: RoomStatsSession | null;
     snapshot: RoomStateSnapshot;
+    resultReady: ResultReadyPayload | null;
     myPlayerId: string;
     processedAt: string;
   },
@@ -857,8 +917,8 @@ export function reduceArchiveWithClosedMatch(
     .sort((left, right) => left.game_index - right.game_index);
   const nextMatch =
     session.settings.mode === "ARENA"
-      ? deriveArenaMatchRecord(session, input.snapshot, input.myPlayerId)
-      : deriveBplMatchRecord(session, matchGames, input.snapshot, input.myPlayerId);
+      ? deriveArenaMatchRecord(session, input.snapshot, input.resultReady, input.myPlayerId)
+      : deriveBplMatchRecord(session, matchGames, input.snapshot, input.resultReady, input.myPlayerId);
   const matches = upsertMatchRecord(archive.matches, nextMatch);
   const ratingResult = recalculateRatings(matches);
 
