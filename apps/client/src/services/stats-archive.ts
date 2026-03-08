@@ -86,6 +86,7 @@ function syncFromRoomStore(): void {
   const afterMatchClose = reduceArchiveWithClosedMatch(afterSessionFlush, {
     session: currentSession,
     snapshot,
+    resultReady: roomStore.getState().resultReady,
     myPlayerId,
     processedAt,
   });
