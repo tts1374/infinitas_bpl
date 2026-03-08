@@ -27,7 +27,7 @@
 - `result_deadline: datetime|null`（互換用。通常フローでは `null`）
 - `closed_at: datetime|null`
 - `close_reason: ALL_ROUNDS_COMPLETED|MATCH_TTL_EXPIRED|READY_CHECK_TTL_EXPIRED|HOST_DISCONNECTED|HOST_ABORTED|PICKING_ABORTED|FORCE_CLOSED|null`
-- `result_ready_payload: object|null`（`RESULT` 中は保持し、`RESULT -> LOBBY` 復帰時にクリア）
+- `result_ready_payload: object|null`（`RESULT` 中は保持し、`RESULT -> LOBBY` 復帰時にクリア。`summary.is_rated / rated_block_reason / rating_*` を含む）
 - `event_seq: int`
 
 ### 2.2 RoomSettings（Ph1）
@@ -288,6 +288,8 @@
   - レート系列は `ARENA_SP` / `ARENA_DP` / `BPL_SP` / `BPL_DP` を分離する
   - レート更新は `matches` を基準にマッチ単位で行う
   - ARENA は `match_games` を集約して最終順位を決め、pairwise 擬似対戦で `matches.rating_delta` を算出する
-  - `PRIVATE` はレート対象外だが `play_results` と安定度集計には含める
+  - `RESULT_READY.summary.is_rated` をレート適用可否の権威情報とする
+  - `PRIVATE`、`SKIPPED`、`TIMEOUT`、`FORCE_ADVANCE`、未提出、不一致、途中終了、最終結果衝突を含むマッチはレート対象外
+  - unrated でも `matches / match_games / play_results` は保存し、`matches.invalid_reason` に block 理由を保持する
   - 曲別勝率ランキングは `match_games` を基準に集計する
   - 曲識別は表示名ではなく `chart_id` を正とする

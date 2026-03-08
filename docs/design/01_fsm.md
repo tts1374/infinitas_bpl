@@ -189,6 +189,17 @@
 - 復帰時は前マッチの ready / round / pick / aggregation / `match_ttl` をすべてクリアする
 - room_id / member 構成 / host / battle context は維持する
 
+### 10.5 rated / unrated 判定（v1）
+- rated 判定は DO が一元管理し、`RESULT_READY.summary.is_rated` を権威情報とする
+- 以下をすべて満たす場合のみ rated:
+  - 全参加者の確定結果が揃っている
+  - 全 round が確定している
+  - `observed_key == expected_key` の不一致が発生していない
+  - `SKIPPED` / `TIMEOUT` / `FORCE_ADVANCE` が1件もない
+  - マッチが途中終了していない
+  - 最終勝者が一意に確定している
+- 上記のいずれかを満たさない場合は `RESULT_READY` 自体は生成するが `is_rated = false` とし、`rated_block_reason` を設定する
+
 ## 11. CLOSED（解散）
 - ホスト操作で即 `CLOSED` も可
 - 対戦正常終了時は `RESULT` に入り、必要に応じて `RESULT -> LOBBY` で再戦準備に戻す

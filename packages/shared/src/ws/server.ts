@@ -81,8 +81,32 @@ export interface ForceAdvanceAppliedPayload {
   timed_out_players: string[];
 }
 
+export type RatedBlockReason =
+  | "private_room"
+  | "missing_submission"
+  | "mismatch_observed_key"
+  | "incomplete_match"
+  | "skip_occurred"
+  | "timeout_occurred"
+  | "force_advanced"
+  | "result_conflict";
+
+export interface ResultReadySummary {
+  mode: "ARENA" | "BPL";
+  win_metric: "SCORE" | "MISSCOUNT";
+  total_rounds: number;
+  completed_rounds: number;
+  winner_player_ids: string[];
+  is_draw: boolean;
+  is_rated: boolean;
+  rated_block_reason: RatedBlockReason | null;
+  rating_before: number | null;
+  rating_after: number | null;
+  rating_delta: number | null;
+}
+
 export interface ResultReadyPayload {
-  summary: JsonObject;
+  summary: ResultReadySummary;
   per_round: JsonObject;
   per_player: JsonObject;
 }
