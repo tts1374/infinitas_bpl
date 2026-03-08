@@ -63,7 +63,7 @@ export function App() {
     <main className="flex h-screen w-screen overflow-hidden bg-[#1e1e1e]">
       <AppSidebar activeView={activeView} hasRoom={roomSnapshot !== null} onNavigate={navigate} />
 
-      <section className="content-stage custom-scrollbar">
+      <section className="custom-scrollbar relative min-w-0 flex-1 overflow-y-auto p-8">
         {activeView === "lobby" ? (
           <LobbyPage
             onEnterRoom={() => {
