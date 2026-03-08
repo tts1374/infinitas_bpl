@@ -49,7 +49,7 @@ function createChartMaster() {
   };
 }
 
-function createState() {
+function createState(settingsOverride = {}) {
   const state = new RoomLobbyState(createChartMaster());
   state.initialize({
     room_id: "room-1",
@@ -63,6 +63,7 @@ function createState() {
       level_filter: "ANY",
       room_comment: "Rematch room",
       max_players: 4,
+      ...settingsOverride,
     },
   });
 
@@ -87,6 +88,39 @@ function createState() {
   );
 
   return state;
+}
+
+function prepareMatch(state, input = {}) {
+  const startAt = input.startAt ?? "2026-03-08T00:01:00.000Z";
+  const hostPick = input.hostPick ?? "chart-1";
+  const guestPick = input.guestPick ?? "chart-2";
+
+  assert.equal(state.setPlayerReady("host", true).ok, true);
+  assert.equal(state.setPlayerReady("guest", true).ok, true);
+  assert.deepEqual(state.startMatch("host", new Date(startAt)), { ok: true });
+  assert.equal(state.submitPick("host", hostPick, new Date("2026-03-08T00:01:10.000Z")).ok, true);
+  assert.equal(state.submitPick("guest", guestPick, new Date("2026-03-08T00:01:11.000Z")).ok, true);
+  assert.equal(state.getRoomState(), "PLAYING");
+}
+
+function submitCurrentRoundResult(state, playerId, roundIndex, metricValue, nowAt) {
+  const snapshot = state.toSnapshot();
+  assert.ok(snapshot.current_round, "current round should exist");
+  assert.equal(snapshot.current_round.round_index, roundIndex);
+  return state.submitResult(
+    playerId,
+    roundIndex,
+    snapshot.current_round.expected_key,
+    metricValue,
+    null,
+    new Date(nowAt),
+  );
+}
+
+function getResultSummary(state) {
+  const payload = state.getResultReadyPayload();
+  assert.ok(payload, "result ready payload should exist");
+  return payload.summary;
 }
 
 function playCurrentRound(state, roundIndex, hostMetric, guestMetric, nowBase) {
@@ -175,4 +209,149 @@ test("RESULT -> LOBBY clears ready and match transient state without auto-start"
   assert.equal(state.setPlayerReady("host", true).ok, true);
   assert.equal(state.setPlayerReady("guest", true).ok, true);
   assert.deepEqual(state.startMatch("host", new Date("2026-03-08T00:04:20.000Z")), { ok: true });
+});
+
+test("strict rated match is true only on fully completed clean match", () => {
+  const state = createState();
+  prepareMatch(state);
+
+  playCurrentRound(state, 0, 2200, 2100, "2026-03-08T00:02");
+  playCurrentRound(state, 1, 2300, 2000, "2026-03-08T00:03");
+
+  const summary = getResultSummary(state);
+  assert.equal(summary.is_rated, true);
+  assert.equal(summary.rated_block_reason, null);
+  assert.equal(summary.rating_before, null);
+  assert.equal(summary.rating_after, null);
+  assert.equal(summary.rating_delta, null);
+  assert.deepEqual(summary.winner_player_ids, ["host"]);
+});
+
+test("missing submission still generates RESULT_READY and marks the match unrated", () => {
+  const state = createState();
+  prepareMatch(state);
+
+  assert.equal(
+    submitCurrentRoundResult(state, "host", 0, 2200, "2026-03-08T00:02:00.000Z").ok,
+    true,
+  );
+
+  state["enterResult"](new Date("2026-03-08T00:02:30.000Z"));
+
+  const summary = getResultSummary(state);
+  assert.equal(summary.is_rated, false);
+  assert.equal(summary.rated_block_reason, "missing_submission");
+  assert.equal(summary.rating_before, null);
+  assert.equal(summary.rating_after, null);
+  assert.equal(summary.rating_delta, null);
+});
+
+test("SKIPPED blocks rating", () => {
+  const state = createState();
+  prepareMatch(state);
+
+  const firstRound = state.skipSelf("host", 0, "TECH", new Date("2026-03-08T00:02:00.000Z"));
+  assert.equal(firstRound.ok, true);
+  assert.equal(
+    submitCurrentRoundResult(state, "guest", 0, 2100, "2026-03-08T00:02:01.000Z").ok,
+    true,
+  );
+
+  playCurrentRound(state, 1, 2300, 2000, "2026-03-08T00:03");
+
+  const summary = getResultSummary(state);
+  assert.equal(summary.is_rated, false);
+  assert.equal(summary.rated_block_reason, "skip_occurred");
+});
+
+test("TIMEOUT blocks rating", () => {
+  const state = createState();
+  prepareMatch(state);
+
+  assert.equal(
+    submitCurrentRoundResult(state, "host", 0, 2200, "2026-03-08T00:02:00.000Z").ok,
+    true,
+  );
+  const transition = state.expireCurrentRoundIfNeeded(new Date("2026-03-08T00:08:00.000Z"));
+  assert.ok(transition);
+  assert.equal(transition.confirmations.some((entry) => entry.status === "TIMEOUT"), true);
+
+  playCurrentRound(state, 1, 2300, 2000, "2026-03-08T00:09");
+
+  const summary = getResultSummary(state);
+  assert.equal(summary.is_rated, false);
+  assert.equal(summary.rated_block_reason, "timeout_occurred");
+});
+
+test("FORCE_ADVANCE blocks rating", () => {
+  const state = createState();
+  prepareMatch(state);
+
+  assert.equal(
+    submitCurrentRoundResult(state, "host", 0, 2200, "2026-03-08T00:02:00.000Z").ok,
+    true,
+  );
+  const result = state.forceAdvance("host", new Date("2026-03-08T00:02:10.000Z"));
+  assert.equal(result.ok, true);
+  assert.ok(result.force_advance_applied);
+
+  playCurrentRound(state, 1, 2300, 2000, "2026-03-08T00:03");
+
+  const summary = getResultSummary(state);
+  assert.equal(summary.is_rated, false);
+  assert.equal(summary.rated_block_reason, "force_advanced");
+});
+
+test("mismatched observed_key poisons the match even if the player later submits a correct result", () => {
+  const state = createState();
+  prepareMatch(state);
+
+  const snapshot = state.toSnapshot();
+  assert.ok(snapshot.current_round);
+  const mismatch = state.submitResult(
+    "host",
+    0,
+    {
+      ...snapshot.current_round.expected_key,
+      title_search_key: `${snapshot.current_round.expected_key.title_search_key}-wrong`,
+    },
+    2200,
+    null,
+    new Date("2026-03-08T00:02:00.000Z"),
+  );
+  assert.deepEqual(mismatch, { ok: false, reason: "RESULT_KEY_MISMATCH", confirmations: [] });
+
+  playCurrentRound(state, 0, 2200, 2100, "2026-03-08T00:02");
+  playCurrentRound(state, 1, 2300, 2000, "2026-03-08T00:03");
+
+  const summary = getResultSummary(state);
+  assert.equal(summary.is_rated, false);
+  assert.equal(summary.rated_block_reason, "mismatch_observed_key");
+});
+
+test("BPL early finish is unrated because not all rounds completed", () => {
+  const state = createState({ mode: "BPL", max_players: 2 });
+  prepareMatch(state);
+
+  playCurrentRound(state, 0, 2200, 2100, "2026-03-08T00:02");
+  playCurrentRound(state, 1, 2300, 2000, "2026-03-08T00:03");
+
+  const summary = getResultSummary(state);
+  assert.equal(state.getRoomState(), "RESULT");
+  assert.equal(summary.is_rated, false);
+  assert.equal(summary.rated_block_reason, "incomplete_match");
+});
+
+test("conflicting final result blocks rating", () => {
+  const state = createState({ mode: "BPL", max_players: 2 });
+  prepareMatch(state);
+
+  playCurrentRound(state, 0, 2200, 2100, "2026-03-08T00:02");
+  playCurrentRound(state, 1, 2000, 2300, "2026-03-08T00:03");
+  playCurrentRound(state, 2, 2100, 2100, "2026-03-08T00:04");
+
+  const summary = getResultSummary(state);
+  assert.equal(summary.is_rated, false);
+  assert.equal(summary.rated_block_reason, "result_conflict");
+  assert.deepEqual(summary.winner_player_ids.sort(), ["guest", "host"]);
 });
