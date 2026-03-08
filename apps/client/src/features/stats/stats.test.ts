@@ -26,6 +26,7 @@ import {
 import {
   getChartRankings,
   getCurrentRating,
+  getDetailedMatchHistory,
   getRecentMatchHistory,
   getStabilitySummary,
   reduceArchiveWithClosedMatch,
@@ -256,6 +257,7 @@ runCase("BPL rating is updated once per match from initial 1500 and history keep
 
   const archive = recordClosedMatch(createEmptyStatsArchive(), session);
   const match = archive.matches[0];
+  const detailedHistory = getDetailedMatchHistory(archive, "BPL", "SP");
   const history = getRecentMatchHistory(archive, "BPL", "SP");
 
   assert.ok(match);
@@ -265,6 +267,11 @@ runCase("BPL rating is updated once per match from initial 1500 and history keep
   assert.equal(match!.match_result, "WIN");
   assert.equal(archive.matches.length, 1);
   assert.equal(getCurrentRating(archive, "BPL", "SP"), 1512);
+  assert.equal(detailedHistory.length, 1);
+  assert.equal(detailedHistory[0]?.opponent_point_total, 1);
+  assert.equal(detailedHistory[0]?.total_ex_score, 6050);
+  assert.equal(detailedHistory[0]?.games.length, 3);
+  assert.equal(detailedHistory[0]?.games[0]?.chart_title, "Song 1");
   assert.equal(history.length, 1);
   assert.equal(history[0]?.detail, "2-1");
 });
