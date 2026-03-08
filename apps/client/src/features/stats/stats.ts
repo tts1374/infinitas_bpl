@@ -17,6 +17,8 @@ import {
   RECENT_HISTORY_LIMIT,
   RECENT_STABILITY_LIMIT,
   type ChartRankingEntry,
+  type DetailedMatchHistoryEntry,
+  type DetailedMatchHistoryGameEntry,
   type MatchGame,
   type MatchHistoryEntry,
   type MatchRecord,
@@ -891,6 +893,59 @@ export function getCurrentRating(
 ): number | null {
   const series = buildRatingSeries(battleType, playMode);
   return series === null ? null : archive.rating_series_state[series] ?? null;
+}
+
+export function getDetailedMatchHistory(
+  archive: StatsArchive,
+  battleType: "ARENA" | "BPL",
+  playMode: PlayStyle,
+): DetailedMatchHistoryEntry[] {
+  const groupedGames = new Map<string, DetailedMatchHistoryGameEntry[]>();
+
+  for (const game of archive.match_games) {
+    if (game.battle_type !== battleType || game.play_mode !== playMode) {
+      continue;
+    }
+
+    const entry: DetailedMatchHistoryGameEntry = {
+      match_game_id: game.match_game_id,
+      game_index: game.game_index,
+      chart_title: game.chart_title,
+      round_point: game.round_point,
+      game_result: game.game_result,
+      my_ex_score: game.my_ex_score,
+      my_bp: game.my_bp,
+    };
+    const current = groupedGames.get(game.match_id);
+    if (current) {
+      current.push(entry);
+    } else {
+      groupedGames.set(game.match_id, [entry]);
+    }
+  }
+
+  return archive.matches
+    .filter((entry) => entry.battle_type === battleType && entry.play_mode === playMode)
+    .map((match) => {
+      const games = [...(groupedGames.get(match.match_id) ?? [])].sort((left, right) => left.game_index - right.game_index);
+      const hasCompleteExScore = games.length > 0 && games.every((game) => game.my_ex_score !== null);
+      const opponentPointTotal = battleType === "BPL" ? Math.max(0, games.length - match.match_point_total) : null;
+
+      return {
+        match_id: match.match_id,
+        ended_at: match.ended_at,
+        match_result: match.match_result,
+        rating_delta: match.rating_delta,
+        rating_after: match.rating_after,
+        final_rank: match.final_rank,
+        match_point_total: match.match_point_total,
+        opponent_point_total: opponentPointTotal,
+        total_ex_score: hasCompleteExScore
+          ? games.reduce((sum, game) => sum + (game.my_ex_score ?? 0), 0)
+          : null,
+        games,
+      };
+    });
 }
 
 export function getRecentMatchHistory(

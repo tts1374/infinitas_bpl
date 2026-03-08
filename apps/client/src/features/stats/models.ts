@@ -155,6 +155,29 @@ export interface MatchHistoryEntry {
   detail: string;
 }
 
+export interface DetailedMatchHistoryGameEntry {
+  match_game_id: string;
+  game_index: number;
+  chart_title: string;
+  round_point: number;
+  game_result: StatsMatchResult;
+  my_ex_score: number | null;
+  my_bp: number | null;
+}
+
+export interface DetailedMatchHistoryEntry {
+  match_id: string;
+  ended_at: string;
+  match_result: StatsMatchResult;
+  rating_delta: number | null;
+  rating_after: number | null;
+  final_rank: number | null;
+  match_point_total: number;
+  opponent_point_total: number | null;
+  total_ex_score: number | null;
+  games: DetailedMatchHistoryGameEntry[];
+}
+
 export interface ChartRankingEntry {
   chart_id: string;
   chart_title: string;
