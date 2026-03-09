@@ -83,7 +83,7 @@ Windows 向け updater 配布は [release-desktop.yml](../../.github/workflows/r
 
 - `TAURI_SIGNING_PRIVATE_KEY`
 - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
-- `CLOUDFLARE_API_TOKEN`
+- `CLOUDFLARE_API_TOKEN_RELEASE`
 - `CLOUDFLARE_ACCOUNT_ID`
 
 ### 任意の GitHub Variables
