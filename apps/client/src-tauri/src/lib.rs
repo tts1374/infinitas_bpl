@@ -14,6 +14,7 @@ use watchers::SourceWatcherManager;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_tts::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(SourceWatcherManager::default())
         .invoke_handler(tauri::generate_handler![
             get_source_watcher_state,
