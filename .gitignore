@@ -5,3 +5,4 @@ apps/client/src-tauri/target/
 apps/client/src-tauri/gen/
 testdata/runtime/
 .tmp/
+docs/private-notes/*
