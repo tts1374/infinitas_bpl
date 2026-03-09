@@ -657,7 +657,7 @@ export function StatsPage({ onNavigateToLobby }: StatsPageProps) {
           <div className="space-y-6">
             <section className="overflow-hidden rounded-2xl border border-white/5 bg-[#1a1a1e] shadow-xl">
               <div className="border-b border-white/5 bg-white/[0.02] px-5 py-3">
-                <h2 className="flex items-center gap-2 text-[11px] font-black italic uppercase tracking-widest text-cyan-400">
+                <h2 className="flex items-center gap-2 text-[11px] font-black italic tracking-widest text-cyan-400">
                   <TrendingUp className="h-3.5 w-3.5" />
                   Top Performing Songs
                 </h2>
@@ -672,7 +672,7 @@ export function StatsPage({ onNavigateToLobby }: StatsPageProps) {
 
             <section className="overflow-hidden rounded-2xl border border-white/5 bg-[#1a1a1e] shadow-xl">
               <div className="border-b border-white/5 bg-white/[0.02] px-5 py-3">
-                <h2 className="flex items-center gap-2 text-[11px] font-black italic uppercase tracking-widest text-red-400">
+                <h2 className="flex items-center gap-2 text-[11px] font-black italic tracking-widest text-red-400">
                   <TrendingUp className="h-3.5 w-3.5 rotate-180" />
                   Challenging Songs
                 </h2>
