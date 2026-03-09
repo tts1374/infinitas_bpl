@@ -57,6 +57,7 @@ function syncSession(snapshot: RoomStateSnapshot | null): void {
 
 function syncFromRoomStore(): void {
   const snapshot = roomStore.getState().snapshot;
+  const resultReady = roomStore.getState().resultReady;
   syncSession(snapshot);
 
   if (snapshot === null) {
@@ -73,11 +74,29 @@ function syncFromRoomStore(): void {
   });
   setArchiveIfChanged(afterSessionFlush);
 
-  if (snapshot.room_state !== "CLOSED") {
+  const syntheticClosedSnapshot =
+    snapshot.room_state === "RESULT" && resultReady !== null
+      ? {
+          ...snapshot,
+          room_state: "CLOSED" as const,
+          close_reason: "ALL_ROUNDS_COMPLETED" as const,
+          closed_at: snapshot.closed_at ?? processedAt,
+        }
+      : null;
+  const finalizedSnapshot = snapshot.room_state === "CLOSED" ? snapshot : syntheticClosedSnapshot;
+
+  if (finalizedSnapshot === null) {
     return;
   }
 
-  const closedRoomKey = `${snapshot.room_id}:${snapshot.closed_at ?? "open"}`;
+  const roundSignature =
+    currentSession?.rounds
+      .map((round) => `${round.round_index}:${round.round_started_at ?? ""}`)
+      .join("|") ?? "no-rounds";
+  const closedRoomKey =
+    snapshot.room_state === "CLOSED"
+      ? `${snapshot.room_id}:${snapshot.closed_at ?? "open"}:${roundSignature}`
+      : `${snapshot.room_id}:result:${roundSignature}`;
   if (closedRoomKey === lastClosedRoomKey) {
     return;
   }
@@ -85,8 +104,8 @@ function syncFromRoomStore(): void {
   lastClosedRoomKey = closedRoomKey;
   const afterMatchClose = reduceArchiveWithClosedMatch(afterSessionFlush, {
     session: currentSession,
-    snapshot,
-    resultReady: roomStore.getState().resultReady,
+    snapshot: finalizedSnapshot,
+    resultReady,
     myPlayerId,
     processedAt,
   });

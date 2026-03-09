@@ -13,16 +13,12 @@ import {
   type RoomSettings,
 } from "@infinitas/shared";
 import { AlertCircle, ChevronLeft, ChevronRight, Eye, EyeOff, Key, Lock, MessageSquare, Plus, RefreshCcw, Search, Trophy, Users, X } from "lucide-react";
-import { startTransition, useDeferredValue, useEffect, useState, type ReactNode } from "react";
+import { useDeferredValue, useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { createRoom } from "../services/worker-api-client";
 import { lobbyStore, useLobbyStore } from "../stores/lobby-store";
 import { roomStore, useRoomStore } from "../stores/room-store";
 import { useSettingsStore } from "../stores/settings-store";
-
-interface LobbyPageProps {
-  onEnterRoom: () => void;
-}
 
 const defaultCreateDraft: RoomSettings = {
   visibility: "PUBLIC",
@@ -84,7 +80,7 @@ function ModalPortal({ children }: { children: ReactNode }) {
   return createPortal(children, document.body);
 }
 
-export function LobbyPage({ onEnterRoom }: LobbyPageProps) {
+export function LobbyPage() {
   const savedSettings = useSettingsStore((state) => state.saved);
   const rooms = useLobbyStore((state) => state.rooms);
   const filters = useLobbyStore((state) => state.filters);
@@ -102,8 +98,10 @@ export function LobbyPage({ onEnterRoom }: LobbyPageProps) {
   const [localMessage, setLocalMessage] = useState<string | null>(null);
   const [showManualJoin, setShowManualJoin] = useState(false);
   const [showCreateRoom, setShowCreateRoom] = useState(false);
+  const [showManualJoinCode, setShowManualJoinCode] = useState(false);
   const [showCreateJoinCode, setShowCreateJoinCode] = useState(false);
   const [selectedRoomForJoin, setSelectedRoomForJoin] = useState<RoomListingEntry | null>(null);
+  const [showRoomJoinCode, setShowRoomJoinCode] = useState(false);
   const [joinModalCode, setJoinModalCode] = useState("");
   const [joinModalError, setJoinModalError] = useState<string | null>(null);
   const [searchDraft, setSearchDraft] = useState(filters.roomComment);
@@ -130,7 +128,7 @@ export function LobbyPage({ onEnterRoom }: LobbyPageProps) {
   }, [deferredSearchDraft, filters.roomComment, savedSettings.apiBaseUrl]);
 
   async function enterRoom(roomId: string, joinCode?: string | null): Promise<void> {
-    const connected = roomStore.connect(
+    roomStore.connect(
       joinCode === undefined ? { roomId } : { roomId, joinCode },
       {
         apiBaseUrl: savedSettings.apiBaseUrl,
@@ -139,9 +137,6 @@ export function LobbyPage({ onEnterRoom }: LobbyPageProps) {
         source: savedSettings.source,
       },
     );
-    if (connected) {
-      startTransition(() => onEnterRoom());
-    }
   }
 
   async function joinRoomFromList(room: RoomListingEntry, joinCode?: string | null): Promise<void> {
@@ -173,6 +168,7 @@ export function LobbyPage({ onEnterRoom }: LobbyPageProps) {
       setSelectedRoomForJoin(room);
       setJoinModalCode("");
       setJoinModalError(null);
+      setShowRoomJoinCode(false);
       return;
     }
 
@@ -191,7 +187,10 @@ export function LobbyPage({ onEnterRoom }: LobbyPageProps) {
         <div className="flex flex-wrap gap-4">
           <button
             type="button"
-            onClick={() => setShowManualJoin(true)}
+            onClick={() => {
+              setShowManualJoinCode(false);
+              setShowManualJoin(true);
+            }}
             className="flex items-center gap-2 rounded-lg border border-white/10 bg-[#2d2d30] px-5 py-2.5 text-sm font-bold transition-all hover:bg-[#353538] active:scale-95"
           >
             <Key size={18} className="text-gray-400" /> IDを手動入力
@@ -403,7 +402,10 @@ export function LobbyPage({ onEnterRoom }: LobbyPageProps) {
                   </h2>
                   <button
                     type="button"
-                    onClick={() => setShowManualJoin(false)}
+                    onClick={() => {
+                      setShowManualJoinCode(false);
+                      setShowManualJoin(false);
+                    }}
                     className="rounded-full p-1 text-gray-500 transition-all hover:bg-white/5 hover:text-white"
                   >
                     <X size={24} />
@@ -427,23 +429,36 @@ export function LobbyPage({ onEnterRoom }: LobbyPageProps) {
                       <label className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">Join Code (合言葉)</label>
                       {manualJoinCodeError ? <span className="text-[10px] font-bold text-red-500">{manualJoinCodeError}</span> : null}
                     </div>
-                    <input
-                      type="text"
-                      value={manualJoinCode}
-                      maxLength={JOIN_CODE_LENGTH}
-                      placeholder="例: A1B2C3D4"
-                      className={`w-full rounded-xl border bg-[#1e1e1e] p-4 text-center font-mono text-lg tracking-[0.3em] uppercase outline-none transition-all ${
-                        manualJoinCodeError ? "border-red-500" : "border-white/10 focus:border-cyan-500"
-                      }`}
-                      onChange={(event) => {
-                        setManualJoinCode(normalizeJoinCodeInput(event.currentTarget.value));
-                      }}
-                    />
+                    <div className="relative">
+                      <input
+                        type={showManualJoinCode ? "text" : "password"}
+                        value={manualJoinCode}
+                        maxLength={JOIN_CODE_LENGTH}
+                        placeholder="例: A1B2C3D4"
+                        className={`w-full rounded-xl border bg-[#1e1e1e] p-4 pr-12 text-center font-mono text-lg tracking-[0.3em] uppercase text-white outline-none transition-all placeholder:text-gray-700 ${
+                          manualJoinCodeError ? "border-red-500" : "border-white/10 focus:border-cyan-500"
+                        }`}
+                        onChange={(event) => {
+                          setManualJoinCode(normalizeJoinCodeInput(event.currentTarget.value));
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowManualJoinCode((current) => !current)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 transition-colors hover:text-white"
+                        aria-label={showManualJoinCode ? "合言葉を隠す" : "合言葉を表示"}
+                      >
+                        {showManualJoinCode ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
+                    </div>
                   </div>
                   <div className="mt-4 flex gap-4">
                     <button
                       type="button"
-                      onClick={() => setShowManualJoin(false)}
+                      onClick={() => {
+                        setShowManualJoinCode(false);
+                        setShowManualJoin(false);
+                      }}
                       className="flex-1 rounded-xl bg-white/5 py-4 font-bold transition-all hover:bg-white/10"
                     >
                       キャンセル
@@ -713,7 +728,7 @@ export function LobbyPage({ onEnterRoom }: LobbyPageProps) {
                 <button
                   type="button"
                   onClick={() => setShowCreateRoom(false)}
-                  className="flex-1 rounded-xl bg-white/5 py-4 font-bold transition-all hover:bg-white/10"
+                  className="flex-1 rounded-xl bg-white/5 py-4 font-bold text-white transition-all hover:bg-white/10"
                 >
                   キャンセル
                 </button>
@@ -763,7 +778,10 @@ export function LobbyPage({ onEnterRoom }: LobbyPageProps) {
               <div className="absolute right-6 top-6">
                 <button
                   type="button"
-                  onClick={() => setSelectedRoomForJoin(null)}
+                  onClick={() => {
+                    setShowRoomJoinCode(false);
+                    setSelectedRoomForJoin(null);
+                  }}
                   className="rounded-full p-2 text-gray-500 transition-all hover:bg-white/5 hover:text-white"
                 >
                   <X size={20} />
@@ -785,12 +803,12 @@ export function LobbyPage({ onEnterRoom }: LobbyPageProps) {
                 </div>
                 <div className="group relative">
                   <input
-                    type="text"
+                    type={showRoomJoinCode ? "text" : "password"}
                     value={joinModalCode}
                     maxLength={JOIN_CODE_LENGTH}
                     autoFocus
                     placeholder="••••••••"
-                    className={`w-full rounded-2xl border-2 bg-white/[0.03] p-6 text-center font-mono text-3xl tracking-[0.5em] outline-none transition-all placeholder:text-white/5 ${
+                    className={`w-full rounded-2xl border-2 bg-white/[0.03] p-6 pr-14 text-center font-mono text-3xl tracking-[0.5em] text-white outline-none transition-all placeholder:text-white/5 ${
                       joinModalError ? "border-red-500/50" : "border-white/5 group-hover:border-white/10 focus:border-cyan-500/50"
                     }`}
                     onChange={(event) => {
@@ -799,6 +817,14 @@ export function LobbyPage({ onEnterRoom }: LobbyPageProps) {
                       setJoinModalError(validateJoinCode(nextJoinCode));
                     }}
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowRoomJoinCode((current) => !current)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 transition-colors hover:text-white"
+                    aria-label={showRoomJoinCode ? "合言葉を隠す" : "合言葉を表示"}
+                  >
+                    {showRoomJoinCode ? <EyeOff size={20} /> : <Eye size={20} />}
+                  </button>
                   <div
                     className={`absolute -bottom-1 left-1/2 h-1 w-[60%] -translate-x-1/2 rounded-full bg-cyan-500 shadow-[0_0_15px_rgba(6,182,212,0.8)] transition-all duration-500 ${
                       joinModalCode.length === JOIN_CODE_LENGTH && joinModalError === null ? "opacity-100" : "scale-x-0 opacity-0"
@@ -809,7 +835,10 @@ export function LobbyPage({ onEnterRoom }: LobbyPageProps) {
               <div className="grid grid-cols-2 gap-4">
                 <button
                   type="button"
-                  onClick={() => setSelectedRoomForJoin(null)}
+                  onClick={() => {
+                    setShowRoomJoinCode(false);
+                    setSelectedRoomForJoin(null);
+                  }}
                   className="rounded-2xl bg-white/5 py-4 font-bold text-gray-400 transition-all hover:bg-white/10"
                 >
                   キャンセル
@@ -826,6 +855,7 @@ export function LobbyPage({ onEnterRoom }: LobbyPageProps) {
                       return;
                     }
                     void joinRoomFromList(selectedRoomForJoin, normalizedCode).then(() => {
+                      setShowRoomJoinCode(false);
                       setSelectedRoomForJoin(null);
                     });
                   }}

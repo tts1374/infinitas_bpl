@@ -18,6 +18,9 @@ export interface RuntimeConfig {
   debugUiEnabled: boolean;
   instanceId: string | null;
   instanceLabel: string;
+  mockScenarioId: string | null;
+  autoCapture: boolean;
+  captureDelayMs: number;
   settingsDefaults: RuntimeSettingsDefaults;
 }
 
@@ -28,6 +31,16 @@ function readSearchParam(name: string): string | undefined {
 
   const value = new URLSearchParams(window.location.search).get(name)?.trim();
   return value && value.length > 0 ? value : undefined;
+}
+
+function readFlagParam(name: string): boolean {
+  const value = readSearchParam(name)?.toLowerCase();
+  return value === "1" || value === "true" || value === "yes" || value === "on";
+}
+
+function readNumberParam(name: string, fallback: number): number {
+  const value = Number(readSearchParam(name));
+  return Number.isFinite(value) ? value : fallback;
 }
 
 function normalizeInstanceId(value: string | undefined): string | null {
@@ -57,6 +70,9 @@ export const runtimeConfig: RuntimeConfig = {
   debugUiEnabled: import.meta.env.DEV,
   instanceId,
   instanceLabel: readSearchParam("label") ?? displayName ?? instanceId ?? "default",
+  mockScenarioId: readSearchParam("scenario") ?? null,
+  autoCapture: readFlagParam("capture"),
+  captureDelayMs: readNumberParam("captureDelayMs", 500),
   settingsDefaults: {
     apiBaseUrl,
     playerId,

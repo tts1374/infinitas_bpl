@@ -37,6 +37,8 @@ export interface RoomStoreState {
   snapshot: RoomStateSnapshot | null;
   resultReady: ResultReadyPayload | null;
   errorDialog: RoomDialogState | null;
+  roundConfirmations: Record<number, Array<ServerMessagePayloadMap["PLAYER_ROUND_CONFIRMED"]>>;
+  endedRoundIndices: number[];
   eventLog: string[];
   audioEvents: RoomAudioEvent[];
 }
@@ -49,7 +51,23 @@ export interface RoomConnectionSettings {
 }
 
 let activeClient: RoomSocketClient | null = null;
+let activeMockScenarioId: string | null = null;
 const requestIdsByKey = new Map<string, string>();
+
+export interface MockRoomStoreState {
+  scenarioId: string;
+  roomId: string | null;
+  joinCode: string | null;
+  connectionStatus: RoomConnectionStatus;
+  connectionDetail: string;
+  snapshot: RoomStateSnapshot | null;
+  resultReady: ResultReadyPayload | null;
+  errorDialog?: RoomDialogState | null;
+  roundConfirmations: Record<number, Array<ServerMessagePayloadMap["PLAYER_ROUND_CONFIRMED"]>>;
+  endedRoundIndices: number[];
+  eventLog?: string[];
+  audioEvents?: RoomAudioEvent[];
+}
 
 export interface RoomAudioEvent {
   kind: SoundEffectKey;
@@ -66,6 +84,8 @@ const initialState: RoomStoreState = {
   snapshot: null,
   resultReady: null,
   errorDialog: null,
+  roundConfirmations: {},
+  endedRoundIndices: [],
   eventLog: [],
   audioEvents: [],
 };
@@ -136,6 +156,32 @@ function setErrorDialog(title: string, description: string, code?: string, block
   }));
 }
 
+function upsertRoundConfirmation(payload: ServerMessagePayloadMap["PLAYER_ROUND_CONFIRMED"]): void {
+  internalStore.setState((state) => {
+    const currentEntries = state.roundConfirmations[payload.round_index] ?? [];
+    const nextEntries = currentEntries.some((entry) => entry.player_id === payload.player_id)
+      ? currentEntries.map((entry) => (entry.player_id === payload.player_id ? payload : entry))
+      : [...currentEntries, payload];
+
+    return {
+      ...state,
+      roundConfirmations: {
+        ...state.roundConfirmations,
+        [payload.round_index]: nextEntries,
+      },
+    };
+  });
+}
+
+function markRoundEnded(roundIndex: number): void {
+  internalStore.setState((state) => ({
+    ...state,
+    endedRoundIndices: state.endedRoundIndices.includes(roundIndex)
+      ? state.endedRoundIndices
+      : [...state.endedRoundIndices, roundIndex].sort((left, right) => left - right),
+  }));
+}
+
 function buildSourceUnavailableDescription(detail: string, roomState: RoomStateSnapshot["room_state"]): string {
   if (roomState === "PLAYING") {
     return `${detail} Use TECH skip if this round cannot be auto-submitted.`;
@@ -162,6 +208,55 @@ function startMatchRejectMessage(reason: string): string {
       return "Return to the lobby before starting a new match.";
     default:
       return reason;
+  }
+}
+
+function joinRejectDialog(reason: string, hasSnapshot: boolean): {
+  title: string;
+  description: string;
+  code?: string;
+  blocking?: boolean;
+} {
+  switch (reason) {
+    case "ROOM_FULL":
+      return {
+        title: "参加できません",
+        description: "部屋が満員でした",
+      };
+    case "INVALID_STATE":
+      return {
+        title: "参加できません",
+        description: "対戦開始済みでした",
+      };
+    case "JOIN_CODE_INVALID":
+      return {
+        title: "参加できません",
+        description: "合言葉が一致しませんでした",
+      };
+    case "ROOM_CLOSED":
+      return {
+        title: "参加できません",
+        description: "部屋が解散しました",
+      };
+    case "ROOM_STATE_LOST":
+      if (!hasSnapshot) {
+        return {
+          title: "参加できません",
+          description: "部屋が見つかりませんでした",
+        };
+      }
+
+      return {
+        title: "Room state lost",
+        description: buildRoomStateLostDescription("The room could not be recovered."),
+        code: reason,
+        blocking: true,
+      };
+    default:
+      return {
+        title: "Join rejected",
+        description: reason,
+      };
   }
 }
 
@@ -275,6 +370,12 @@ function handleServerMessage(client: RoomSocketClient, message: ServerMessage): 
     case "STATE_SNAPSHOT": {
       const payload = message.payload as { room_state_snapshot: RoomStateSnapshot };
       const previousSnapshot = internalStore.getState().snapshot;
+      const shouldResetRoundHistory =
+        payload.room_state_snapshot.room_state === "LOBBY" &&
+        payload.room_state_snapshot.current_round === null &&
+        payload.room_state_snapshot.picks.length === 0 &&
+        payload.room_state_snapshot.frozen_rounds.length === 0 &&
+        !payload.room_state_snapshot.result_ready;
       if (
         payload.room_state_snapshot.room_state === "CLOSED" &&
         previousSnapshot?.room_state !== "CLOSED"
@@ -290,6 +391,8 @@ function handleServerMessage(client: RoomSocketClient, message: ServerMessage): 
         ...state,
         snapshot: payload.room_state_snapshot,
         resultReady: payload.room_state_snapshot.result_ready ? state.resultReady : null,
+        roundConfirmations: shouldResetRoundHistory ? {} : state.roundConfirmations,
+        endedRoundIndices: shouldResetRoundHistory ? [] : state.endedRoundIndices,
         roomId: payload.room_state_snapshot.room_id,
         connectionStatus: "CONNECTED",
         connectionDetail: `Connected to ${payload.room_state_snapshot.room_state}.`,
@@ -307,28 +410,30 @@ function handleServerMessage(client: RoomSocketClient, message: ServerMessage): 
     }
     case "ROOM_JOIN_REJECTED": {
       const payload = message.payload as ServerMessagePayloadMap["ROOM_JOIN_REJECTED"];
+      const { snapshot } = internalStore.getState();
+      const dialog = joinRejectDialog(payload.reason, snapshot !== null);
       closeCurrentClient(false);
       internalStore.setState((state) => ({
         ...state,
-        connectionStatus: payload.reason === "ROOM_STATE_LOST" ? "CLOSED" : "ERROR",
-        connectionDetail: payload.reason === "ROOM_STATE_LOST" ? "Room state lost." : "Join rejected.",
+        connectionStatus: dialog.blocking ? "CLOSED" : "ERROR",
+        connectionDetail: dialog.description,
       }));
-      if (payload.reason === "ROOM_STATE_LOST") {
-        setErrorDialog(
-          "Room state lost",
-          buildRoomStateLostDescription("The room could not be recovered."),
-          payload.reason,
-          true,
-        );
-        return;
-      }
-
-      setErrorDialog("Join rejected", payload.reason);
+      setErrorDialog(dialog.title, dialog.description, dialog.code, dialog.blocking ?? false);
       return;
     }
     case "START_MATCH_REJECTED": {
       const payload = message.payload as ServerMessagePayloadMap["START_MATCH_REJECTED"];
       setErrorDialog("Start rejected", startMatchRejectMessage(payload.reason), payload.reason);
+      return;
+    }
+    case "PLAYER_ROUND_CONFIRMED": {
+      const payload = message.payload as ServerMessagePayloadMap["PLAYER_ROUND_CONFIRMED"];
+      upsertRoundConfirmation(payload);
+      return;
+    }
+    case "ROUND_ENDED": {
+      const payload = message.payload as ServerMessagePayloadMap["ROUND_ENDED"];
+      markRoundEnded(payload.round_index);
       return;
     }
     case "PICK_REJECTED": {
@@ -405,6 +510,25 @@ function handleServerMessage(client: RoomSocketClient, message: ServerMessage): 
 
 export const roomStore = {
   ...internalStore,
+  hydrateMockScenario(input: MockRoomStoreState): void {
+    closeCurrentClient(false);
+    clearRequestIds();
+    activeMockScenarioId = input.scenarioId;
+    internalStore.setState({
+      ...initialState,
+      roomId: input.roomId,
+      joinCode: input.joinCode,
+      connectionStatus: input.connectionStatus,
+      connectionDetail: input.connectionDetail,
+      snapshot: input.snapshot,
+      resultReady: input.resultReady,
+      errorDialog: input.errorDialog ?? null,
+      roundConfirmations: input.roundConfirmations,
+      endedRoundIndices: input.endedRoundIndices,
+      eventLog: input.eventLog ?? [`Mock scenario: ${input.scenarioId}`],
+      audioEvents: input.audioEvents ?? [],
+    });
+  },
   connect(
     connection: { roomId: string; joinCode?: string | null },
     settings: RoomConnectionSettings,
@@ -417,6 +541,7 @@ export const roomStore = {
 
     closeCurrentClient(false);
     clearRequestIds();
+    activeMockScenarioId = null;
 
     internalStore.setState({
       ...initialState,
@@ -497,6 +622,7 @@ export const roomStore = {
   leaveRoom(): void {
     closeCurrentClient(true);
     clearRequestIds();
+    activeMockScenarioId = null;
     internalStore.setState(initialState);
   },
   clearError(): void {
@@ -538,6 +664,11 @@ export const roomStore = {
     type: TType,
     payload: ClientMessagePayloadMap[TType],
   ): boolean {
+    if (activeMockScenarioId !== null) {
+      appendEventLog(`[mock] ${type}`);
+      return true;
+    }
+
     if (activeClient === null) {
       setErrorDialog("No active room", "Join a room before sending room actions.");
       pushAudioEvent({

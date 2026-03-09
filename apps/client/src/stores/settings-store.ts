@@ -287,6 +287,23 @@ const internalStore = createExternalStore<SettingsStoreState>({
 
 export const settingsStore = {
   ...internalStore,
+  replaceAll(
+    nextSettings: ClientSettings,
+    options: { persist?: boolean; statusMessage?: string | null } = {},
+  ): void {
+    const normalized = normalizeSettings(nextSettings);
+    if (options.persist ?? false) {
+      writeJson(SETTINGS_STORAGE_KEY, normalized);
+    }
+
+    internalStore.setState((state) => ({
+      ...state,
+      draft: normalized,
+      saved: normalized,
+      lastSavedAt: options.persist ?? false ? new Date().toISOString() : state.lastSavedAt,
+      statusMessage: options.statusMessage ?? null,
+    }));
+  },
   update<K extends keyof ClientSettings>(key: K, value: ClientSettings[K]): void {
     internalStore.setState((state) => ({
       ...state,

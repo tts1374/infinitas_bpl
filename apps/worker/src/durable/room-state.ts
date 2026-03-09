@@ -28,6 +28,10 @@ import {
 import type { ResolvedMasterChart, RoomChartMaster } from "../master/chart-master";
 import { evaluateResultRating } from "./result-rating";
 
+const BPL_PICK_CUTIN_DELAY_SECONDS = 3;
+const BPL_RESULT_PHASE_DELAY_SECONDS = 10;
+const ARENA_RESULT_PHASE_DELAY_SECONDS = 10;
+
 interface InternalPlayer {
   player_id: string;
   display_name: string;
@@ -1430,8 +1434,15 @@ export class RoomLobbyState {
     this.resultKeyMismatchDetected = false;
     this.forceAdvancedRoundIndices.clear();
 
-    for (const player of this.players.values()) {
+    for (const [playerId, player] of Array.from(this.players.entries())) {
+      if (!player.connected) {
+        this.players.delete(playerId);
+        continue;
+      }
+
       player.ready = false;
+      player.left_at = null;
+      player.rejoin_until = null;
     }
   }
 
@@ -1568,7 +1579,9 @@ export class RoomLobbyState {
       return null;
     }
 
-    const roundStartedAt = now.toISOString();
+    const roundStartedAt = new Date(
+      now.getTime() + this.getRoundLeadInSeconds(roundIndex) * 1_000,
+    ).toISOString();
     const roundSource = this.frozenRounds.find((round) => round.round_index === roundIndex);
     if (roundSource === undefined) {
       return null;
@@ -1603,6 +1616,18 @@ export class RoomLobbyState {
     return this.currentRound;
   }
 
+  private getRoundLeadInSeconds(roundIndex: number): number {
+    if (this.settings.mode === "BPL") {
+      return roundIndex === 0 ? BPL_PICK_CUTIN_DELAY_SECONDS : BPL_RESULT_PHASE_DELAY_SECONDS;
+    }
+
+    if (this.settings.mode === "ARENA" && roundIndex > 0) {
+      return ARENA_RESULT_PHASE_DELAY_SECONDS;
+    }
+
+    return 0;
+  }
+
   private isHostSkipUnlocked(now: Date): boolean {
     if (this.currentRound === null) {
       return false;
@@ -1621,8 +1646,7 @@ export class RoomLobbyState {
       return false;
     }
 
-    const roundWins = this.computeBplWins(roundIndex);
-    return Array.from(roundWins.values()).some((wins) => wins >= 2);
+    return roundIndex >= this.frozenRounds.length - 1;
   }
 
   private computeBplWins(maxRoundIndex: number): Map<string, number> {
