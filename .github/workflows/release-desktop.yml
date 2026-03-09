@@ -167,6 +167,7 @@ jobs:
             "${{ steps.release_meta.outputs.app_version }}" `
             --config "${{ env.WRANGLER_CONFIG_PATH }}" `
             --binding "${{ steps.release_meta.outputs.kv_binding_name }}" `
+            --preview false `
             --remote
 
           if ($LASTEXITCODE -ne 0) {
@@ -213,6 +214,7 @@ jobs:
             --config "${{ env.WRANGLER_CONFIG_PATH }}" `
             --binding "${{ steps.release_meta.outputs.kv_binding_name }}" `
             --text `
+            --preview false `
             --remote
 
           if ($LASTEXITCODE -ne 0) {
