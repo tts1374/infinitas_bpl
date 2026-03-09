@@ -52,7 +52,7 @@
 2. Worker deploy workflow と最小限の設定更新。
 3. Worker 用 README 追加と検証結果反映。
 
-## 検証予定
-- `npm --workspace @infinitas/worker run typecheck`
-- `cd apps/worker && npx wrangler deploy --dry-run`
-- `git diff --check`
+## 検証結果
+- [x] `npm --workspace @infinitas/worker run typecheck`
+- [x] `cd apps/worker && npx wrangler deploy --dry-run`
+- [x] `git diff --check`
