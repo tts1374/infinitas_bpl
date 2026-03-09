@@ -49,8 +49,8 @@
 3. ローカルで対象コマンドを再実行し、結果を反映。
 
 ## 検証結果
-- [ ] `npm run typecheck`
-- [ ] `npm run build:client`
-- [ ] `cargo check`
-- [ ] `npm run test:client-stats`
-- [ ] `npx wrangler deploy --dry-run`
+- [x] `npm run typecheck`
+- [x] `npm run build:client`
+- [x] `cargo check`
+- [x] `npm run test:client-stats`
+- [x] `npx wrangler deploy --dry-run`
