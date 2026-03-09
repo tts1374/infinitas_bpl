@@ -44,15 +44,16 @@ Notes:
 - [x] Worker テストの実行導線が存在する
   - 期待内容: README や script なしでも同じコマンドで再実行できる
   - 現状メモ: ルート `package.json` に `npm run test:worker` が定義されている
-- [ ] リリース手順書がある
+- [x] リリース手順書がある
   - 最低限必要: Worker デプロイ手順、client 配布手順、ロールバック手順
-  - 現状メモ: `apps/update-worker/README.md` には update-worker / desktop release はあるが、`apps/worker` の deploy 手順書は未整備
-- [ ] バージョン表記が揃っている
+  - 現状メモ: `apps/worker/README.md` に LOBBY Worker deploy 手順、`apps/update-worker/README.md` に updater / desktop release 手順がある
+- [x] バージョン表記が揃っている
   - 確認対象:
   - `package.json`
   - `apps/client/package.json`
   - `apps/client/src-tauri/tauri.conf.json`
   - `apps/client/src-tauri/Cargo.toml`
+  - 現状メモ: root / client / worker / update-worker / shared / Tauri / Cargo の version を `1.0.0` に統一済み
 
 ---
 
@@ -146,7 +147,13 @@ npm run lint
 
 ## 4. Worker / Cloudflare 確認
 
-- [ ] `apps/worker` の deploy 手順書または runbook がある
+- [x] `apps/worker` の deploy 手順書または runbook がある
+- [ ] GitHub Actions `Deploy infinitas-arena Worker` workflow が実行可能
+- [ ] Worker deploy 用 GitHub Secrets を確認した
+  - `CLOUDFLARE_DEPLOY_TOKEN`
+  - `CLOUDFLARE_ACCOUNT_ID`
+- [ ] Worker smoke check 用 GitHub Variable を確認した
+  - `CLOUDFLARE_WORKERS_SUBDOMAIN`
 - [ ] `wrangler.toml` の本番設定を確認した
 - [ ] Durable Object migration tag が意図通り
 - [ ] KV namespace の本番 ID を確認した
@@ -157,12 +164,21 @@ npm run lint
 確認対象:
 
 - `apps/worker/wrangler.toml`
+- `.github/workflows/deploy-worker.yml`
+- `apps/worker/README.md`
 - Cloudflare dashboard の DO / KV / Worker
 
 手動 deploy コマンド:
 
 ```powershell
 npm --workspace @infinitas/worker run deploy
+```
+
+GitHub Actions 手動 deploy:
+
+```text
+Workflow: Deploy infinitas-arena Worker
+Smoke check: /api/charts?play_style=SP&level_filter=ANY
 ```
 
 ### 4.1 Desktop updater release
@@ -327,6 +343,5 @@ Reason:
 
 2026-03-09 時点で未整備または要補強の項目:
 
-- バージョン統一ルール
-- `apps/worker` の deploy 手順書
+- GitHub 上での `Deploy infinitas-arena Worker` 手動実行結果
 - GitHub 上での `Release Desktop` 手動実行結果
