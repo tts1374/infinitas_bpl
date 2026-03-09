@@ -58,7 +58,17 @@
 
 ## コミット分割計画
 
-- [ ] 設計確認（既存 build / version / Wrangler / README の確認）
-- [ ] release workflow と補助スクリプト実装
-- [ ] README / 運用メモ更新
-- [ ] ローカル検証と差分確認
+- [x] 設計確認（既存 build / version / Wrangler / README の確認）
+- [x] release workflow と補助スクリプト実装
+- [x] README / 運用メモ更新
+- [x] ローカル検証と差分確認
+
+## 検証結果
+
+- `node scripts/release/get-tauri-version.mjs`
+- `npm ci`
+- `npm run lint`
+- `npm run typecheck`
+- `npm run build:client`
+- `npm run test:worker`
+- `npm --workspace @infinitas/update-worker run build`
