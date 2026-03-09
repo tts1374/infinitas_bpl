@@ -40,10 +40,10 @@ LOBBY Worker の production deploy は [deploy-worker.yml](../../.github/workflo
 
 ### 必要な GitHub Secrets
 
-- `CLOUDFLARE_DEPLOY_TOKEN`
+- `CLOUDFLARE_API_TOKEN_WORKER`
 - `CLOUDFLARE_ACCOUNT_ID`
 
-`CLOUDFLARE_DEPLOY_TOKEN` は workflow 内で `CLOUDFLARE_API_TOKEN` として渡します。用途は LOBBY Worker deploy 専用で、desktop release や updater 用 KV 更新には使いません。
+`CLOUDFLARE_API_TOKEN_WORKER` は LOBBY Worker deploy 専用です。Wrangler 実行時の認証にのみ使い、desktop release や updater 用 KV 更新には使いません。
 
 想定する最小権限:
 

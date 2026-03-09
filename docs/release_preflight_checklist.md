@@ -150,7 +150,7 @@ npm run lint
 - [x] `apps/worker` の deploy 手順書または runbook がある
 - [ ] GitHub Actions `Deploy infinitas-arena Worker` workflow が実行可能
 - [ ] Worker deploy 用 GitHub Secrets を確認した
-  - `CLOUDFLARE_DEPLOY_TOKEN`
+  - `CLOUDFLARE_API_TOKEN_WORKER`
   - `CLOUDFLARE_ACCOUNT_ID`
 - [ ] Worker smoke check 用 GitHub Variable を確認した
   - `CLOUDFLARE_WORKERS_SUBDOMAIN`
