@@ -2818,7 +2818,7 @@ export function RoomPage() {
         </div>
       ) : null}
 
-      {false && runtimeConfig.debugUiEnabled ? (
+      {import.meta.env.DEV && runtimeConfig.debugUiEnabled ? (
         <section className="space-y-4">
           <DebugSection title="Debug Actions">
             <div className="space-y-5">
