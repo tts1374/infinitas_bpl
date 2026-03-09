@@ -3,7 +3,6 @@ import { ChevronLeft, Database, FolderOpen, Save, Settings as SettingsIcon, User
 import { pickDirectory, validateSourceDirectory } from "../services/tauri-bridge";
 import { sourceStore } from "../stores/source-store";
 import { getActiveSourceDirectory, settingsStore, useSettingsStore } from "../stores/settings-store";
-import { formatDateTime } from "../utils/format";
 
 interface SettingsPageProps {
   roomJoined: boolean;
@@ -33,7 +32,7 @@ const SOURCE_OPTIONS = [
 export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProps) {
   const draft = useSettingsStore((state) => state.draft);
   const statusMessage = useSettingsStore((state) => state.statusMessage);
-  const lastSavedAt = useSettingsStore((state) => state.lastSavedAt);
+  const _lastSavedAt = useSettingsStore((state) => state.lastSavedAt);
   const [displayNameError, setDisplayNameError] = useState<string | null>(null);
   const [validationMessage, setValidationMessage] = useState<string | null>(null);
 

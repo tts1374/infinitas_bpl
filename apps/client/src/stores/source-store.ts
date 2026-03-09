@@ -14,7 +14,7 @@ import {
 import { submitParsedSourceChange } from "../services/source-submission";
 import { roomStore } from "./room-store";
 import { createExternalStore, useExternalStore } from "./create-store";
-import { settingsStore, type ClientSettings, type SourcePaths } from "./settings-store";
+import { type ClientSettings, type SourcePaths } from "./settings-store";
 
 export interface SourceWatcherState {
   status: SourceWatcherStatus;

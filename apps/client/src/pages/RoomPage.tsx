@@ -5,7 +5,6 @@ import {
   MATCH_TTL_MINUTES,
   ROUND_MUSIC_SELECT_SECONDS,
   ROUND_PLAY_BEGIN_AT_SECONDS,
-  SKIP_REASONS,
   type ChartSearchEntry,
   type CurrentRoundSnapshot,
   type ResultReadyPayload,
@@ -14,25 +13,8 @@ import {
 } from "@infinitas/shared";
 import {
   AlertTriangle,
-  Check,
-  CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
-  Circle,
-  Clock,
-  Copy,
   Database,
-  Info,
-  LogOut,
-  MessageSquare,
-  Music,
-  Play,
-  Search,
   ShieldAlert,
-  ShieldCheck,
-  Swords,
-  User,
-  Zap,
 } from "lucide-react";
 import { useDeferredValue, useEffect, useRef, useState, type ReactNode } from "react";
 import { DebugInjectionPanel } from "../components/DebugInjectionPanel";
@@ -65,16 +47,6 @@ import { useVoicePlaybackStore } from "../services/voice-announcer";
 import { roomStore, useRoomStore, type RoomConnectionStatus } from "../stores/room-store";
 import { isVoicePlaybackEnabled, useSettingsStore } from "../stores/settings-store";
 import { formatDateTime, stringifyJson } from "../utils/format";
-
-type Theme = {
-  accentText: string;
-  accentBg: string;
-  accentSoft: string;
-  accentBorder: string;
-  gradient: string;
-  primaryButton: string;
-  secondaryButton: string;
-};
 
 type DifficultyPresentation = {
   shortLabel: string;
@@ -114,24 +86,6 @@ type ParsedResultRound = {
 
 const BPL_PICK_CUTIN_SECONDS = 3;
 const BPL_RESULT_PHASE_SECONDS = 10;
-const TWO_LINE_CLAMP_STYLE = {
-  display: "-webkit-box",
-  WebkitLineClamp: 2,
-  WebkitBoxOrient: "vertical" as const,
-  overflow: "hidden",
-  overflowWrap: "anywhere" as const,
-};
-
-function formatExpectedKey(
-  expectedKey: DisplayExpectedKey | null | undefined,
-): string {
-  if (!expectedKey) {
-    return "-";
-  }
-
-  return `${expectedKey.play_style} / ${expectedKey.difficulty} / ${expectedKey.title_search_key}`;
-}
-
 function getArchiveTone(status: string): string {
   if (status === "READY") {
     return "ok";
@@ -301,14 +255,6 @@ function compareMetricValues(winMetric: RoomStateSnapshot["settings"]["win_metri
   return left < right ? 1 : -1;
 }
 
-function formatSongTitle(expectedKey: DisplayExpectedKey | null | undefined, fallbackTitle: string): string {
-  if (!expectedKey) {
-    return fallbackTitle;
-  }
-
-  return formatSongKeyTitle(expectedKey.title_search_key, expectedKey.play_style, expectedKey.difficulty);
-}
-
 function formatSongArtist(artist: string | null | undefined): string {
   return artist && artist.trim().length > 0 ? artist : "BEMANI Series";
 }
@@ -348,29 +294,6 @@ function formatRoomTitle(
   return `${mode === "BPL" ? "BPL (3 STAGE)" : "ARENA"} ${playStyle}`;
 }
 
-function ResultSummaryView({ resultReady }: { resultReady: ResultReadyPayload | null }) {
-  if (resultReady === null) {
-    return <p className="empty-state">Awaiting RESULT_READY payload.</p>;
-  }
-
-  return (
-    <div className="split-panel result-grid">
-      <section>
-        <h3>Summary</h3>
-        <pre>{stringifyJson(resultReady.summary)}</pre>
-      </section>
-      <section>
-        <h3>Per player</h3>
-        <pre>{stringifyJson(resultReady.per_player)}</pre>
-      </section>
-      <section className="full-span">
-        <h3>Per round</h3>
-        <pre>{stringifyJson(resultReady.per_round)}</pre>
-      </section>
-    </div>
-  );
-}
-
 function getLobbyStartIssues(snapshot: RoomStateSnapshot): string[] {
   const issues: string[] = [];
 
@@ -404,30 +327,6 @@ function getLobbyStartIssues(snapshot: RoomStateSnapshot): string[] {
   }
 
   return issues;
-}
-
-function getTheme(mode: RoomStateSnapshot["settings"]["mode"]): Theme {
-  if (mode === "BPL") {
-    return {
-      accentText: "text-amber-400",
-      accentBg: "bg-amber-500",
-      accentSoft: "bg-amber-500/10",
-      accentBorder: "border-amber-500/30",
-      gradient: "from-amber-500/20 via-amber-500/5 to-transparent",
-      primaryButton: "bg-amber-500 text-black hover:bg-amber-400",
-      secondaryButton: "border border-white/10 bg-white/5 text-white hover:border-amber-500/40 hover:bg-amber-500/10",
-    };
-  }
-
-  return {
-    accentText: "text-cyan-400",
-    accentBg: "bg-cyan-500",
-    accentSoft: "bg-cyan-500/10",
-    accentBorder: "border-cyan-500/30",
-    gradient: "from-cyan-500/20 via-cyan-500/5 to-transparent",
-    primaryButton: "bg-cyan-500 text-black hover:bg-cyan-400",
-    secondaryButton: "border border-white/10 bg-white/5 text-white hover:border-cyan-500/40 hover:bg-cyan-500/10",
-  };
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -602,302 +501,6 @@ function getPlayerStatus(currentRound: CurrentRoundSnapshot | null, playerId: st
   };
 }
 
-function maskSecret(value: string | null | undefined): string {
-  if (!value) {
-    return "********";
-  }
-
-  return "*".repeat(Math.max(8, Math.min(12, value.length)));
-}
-
-function getMockRoomStateLabel(roomState: RoomStateSnapshot["room_state"]): string {
-  switch (roomState) {
-    case "LOBBY":
-      return "WAITING";
-    case "PICKING":
-      return "SELECTING";
-    default:
-      return roomState;
-  }
-}
-
-function getOrdinalLabel(value: number): string {
-  const normalized = value % 100;
-  if (normalized >= 11 && normalized <= 13) {
-    return `${value}th`;
-  }
-
-  switch (value % 10) {
-    case 1:
-      return `${value}st`;
-    case 2:
-      return `${value}nd`;
-    case 3:
-      return `${value}rd`;
-    default:
-      return `${value}th`;
-  }
-}
-
-function HeaderCard(props: {
-  snapshot: RoomStateSnapshot;
-  theme: Theme;
-  connectionStatus: RoomConnectionStatus;
-  isHost: boolean;
-  onLeaveRoom: () => void;
-}) {
-  const { snapshot, theme, connectionStatus, isHost, onLeaveRoom } = props;
-
-  return (
-    <section className="relative overflow-hidden rounded-[2rem] border border-white/5 bg-[#101113] p-6 shadow-2xl">
-      <div className={`absolute inset-0 bg-gradient-to-r ${theme.gradient}`} />
-      <div className="relative flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
-        <div>
-          <div className="flex flex-wrap items-center gap-3">
-            <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.35em] ${theme.accentSoft} ${theme.accentText}`}>
-              {snapshot.settings.mode}
-            </span>
-            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-black uppercase tracking-[0.35em] text-gray-400">
-              {snapshot.room_state}
-            </span>
-            <span className={`text-xs font-bold uppercase tracking-[0.28em] ${getConnectionTone(connectionStatus)}`}>
-              {connectionStatus}
-            </span>
-          </div>
-          <h1 className="mt-4 text-3xl font-black italic tracking-tight text-white">
-            {snapshot.settings.mode === "BPL" ? "BPL Battle Room" : "Arena Match Room"}
-          </h1>
-          <p className="mt-2 text-sm font-medium text-gray-400">
-            {formatRegulationLabel(snapshot.settings.play_style, snapshot.settings.level_filter)} / {snapshot.settings.win_metric}
-          </p>
-          <div className="mt-4 flex flex-wrap gap-3 text-xs font-bold text-gray-300">
-            <span className="rounded-xl border border-white/10 bg-black/25 px-3 py-2">Room ID: {snapshot.room_id}</span>
-            <span className="rounded-xl border border-white/10 bg-black/25 px-3 py-2">Join Code: {snapshot.settings.join_code ?? "-"}</span>
-            <span className="rounded-xl border border-white/10 bg-black/25 px-3 py-2">Capacity: {snapshot.settings.max_players}</span>
-            <span className="rounded-xl border border-white/10 bg-black/25 px-3 py-2">Current: {snapshot.players.length}</span>
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <span className={`rounded-2xl border px-4 py-3 text-sm font-black uppercase tracking-[0.28em] ${isHost ? `${theme.accentBorder} ${theme.accentText} ${theme.accentSoft}` : "border-white/10 bg-white/5 text-gray-200"}`}>
-            {isHost ? "HOST" : "GUEST"}
-          </span>
-          <button
-            type="button"
-            onClick={onLeaveRoom}
-            className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-bold text-white transition-all hover:border-red-500/30 hover:bg-red-500/10"
-          >
-            <LogOut size={16} />
-            Leave room
-          </button>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function ChartPickerCard(props: {
-  theme: Theme;
-  snapshot: RoomStateSnapshot;
-  mySubmittedPick: { pick_chart_key: string } | null;
-  pickingCountdown: number | null;
-  chartDifficulty: (typeof CHART_DIFFICULTIES)[number] | "";
-  chartLevel: string;
-  chartKeyword: string;
-  chartResults: ChartSearchEntry[];
-  chartLoading: boolean;
-  chartError: string | null;
-  chartLastLoadedAt: string | null;
-  chartNextCursor: string | null;
-  chartPreviousCursors: Array<string | null>;
-  onChartDifficultyChange: (value: (typeof CHART_DIFFICULTIES)[number] | "") => void;
-  onChartLevelChange: (value: string) => void;
-  onChartKeywordChange: (value: string) => void;
-  onChartSelect: (chart: ChartSearchEntry) => void;
-  onLoadPrevious: () => void;
-  onLoadNext: () => void;
-}) {
-  const {
-    theme,
-    snapshot,
-    mySubmittedPick,
-    pickingCountdown,
-    chartDifficulty,
-    chartLevel,
-    chartKeyword,
-    chartResults,
-    chartLoading,
-    chartError,
-    chartLastLoadedAt,
-    chartNextCursor,
-    chartPreviousCursors,
-    onChartDifficultyChange,
-    onChartLevelChange,
-    onChartKeywordChange,
-    onChartSelect,
-    onLoadPrevious,
-    onLoadNext,
-  } = props;
-  void theme;
-
-  return (
-    <div className="fixed inset-0 z-[140] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
-      <section className="relative flex h-[85vh] max-h-[780px] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-white/10 bg-[#1e1e1f] shadow-2xl">
-        <header className="border-b border-white/5 bg-gradient-to-r from-cyan-500/20 to-transparent p-6">
-          <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-            <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-cyan-500 p-2 text-black shadow-[0_0_15px_rgba(6,182,212,0.4)]">
-                <Music size={20} />
-              </div>
-              <div className="flex flex-col">
-                <h2 className="text-2xl font-black italic leading-none tracking-tighter text-white">Pick Music</h2>
-                <span className="mt-1 text-[9px] font-black uppercase tracking-[0.3em] text-cyan-500/80">Infinitas Arena Battle System</span>
-              </div>
-            </div>
-            <div
-              className={`rounded-xl border-2 px-6 py-2 ${
-                (pickingCountdown ?? 0) <= 10
-                  ? "border-red-500 bg-red-500/10 shadow-[0_0_20px_rgba(239,68,68,0.2)] animate-pulse"
-                  : (pickingCountdown ?? 0) <= 30
-                    ? "border-amber-500 bg-amber-500/10"
-                    : "border-cyan-500/30 bg-cyan-500/5"
-              }`}
-            >
-              <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.3em] text-gray-500">Time Left</span>
-              <span
-                className={`block text-3xl font-black italic leading-none tracking-tighter ${
-                  (pickingCountdown ?? 0) <= 10
-                    ? "text-red-500"
-                    : (pickingCountdown ?? 0) <= 30
-                      ? "text-amber-500"
-                      : "text-cyan-400"
-                }`}
-              >
-                {formatCountdown(pickingCountdown)}
-              </span>
-            </div>
-          </div>
-
-          <div className="relative">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-cyan-400" size={20} />
-            <input
-              type="text"
-              value={chartKeyword}
-              onChange={(event) => onChartKeywordChange(event.currentTarget.value)}
-              placeholder="Search by title / artist / genre"
-              className="w-full rounded-xl border border-white/10 bg-black/60 py-3.5 pl-12 pr-4 text-sm font-bold text-white outline-none transition-all placeholder:text-gray-600 focus:border-cyan-500 focus:bg-black/80"
-            />
-          </div>
-        </header>
-
-        <div className="space-y-6 border-b border-white/5 bg-[#151516] p-6">
-          <div>
-            <span className="mb-3 block text-[10px] font-black uppercase tracking-[0.3em] text-gray-500">Difficulty</span>
-            <div className="flex flex-wrap gap-2">
-              {CHART_DIFFICULTIES.map((difficulty) => (
-                (() => {
-                  const difficultyTone = getDifficultyPresentation(difficulty);
-                  return (
-                    <button
-                      key={difficulty}
-                      type="button"
-                      onClick={() => onChartDifficultyChange(chartDifficulty === difficulty ? "" : difficulty)}
-                      className={`min-w-[56px] flex-1 rounded-lg border-2 py-2 text-xs font-black italic transition-all ${
-                        chartDifficulty === difficulty
-                          ? `${difficultyTone.colorClass} border-white text-white scale-105 shadow-lg`
-                          : "border-transparent bg-white/5 text-gray-500 hover:bg-white/10"
-                      }`}
-                    >
-                      {difficultyTone.shortLabel}
-                    </button>
-                  );
-                })()
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <span className="mb-3 block text-[10px] font-black uppercase tracking-[0.3em] text-gray-500">Level</span>
-            <div className="grid grid-cols-6 gap-2 md:grid-cols-12">
-              {Array.from({ length: 12 }, (_, index) => String(index + 1)).map((level) => (
-                <button
-                  key={level}
-                  type="button"
-                  onClick={() => onChartLevelChange(chartLevel === level ? "" : level)}
-                  className={`rounded-lg border-2 py-2 text-xs font-black italic transition-all ${chartLevel === level ? "border-white bg-cyan-500 text-black scale-105" : "border-transparent bg-white/5 text-gray-500 hover:bg-white/10"}`}
-                >
-                  {level}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div className="flex-1 space-y-2 overflow-y-auto p-4 custom-scrollbar">
-          {chartError ? <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-300">{chartError}</div> : null}
-          {chartResults.length === 0 ? (
-            <div className="flex h-full min-h-[220px] flex-col items-center justify-center gap-4 py-12 text-gray-600">
-              <Search size={48} />
-              <p className="font-black italic uppercase tracking-[0.3em]">{chartLoading ? "Loading" : "No Music Found"}</p>
-            </div>
-          ) : (
-            chartResults.map((chart) => (
-              (() => {
-                const difficultyTone = getDifficultyPresentation(chart.difficulty);
-                return (
-                  <button
-                    key={chart.chart_key}
-                    type="button"
-                    disabled={mySubmittedPick !== null}
-                    onClick={() => onChartSelect(chart)}
-                    className={`group flex w-full items-center gap-4 rounded-xl border p-4 text-left transition-all ${mySubmittedPick ? "cursor-not-allowed border-white/5 bg-white/[0.03] text-gray-600" : "border-white/5 bg-white/5 hover:border-cyan-500/50 hover:bg-white/10"}`}
-                  >
-                    <div className="relative flex h-16 w-16 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg border border-white/5 bg-[#252526]">
-                      <Music size={24} className={difficultyTone.textClass} />
-                      <div className={`absolute inset-x-0 bottom-0 h-1 ${difficultyTone.colorClass}`} />
-                    </div>
-                    <div className="min-w-0 flex-1 overflow-hidden">
-                      <div className="mb-1 flex items-center gap-2">
-                        <span className={`rounded px-1.5 py-0.5 text-[10px] font-black text-white ${difficultyTone.colorClass}`}>{difficultyTone.shortLabel}</span>
-                        <span className="text-[10px] font-black uppercase tracking-[0.3em] text-cyan-500">LV {chart.level}</span>
-                      </div>
-                      <h3 className="truncate text-lg font-black italic uppercase leading-tight tracking-tighter text-white transition-colors group-hover:text-cyan-400">{chart.title}</h3>
-                      <p className="truncate text-xs font-bold text-gray-400 transition-colors group-hover:text-gray-300">{chart.artist || "-"}</p>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-2xl font-black italic tracking-tighter text-gray-500 transition-colors group-hover:text-white">Lv{chart.level}</div>
-                      <ChevronRight size={16} className="ml-auto text-gray-700 transition-colors group-hover:text-cyan-500" />
-                    </div>
-                  </button>
-                );
-              })()
-            ))
-          )}
-        </div>
-
-        <footer className="flex flex-col gap-3 border-t border-white/5 bg-black/40 p-4 text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500 md:flex-row md:items-center md:justify-between">
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="text-cyan-500">{chartResults.length}</span>
-            <span>/ {chartResults.length + (chartNextCursor ? CHART_SEARCH_PAGE_SIZE : 0)} results</span>
-            <span>Last loaded: {formatDateTime(chartLastLoadedAt)}</span>
-            {mySubmittedPick ? <span className="text-cyan-500">Submitted</span> : null}
-          </div>
-          <div className="flex gap-2">
-            <button type="button" disabled={chartPreviousCursors.length === 0 || chartLoading} onClick={onLoadPrevious} className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-gray-300 disabled:opacity-40">
-              <ChevronLeft size={14} />
-              Prev
-            </button>
-            <button type="button" disabled={chartNextCursor === null || chartLoading} onClick={onLoadNext} className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-gray-300 disabled:opacity-40">
-              Next
-              <ChevronRight size={14} />
-            </button>
-          </div>
-        </footer>
-      </section>
-    </div>
-  );
-}
-
 function DebugRoundPanel(props: {
   currentRound: CurrentRoundSnapshot;
   metricValue: string;
@@ -963,105 +566,6 @@ function DebugRoundPanel(props: {
   );
 }
 
-function PlayerCard(props: {
-  theme: Theme;
-  player: RoomPlayerSnapshot | null;
-  slotLabel: string;
-  side?: "left" | "right" | undefined;
-  highlight?: boolean;
-}) {
-  const { theme, player, slotLabel, side, highlight = false } = props;
-  if (!player) {
-    return (
-      <div className="flex min-h-[240px] flex-col items-center justify-center rounded-[1.75rem] border-2 border-dashed border-white/10 bg-black/20 p-6 text-center">
-        <div className={`rounded-full border p-6 ${theme.accentBorder} ${theme.accentSoft}`}>
-          <User size={42} className={theme.accentText} />
-        </div>
-        <p className="mt-4 text-sm font-black uppercase tracking-[0.3em] text-gray-500">Empty Slot</p>
-        <p className="mt-2 text-xs font-bold text-gray-600">{slotLabel}</p>
-      </div>
-    );
-  }
-
-  const readyStyles =
-    side === "left"
-      ? "border-cyan-500 bg-cyan-500/10"
-      : side === "right"
-        ? "border-amber-500 bg-amber-500/10"
-        : `${theme.accentBorder} ${theme.accentSoft}`;
-
-  const iconStyles =
-    side === "left"
-      ? "bg-cyan-500 text-black"
-      : side === "right"
-        ? "bg-amber-500 text-black"
-        : `${theme.accentBg} text-black`;
-
-  return (
-    <article className={`min-h-[240px] rounded-[1.75rem] border p-6 ${player.ready ? readyStyles : "border-white/10 bg-white/5"} ${highlight ? "ring-4 ring-white/20" : ""}`}>
-      <div className={`inline-flex rounded-full p-5 ${player.ready ? iconStyles : "bg-white/10 text-gray-500"}`}>
-        <User size={40} />
-      </div>
-      <h3 className="mt-6 text-2xl font-black italic tracking-tight text-white">{player.display_name}</h3>
-      <p className="mt-2 text-[10px] font-black uppercase tracking-[0.35em] text-gray-500">{slotLabel}</p>
-      <div className="mt-5 flex flex-wrap gap-2">
-        <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-[10px] font-black uppercase tracking-[0.25em] text-white">
-          {player.ready ? "READY" : "WAITING"}
-        </span>
-        <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-[10px] font-black uppercase tracking-[0.25em] text-gray-300">
-          {player.connected ? "ONLINE" : "OFFLINE"}
-        </span>
-      </div>
-    </article>
-  );
-}
-
-function StartPanel(props: {
-  theme: Theme;
-  isHost: boolean;
-  me: RoomPlayerSnapshot | null;
-  readyPlayersCount: number;
-  playerCount: number;
-  issues: string[];
-  onToggleReady: () => void;
-  onStartMatch: () => void;
-}) {
-  const { theme, isHost, me, readyPlayersCount, playerCount, issues, onToggleReady, onStartMatch } = props;
-
-  return (
-    <div className="rounded-[1.5rem] border border-white/10 bg-black/20 p-5">
-      <p className="text-sm font-bold text-gray-300">{readyPlayersCount} / {playerCount} players are READY.</p>
-      {isHost ? (
-        issues.length === 0 ? (
-          <p className={`mt-3 text-sm font-bold ${theme.accentText}`}>All start conditions are satisfied.</p>
-        ) : (
-          <ul className="mt-3 space-y-2 text-sm font-bold text-red-300">
-            {issues.map((issue) => (
-              <li key={issue} className="flex items-start gap-2">
-                <AlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
-                <span>{issue}</span>
-              </li>
-            ))}
-          </ul>
-        )
-      ) : (
-        <p className="mt-3 text-sm font-bold text-gray-400">Waiting for the host to start the match.</p>
-      )}
-      <div className="mt-5 flex flex-wrap gap-3">
-        <button type="button" onClick={onToggleReady} className={`rounded-2xl px-5 py-3 text-sm font-black uppercase tracking-[0.25em] transition-all ${theme.secondaryButton}`}>
-          {me?.ready ? "Ready OK" : "Ready Up"}
-        </button>
-        {isHost ? (
-          <button type="button" onClick={onStartMatch} className={`inline-flex items-center gap-2 rounded-2xl px-6 py-3 text-sm font-black uppercase tracking-[0.25em] transition-all ${theme.primaryButton}`}>
-            <Play size={16} fill="currentColor" />
-            Start Match
-          </button>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
 function DebugSection(props: { title: string; children: ReactNode; defaultOpen?: boolean }) {
   const { title, children, defaultOpen = false } = props;
 
@@ -1095,21 +599,14 @@ export function RoomPage() {
   const voiceLastUpdatedAt = useVoicePlaybackStore((state) => state.lastUpdatedAt);
   const voicePendingCues = useVoicePlaybackStore((state) => state.pendingCues);
 
-  const [pickChartKey, setPickChartKey] = useState("");
   const [metricValue, setMetricValue] = useState("0");
-  const [selfSkipReason, setSelfSkipReason] = useState<(typeof SKIP_REASONS)[number]>("TECH");
-  const [hostSkipReason, setHostSkipReason] = useState<(typeof SKIP_REASONS)[number]>("UNOWNED");
   const [chartDifficulty, setChartDifficulty] = useState<(typeof CHART_DIFFICULTIES)[number] | "">("");
   const [chartLevel, setChartLevel] = useState("");
   const [chartKeyword, setChartKeyword] = useState("");
   const deferredChartKeyword = useDeferredValue(chartKeyword);
   const [chartResults, setChartResults] = useState<ChartSearchEntry[]>([]);
   const [chartLoading, setChartLoading] = useState(false);
-  const [chartError, setChartError] = useState<string | null>(null);
-  const [chartCursor, setChartCursor] = useState<string | null>(null);
   const [chartNextCursor, setChartNextCursor] = useState<string | null>(null);
-  const [chartPreviousCursors, setChartPreviousCursors] = useState<Array<string | null>>([]);
-  const [chartLastLoadedAt, setChartLastLoadedAt] = useState<string | null>(null);
   const [clockNowMs, setClockNowMs] = useState(() => Date.now());
   const [copiedRoomId, setCopiedRoomId] = useState(false);
   const [copiedJoinCode, setCopiedJoinCode] = useState(false);
@@ -1125,7 +622,7 @@ export function RoomPage() {
   const previousArenaLobbySnapshotRef = useRef<RoomStateSnapshot | null>(null);
   const mySubmittedPick = snapshot?.picks.find((pick) => pick.player_id === savedSettings.playerId) ?? null;
 
-  async function loadChartCandidates(targetCursor: string | null, historyMode: "reset" | "next" | "previous"): Promise<void> {
+  async function loadChartCandidates(targetCursor: string | null, appendResults: boolean): Promise<void> {
     if (snapshot === null || snapshot.room_state !== "PICKING") {
       return;
     }
@@ -1138,19 +635,14 @@ export function RoomPage() {
     ) {
       chartRequestIdRef.current += 1;
       setChartLoading(false);
-      setChartError("Level search must be between 1 and 12.");
       setChartResults([]);
-      setChartCursor(null);
       setChartNextCursor(null);
-      setChartPreviousCursors([]);
-      setChartLastLoadedAt(null);
       return;
     }
 
     const requestId = chartRequestIdRef.current + 1;
     chartRequestIdRef.current = requestId;
     setChartLoading(true);
-    setChartError(null);
 
     try {
       const response =
@@ -1178,7 +670,7 @@ export function RoomPage() {
       }
 
       setChartResults((current) => {
-        if (historyMode !== "next") {
+        if (!appendResults) {
           return response.charts;
         }
 
@@ -1188,32 +680,15 @@ export function RoomPage() {
           ...response.charts.filter((chart) => !existingKeys.has(chart.chart_key)),
         ];
       });
-      setChartCursor(targetCursor);
       setChartNextCursor(response.next_cursor);
-      setChartLastLoadedAt(new Date().toISOString());
-      setChartPreviousCursors((current) => {
-        if (historyMode === "reset") {
-          return [];
-        }
-        if (historyMode === "next") {
-          return [...current, chartCursor];
-        }
-
-        return current.slice(0, -1);
-      });
-    } catch (error) {
+    } catch (_error) {
       if (chartRequestIdRef.current !== requestId) {
         return;
       }
 
-      const message = error instanceof Error ? error.message : "Failed to load chart candidates.";
-      setChartError(message);
-      if (historyMode === "reset") {
+      if (!appendResults) {
         setChartResults([]);
-        setChartCursor(null);
         setChartNextCursor(null);
-        setChartPreviousCursors([]);
-        setChartLastLoadedAt(null);
       }
     } finally {
       if (chartRequestIdRef.current === requestId) {
@@ -1226,12 +701,8 @@ export function RoomPage() {
     if (snapshot?.room_state !== "PICKING") {
       chartRequestIdRef.current += 1;
       setChartLoading(false);
-      setChartError(null);
       setChartResults([]);
-      setChartCursor(null);
       setChartNextCursor(null);
-      setChartPreviousCursors([]);
-      setChartLastLoadedAt(null);
       return;
     }
 
@@ -1241,17 +712,13 @@ export function RoomPage() {
       if (!Number.isInteger(parsedLevel) || parsedLevel < 1 || parsedLevel > 12) {
         chartRequestIdRef.current += 1;
         setChartLoading(false);
-        setChartError("Level search must be between 1 and 12.");
         setChartResults([]);
-        setChartCursor(null);
         setChartNextCursor(null);
-        setChartPreviousCursors([]);
-        setChartLastLoadedAt(null);
         return;
       }
     }
 
-    void loadChartCandidates(null, "reset");
+    void loadChartCandidates(null, false);
   }, [
     chartDifficulty,
     chartLevel,
@@ -1625,13 +1092,6 @@ export function RoomPage() {
   const me = snapshot.players.find((player) => player.player_id === savedSettings.playerId) ?? null;
   const isHost = snapshot.host_player_id === savedSettings.playerId || me?.role === "HOST";
   const currentRound = snapshot.current_round;
-  const confirmedPlayers = new Set(currentRound?.confirmed.map((entry) => entry.player_id) ?? []);
-  const pendingPlayers = currentRound
-    ? snapshot.players.filter((player) => !confirmedPlayers.has(player.player_id))
-    : [];
-  const readyPlayersCount = snapshot.players.filter(
-    (player) => player.ready || player.player_id === snapshot.host_player_id,
-  ).length;
   const lobbyStartIssues = snapshot.room_state === "LOBBY" ? getLobbyStartIssues(snapshot) : [];
   const currentRoundDisplay =
     currentRound === null ? null : snapshot.frozen_rounds.find((round) => round.round_index === currentRound.round_index) ?? null;
@@ -1639,7 +1099,6 @@ export function RoomPage() {
   const playingCountdown = currentRound === null ? null : getPlayingCountdown(currentRound, clockNowMs);
   const resultCountdown = getRemainingSeconds(getIsoTimeMs(snapshot.timers.result_deadline), clockNowMs);
 
-  const theme = getTheme(snapshot.settings.mode);
   const isBpl = snapshot.settings.mode === "BPL";
   const leaveRoomDisabled = snapshot.room_state === "PICKING" || snapshot.room_state === "PLAYING";
   const orderedPlayers = [...snapshot.players].sort((left, right) => {
@@ -1801,26 +1260,13 @@ export function RoomPage() {
     }, []);
   })();
   const picksByPlayerId = new Map(snapshot.picks.map((pick) => [pick.player_id, pick]));
-  const mockStateLabel = getMockRoomStateLabel(snapshot.room_state);
   const roomIdLabel = snapshot.room_id;
   const joinCodeLabel = snapshot.settings.join_code ?? "";
   const currentExpectedKey = currentRound?.expected_key ?? null;
   const currentExpectedKeyCacheKey = getExpectedKeyCacheKey(currentExpectedKey);
   const currentResolvedChart =
     currentExpectedKeyCacheKey === null ? null : resolvedChartsByExpectedKey[currentExpectedKeyCacheKey] ?? null;
-  const roundTitle = formatSongTitle(
-    currentExpectedKey,
-    currentRoundDisplay?.display.title ?? currentRound?.expected_key.title_search_key ?? "Unknown Track",
-  );
-  const playingTitle =
-    currentResolvedChart?.title_search_key ??
-    currentRoundDisplay?.display.title ??
-    currentRound?.expected_key.title_search_key ??
-    "Unknown Track";
   const roundLevel = currentRoundDisplay?.display.level ?? null;
-  const currentSongSubtitle = formatSongArtist(currentResolvedChart?.artist ?? null);
-  const currentSongDifficultyTone = getDifficultyPresentation(currentExpectedKey?.difficulty);
-  const currentSongDifficultyShort = currentExpectedKey ? currentSongDifficultyTone.shortLabel : null;
   const currentSongLevel = currentResolvedChart?.level ?? roundLevel;
   const activeBplPickIndex = snapshot.room_state === "PICKING" ? Math.min(snapshot.picks.length, 2) : null;
   const displayResultPlayers = resultPlayers.length > 0
@@ -1865,13 +1311,6 @@ export function RoomPage() {
     !isBpl && currentRound !== null && currentRound.round_index > 0
       ? historyRounds.find((round) => round.roundIndex === currentRound.round_index - 1) ?? null
       : null;
-  const previousRoundExpectedKey = bplPreviousRound?.expectedKey ?? null;
-  const previousRoundDifficultyTone = getDifficultyPresentation(previousRoundExpectedKey?.difficulty);
-  const previousRoundTitle = bplPreviousRound
-    ? formatSongTitle(previousRoundExpectedKey, bplPreviousRound.title)
-    : null;
-  const previousRoundSubtitle = formatSongArtist(bplPreviousRound?.artist ?? null);
-  const regulationLabel = formatRegulationLabel(snapshot.settings.play_style, snapshot.settings.level_filter);
   const ownPickCutInTitle =
     ownPickCutInChart?.title.trim().length
       ? ownPickCutInChart.title
@@ -1955,7 +1394,7 @@ export function RoomPage() {
       return;
     }
 
-    void loadChartCandidates(chartNextCursor, "next");
+    void loadChartCandidates(chartNextCursor, true);
   };
   const showPickerModal = snapshot.room_state === "PICKING" && mySubmittedPick === null;
   const pickerModal = (
