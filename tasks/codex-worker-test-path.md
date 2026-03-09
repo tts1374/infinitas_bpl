@@ -12,7 +12,7 @@
 - 可能なら CI でも Worker テストを実行する。
 
 ## 非目的
-- Worker/DO のロジック変更。
+- Worker/DO の広範なロジック変更。
 - テストケースの大幅追加。
 - 新しい test framework の全面導入。
 - Cloudflare deploy フローの変更。
@@ -21,6 +21,7 @@
 - `apps/worker` に repeatable な test 実行 script を追加する。
 - 必要に応じて test 用 tsconfig や一時出力先を追加する。
 - 既存 `room-state` テストが TypeScript を安定して実行できるようにする。
+- 既存テストで顕在化した BPL の早期終了条件だけは設計どおりに最小修正する。
 - CI に Worker テストを追加する。
 
 ## 影響範囲
@@ -38,6 +39,7 @@
 - `apps/worker/package.json`
 - `apps/worker/tsconfig*.json`
 - `apps/worker/src/durable/room-state.test.*`
+- `apps/worker/src/durable/room-state.ts`
 - `.github/workflows/ci.yml`
 - `tasks/codex-worker-test-path.md`
 
@@ -59,10 +61,10 @@
 3. 検証結果反映。
 
 ## 検証結果
-- [ ] `npm run test:worker`
-- [ ] `npm run lint`
-- [ ] `npm run typecheck`
-- [ ] `npm run build:client`
-- [ ] `npm run test:client-stats`
-- [ ] `cargo check`
-- [ ] `npx wrangler deploy --dry-run`
+- [x] `npm run test:worker`
+- [x] `npm run lint`
+- [x] `npm run typecheck`
+- [x] `npm run build:client`
+- [x] `npm run test:client-stats`
+- [x] `cargo check`
+- [x] `npx wrangler deploy --dry-run`
