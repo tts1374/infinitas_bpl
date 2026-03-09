@@ -52,6 +52,9 @@ jobs:
       - name: Run client stats tests
         run: npm run test:client-stats
 
+      - name: Run Worker tests
+        run: npm run test:worker
+
       - name: Cargo check Tauri app
         working-directory: apps/client/src-tauri
         run: cargo check
