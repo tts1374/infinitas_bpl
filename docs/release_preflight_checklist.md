@@ -35,13 +35,13 @@ Notes:
 
 このセクションは「今のリポジトリでは先に片付けるべき項目」です。
 
-- [ ] CI workflow が存在する
+- [x] CI workflow が存在する
   - 期待内容: typecheck / build / test を自動実行
   - 現状メモ: `.github/workflows/` が未整備
-- [ ] Lint コマンドが存在する
+- [x] Lint コマンドが存在する
   - 期待内容: ルートまたは workspace から再現可能
   - 現状メモ: `package.json` 群に `lint` script が未定義
-- [ ] Worker テストの実行導線が存在する
+- [x] Worker テストの実行導線が存在する
   - 期待内容: README や script なしでも同じコマンドで再実行できる
   - 現状メモ: `apps/worker/src/durable/room-state.test.mjs` はあるが、そのままでは `.ts` 読み込みで失敗
 - [ ] リリース手順書がある

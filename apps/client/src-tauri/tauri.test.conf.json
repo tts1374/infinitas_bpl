@@ -1,5 +1,5 @@
 {
-  "productName": "INFINITAS BPL Test",
+  "productName": "INFINITAS Arena Test",
   "identifier": "com.infinitas.bpl.client.test",
   "build": {
     "beforeBuildCommand": "npm --workspace @infinitas/client run build:test"
@@ -8,13 +8,18 @@
     "windows": [
       {
         "label": "main",
-        "title": "INFINITAS BPL TEST",
+        "title": "INFINITAS Arena Test",
         "width": 1280,
         "height": 900,
         "minWidth": 1024,
         "minHeight": 720,
         "resizable": true
       }
+    ]
+  },
+  "bundle": {
+    "icon": [
+      "icons/icon.ico"
     ]
   }
 }
