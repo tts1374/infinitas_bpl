@@ -190,8 +190,8 @@ export default function RoomArena({ onNavigate, initialStatus, controlled }: Roo
     const [copiedIdState, setCopiedId] = useState(false);
     const [copiedCodeState, setCopiedCode] = useState(false);
     const [lobbyTimerState, setLobbyTimer] = useState(1200); // 20 minutes in seconds
-    const [currentPlayersState, setCurrentPlayers] = useState(2); // Mock current players
-    const [maxPlayersState, setMaxPlayers] = useState(4); // Mock room capacity
+    const [currentPlayersState, _setCurrentPlayers] = useState(2); // Mock current players
+    const [maxPlayersState, _setMaxPlayers] = useState(4); // Mock room capacity
 
     const roomId = controlled?.roomId ?? "3f8e6f5d-9ba0-4268-936d-a5a2ebfd7ccd";
     const joinCode = controlled?.joinCode ?? "ARENA123";

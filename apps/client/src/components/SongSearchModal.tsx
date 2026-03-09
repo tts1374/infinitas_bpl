@@ -1,16 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { SongSearchModalView, type SongSearchModalSong } from './SongSearchModalView';
 
-const DIFFICULTIES = [
-    { id: 'B', name: 'BEGINNER', color: 'bg-green-500' },
-    { id: 'N', name: 'NORMAL', color: 'bg-blue-500' },
-    { id: 'H', name: 'HYPER', color: 'bg-yellow-500' },
-    { id: 'A', name: 'ANOTHER', color: 'bg-red-500' },
-    { id: 'L', name: 'LEGGENDARIA', color: 'bg-purple-600' },
-];
-
-const LEVELS = Array.from({ length: 12 }, (_, i) => i + 1);
-
 const MOCK_SONGS = [
     { id: 1, title: '冥', artist: 'Amuro vs Killer', difficulty: 'A', level: 12, genre: 'TRANCE' },
     { id: 2, title: '卑弥呼', artist: '朱雀 VS 玄武', difficulty: 'A', level: 12, genre: 'ESOTERIC SCHRANZ' },

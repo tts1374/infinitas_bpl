@@ -1379,7 +1379,7 @@ export class RoomLobbyState {
     return result;
   }
 
-  private enterResult(now: Date): void {
+  private enterResult(_now: Date): void {
     this.resultReadyPayload = this.buildResultReadyPayload();
     this.currentRound = null;
     this.roomState = "RESULT";

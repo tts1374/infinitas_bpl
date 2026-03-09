@@ -1,7 +1,7 @@
 import React, { useState, useEffect, type ReactNode } from 'react';
 import {
-    User, CheckCircle2, Circle, Play, LogOut,
-    MessageSquare, Database, Zap, Swords, Target, TrendingUp, Music, Copy, Check, Clock
+    User, CheckCircle2, Circle, LogOut,
+    Database, Swords, Music, Copy, Check, Clock
 } from 'lucide-react';
 import SongSearchModal from './SongSearchModal';
 
@@ -392,7 +392,7 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
         setRoomStatus('RESULT');
     };
 
-    const currentSong = picks[0]; // TODO: 本来はラウンドに応じた曲を表示
+    const _currentSong = picks[0]; // TODO: 本来はラウンドに応じた曲を表示
     const leftPlayer = players[0] ?? { id: '1', name: 'HOST', isReady: false, isHost: true, side: 'LEFT' as const };
     const rightPlayer = players[1] ?? { id: '2', name: 'GUEST', isReady: false, isHost: false, side: 'RIGHT' as const };
     const leftPickLabel = leftPlayer.name ? `${leftPlayer.name}'S PICK` : '1ST PICK';
@@ -862,7 +862,7 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
                                 </div>
                             </header>
                             <div className="flex-1 flex gap-6 items-center px-4 relative">
-                                {players.map((p, idx) => {
+                                {players.map((p) => {
                                     const resultPlayer = resultPlayers[p.id];
                                     const isWinner = resultPlayer?.outcome === 'WINNER';
                                     const isDraw = resultPlayer?.outcome === 'DRAW';
@@ -939,7 +939,7 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
                             </header>
 
                             <div className="flex-1 flex gap-12 items-center px-10 relative">
-                                {players.map((p, idx) => {
+                                {players.map((p) => {
                                     const finalResultPlayer = finalResultPlayers[p.id];
                                     const totalPts = finalResultPlayer?.totalPoints ?? 0;
                                     const isWinner = finalResultPlayer?.isWinner ?? false;
