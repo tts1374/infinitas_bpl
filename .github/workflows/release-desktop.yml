@@ -1,0 +1,226 @@
+name: Release Desktop
+
+on:
+  workflow_dispatch:
+    inputs:
+      download_base_path:
+        description: R2 prefix for updater artifacts
+        required: true
+        default: bpl-app/stable
+        type: string
+      app_target:
+        description: Tauri updater target
+        required: true
+        default: windows-x86_64
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-desktop-stable
+  cancel-in-progress: false
+
+env:
+  WRANGLER_CONFIG_PATH: apps/update-worker/wrangler.toml
+  KV_LATEST_KEY: app:stable:latest
+
+jobs:
+  release:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable-x86_64-pc-windows-msvc
+
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/client/src-tauri -> target
+
+      - name: Validate release secrets
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          $required = @{
+            TAURI_SIGNING_PRIVATE_KEY = $env:TAURI_SIGNING_PRIVATE_KEY
+            TAURI_SIGNING_PRIVATE_KEY_PASSWORD = $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+            CLOUDFLARE_API_TOKEN = $env:CLOUDFLARE_API_TOKEN
+            CLOUDFLARE_ACCOUNT_ID = $env:CLOUDFLARE_ACCOUNT_ID
+          }
+
+          foreach ($entry in $required.GetEnumerator()) {
+            if ([string]::IsNullOrWhiteSpace($entry.Value)) {
+              throw "Missing required secret: $($entry.Key)"
+            }
+          }
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Resolve release metadata
+        id: release_meta
+        env:
+          INPUT_DOWNLOAD_BASE_PATH: ${{ inputs.download_base_path }}
+          INPUT_APP_TARGET: ${{ inputs.app_target }}
+          VAR_CLOUDFLARE_R2_BUCKET: ${{ vars.CLOUDFLARE_R2_BUCKET }}
+          VAR_CLOUDFLARE_KV_BINDING_NAME: ${{ vars.CLOUDFLARE_KV_BINDING_NAME }}
+        run: |
+          $version = (node scripts/release/get-tauri-version.mjs | Out-String).Trim()
+          if ([string]::IsNullOrWhiteSpace($version)) {
+            throw "Version extraction returned empty output."
+          }
+
+          $downloadBasePath = $env:INPUT_DOWNLOAD_BASE_PATH
+          if ([string]::IsNullOrWhiteSpace($downloadBasePath)) {
+            $downloadBasePath = "bpl-app/stable"
+          }
+          $downloadBasePath = $downloadBasePath.Trim().Trim("/")
+          if ([string]::IsNullOrWhiteSpace($downloadBasePath)) {
+            throw "download_base_path resolved to an empty string."
+          }
+
+          $appTarget = $env:INPUT_APP_TARGET
+          if ([string]::IsNullOrWhiteSpace($appTarget)) {
+            $appTarget = "windows-x86_64"
+          }
+          $appTarget = $appTarget.Trim()
+          if ([string]::IsNullOrWhiteSpace($appTarget)) {
+            throw "app_target resolved to an empty string."
+          }
+
+          $bucket = $env:VAR_CLOUDFLARE_R2_BUCKET
+          if ([string]::IsNullOrWhiteSpace($bucket)) {
+            $bucket = "infinitas-arena-updates"
+          }
+
+          $kvBindingName = $env:VAR_CLOUDFLARE_KV_BINDING_NAME
+          if ([string]::IsNullOrWhiteSpace($kvBindingName)) {
+            $kvBindingName = "APP_KV"
+          }
+
+          $bundleDir = "apps/client/src-tauri/target/release/bundle/msi"
+          $artifactDir = Join-Path $env:RUNNER_TEMP "desktop-release\$version"
+          $r2ObjectPrefix = "$downloadBasePath/$version/$appTarget"
+
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "app_version=$version"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "app_target=$appTarget"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "bundle_dir=$bundleDir"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "artifact_dir=$artifactDir"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "r2_bucket=$bucket"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "r2_object_prefix=$r2ObjectPrefix"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "kv_binding_name=$kvBindingName"
+
+      - name: Build signed Windows updater artifacts
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npm --workspace @infinitas/client run tauri:build
+
+      - name: Collect and normalize updater artifacts
+        run: |
+          .\scripts\release\collect-updater-artifacts.ps1 `
+            -BundleDirectory "${{ steps.release_meta.outputs.bundle_dir }}" `
+            -Version "${{ steps.release_meta.outputs.app_version }}" `
+            -OutputDirectory "${{ steps.release_meta.outputs.artifact_dir }}"
+
+      - name: Upload normalized updater artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-updater-${{ steps.release_meta.outputs.app_version }}
+          path: ${{ steps.release_meta.outputs.artifact_dir }}
+          if-no-files-found: error
+
+      - name: Upload updater artifacts to R2
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          .\scripts\release\publish-updater-artifacts.ps1 `
+            -BucketName "${{ steps.release_meta.outputs.r2_bucket }}" `
+            -ObjectPrefix "${{ steps.release_meta.outputs.r2_object_prefix }}" `
+            -ArtifactDirectory "${{ steps.release_meta.outputs.artifact_dir }}"
+
+      - name: Update KV latest after upload
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          & npx wrangler kv key put `
+            "${{ env.KV_LATEST_KEY }}" `
+            "${{ steps.release_meta.outputs.app_version }}" `
+            --config "${{ env.WRANGLER_CONFIG_PATH }}" `
+            --binding "${{ steps.release_meta.outputs.kv_binding_name }}" `
+            --remote
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "Failed to update KV latest key."
+          }
+
+      - name: Post-check published artifacts and latest
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          $verifyDir = Join-Path $env:RUNNER_TEMP "release-post-check"
+          New-Item -ItemType Directory -Force -Path $verifyDir | Out-Null
+
+          $bucket = "${{ steps.release_meta.outputs.r2_bucket }}"
+          $prefix = "${{ steps.release_meta.outputs.r2_object_prefix }}"
+
+          $msiObject = "$bucket/$prefix/app.msi"
+          $sigObject = "$bucket/$prefix/app.msi.sig"
+          $msiPath = Join-Path $verifyDir "app.msi"
+          $sigPath = Join-Path $verifyDir "app.msi.sig"
+
+          & npx wrangler r2 object get $msiObject --file $msiPath --remote
+          if ($LASTEXITCODE -ne 0) {
+            throw "Failed to verify R2 object: $msiObject"
+          }
+
+          & npx wrangler r2 object get $sigObject --file $sigPath --remote
+          if ($LASTEXITCODE -ne 0) {
+            throw "Failed to verify R2 object: $sigObject"
+          }
+
+          $msiSize = (Get-Item -LiteralPath $msiPath).Length
+          $sigContent = (Get-Content -Raw -LiteralPath $sigPath).Trim()
+          if ($msiSize -le 0) {
+            throw "Verified MSI object is empty."
+          }
+          if ([string]::IsNullOrWhiteSpace($sigContent)) {
+            throw "Verified MSI signature object is empty."
+          }
+
+          $latest = & npx wrangler kv key get `
+            "${{ env.KV_LATEST_KEY }}" `
+            --config "${{ env.WRANGLER_CONFIG_PATH }}" `
+            --binding "${{ steps.release_meta.outputs.kv_binding_name }}" `
+            --text `
+            --remote
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "Failed to verify KV latest key."
+          }
+
+          $latest = ($latest | Out-String).Trim()
+
+          if ($latest -ne "${{ steps.release_meta.outputs.app_version }}") {
+            throw "KV latest value '$latest' does not match released version '${{ steps.release_meta.outputs.app_version }}'."
+          }
