@@ -53,9 +53,9 @@
 3. 検証結果反映。
 
 ## 検証結果
-- [ ] `npm run lint`
-- [ ] `npm run typecheck`
-- [ ] `npm run build:client`
-- [ ] `npm run test:client-stats`
-- [ ] `cargo check`
-- [ ] `npx wrangler deploy --dry-run`
+- [x] `npm run lint`
+- [x] `npm run typecheck`
+- [x] `npm run build:client`
+- [x] `npm run test:client-stats`
+- [x] `cargo check`
+- [x] `npx wrangler deploy --dry-run`
