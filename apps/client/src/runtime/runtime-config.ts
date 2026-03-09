@@ -14,6 +14,11 @@ export interface RuntimeSettingsDefaults {
   sourcePaths: RuntimeSourcePathDefaults;
 }
 
+export interface RuntimeUpdaterConfig {
+  target: string | undefined;
+  checkTimeoutMs: number;
+}
+
 export interface RuntimeConfig {
   debugUiEnabled: boolean;
   instanceId: string | null;
@@ -21,6 +26,7 @@ export interface RuntimeConfig {
   mockScenarioId: string | null;
   autoCapture: boolean;
   captureDelayMs: number;
+  updater: RuntimeUpdaterConfig;
   settingsDefaults: RuntimeSettingsDefaults;
 }
 
@@ -65,6 +71,13 @@ const displayName = readSearchParam("name");
 const playerId = readSearchParam("playerId");
 const apiBaseUrl = readSearchParam("api");
 const source = parseSourceType(readSearchParam("source"));
+const updaterTarget =
+  readSearchParam("updateTarget") ?? import.meta.env.VITE_UPDATER_TARGET?.trim() ?? "windows-x86_64";
+const updaterTimeoutEnvRaw = import.meta.env.VITE_UPDATER_CHECK_TIMEOUT_MS?.trim();
+const updaterTimeoutEnv =
+  updaterTimeoutEnvRaw && updaterTimeoutEnvRaw.length > 0
+    ? Number(updaterTimeoutEnvRaw)
+    : Number.NaN;
 
 export const runtimeConfig: RuntimeConfig = {
   debugUiEnabled: import.meta.env.DEV,
@@ -73,6 +86,12 @@ export const runtimeConfig: RuntimeConfig = {
   mockScenarioId: readSearchParam("scenario") ?? null,
   autoCapture: readFlagParam("capture"),
   captureDelayMs: readNumberParam("captureDelayMs", 500),
+  updater: {
+    target: updaterTarget.trim().length > 0 ? updaterTarget.trim() : undefined,
+    checkTimeoutMs: Number.isFinite(updaterTimeoutEnv)
+      ? updaterTimeoutEnv
+      : readNumberParam("updateTimeoutMs", 10000),
+  },
   settingsDefaults: {
     apiBaseUrl,
     playerId,

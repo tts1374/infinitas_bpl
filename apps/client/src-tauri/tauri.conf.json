@@ -26,9 +26,19 @@
     }
   },
   "bundle": {
-    "active": false,
+    "active": true,
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [],
+      "pubkey": "untrusted comment: minisign public key: 4A4ADDE56402CA4F\nRWRPygJk5d1KSlGI01qVinTVXwhY3suiXcBLG1RysjR2HbIHqHcXJiah",
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }
