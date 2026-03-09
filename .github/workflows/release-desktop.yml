@@ -6,7 +6,7 @@ on:
       download_base_path:
         description: R2 prefix for updater artifacts
         required: true
-        default: bpl-app/stable
+        default: infinitas-arena/stable
         type: string
       app_target:
         description: Tauri updater target
@@ -149,7 +149,7 @@ jobs:
 
       - name: Upload updater artifacts to R2
         env:
-          CLOUDFLARE_API_TOKEN_RELEASE: ${{ secrets.CLOUDFLARE_API_TOKEN_RELEASE }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN_RELEASE }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           .\scripts\release\publish-updater-artifacts.ps1 `
@@ -159,7 +159,7 @@ jobs:
 
       - name: Update KV latest after upload
         env:
-          CLOUDFLARE_API_TOKEN_RELEASE: ${{ secrets.CLOUDFLARE_API_TOKEN_RELEASE }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN_RELEASE }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           & npx wrangler kv key put `
@@ -175,7 +175,7 @@ jobs:
 
       - name: Post-check published artifacts and latest
         env:
-          CLOUDFLARE_API_TOKEN_RELEASE: ${{ secrets.CLOUDFLARE_API_TOKEN_RELEASE }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN_RELEASE }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           $verifyDir = Join-Path $env:RUNNER_TEMP "release-post-check"
