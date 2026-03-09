@@ -67,3 +67,76 @@ Worker は `app.msi` の URL を `DOWNLOAD_BASE_URL + objectKey` で組み立て
 - `npm --workspace @infinitas/update-worker run deploy`
 
 `build` は `wrangler deploy --dry-run` を使った bundle 確認です。`deploy` 前に namespace ID と `DOWNLOAD_BASE_URL` を本番値で確認してください。
+
+## GitHub Actions release workflow
+
+Windows 向け updater 配布は [release-desktop.yml](../../.github/workflows/release-desktop.yml) で行います。v1 では `workflow_dispatch` の手動実行のみを前提にし、以下の順序を固定しています。
+
+1. `apps/client/src-tauri/tauri.conf.json` から version を一度だけ抽出する
+2. GitHub Secrets 経由で updater 署名鍵を注入して Tauri build を行う
+3. `.msi` と `.msi.sig` を 1 件ずつ特定し、`app.msi` / `app.msi.sig` に正規化する
+4. R2 へ upload する
+5. upload 成功後のみ KV `app:stable:latest` を更新する
+6. R2 object と KV 値を `wrangler ... --remote` で post-check する
+
+### 必要な GitHub Secrets
+
+- `TAURI_SIGNING_PRIVATE_KEY`
+- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
+- `CLOUDFLARE_API_TOKEN`
+- `CLOUDFLARE_ACCOUNT_ID`
+
+### 任意の GitHub Variables
+
+- `CLOUDFLARE_R2_BUCKET`
+  - 未設定時の既定値: `infinitas-arena-updates`
+- `CLOUDFLARE_KV_BINDING_NAME`
+  - 未設定時の既定値: `APP_KV`
+
+### workflow_dispatch inputs
+
+- `download_base_path`
+  - 既定値: `bpl-app/stable`
+- `app_target`
+  - 既定値: `windows-x86_64`
+
+### Cloudflare 側の準備
+
+- R2 bucket `infinitas-arena-updates` が存在していること
+- KV namespace `infinitas-arena-config` が存在していること
+- Worker `infinitas-arena-update-api` の Wrangler 設定が repo 内の [wrangler.toml](./wrangler.toml) と一致していること
+- 配布 URL のベースが `DOWNLOAD_BASE_URL` と整合していること
+
+### 起動方法
+
+1. GitHub Actions の `Release Desktop` workflow を開く
+2. 必要なら `download_base_path` / `app_target` を上書きする
+3. 実行後、artifact `desktop-updater-<version>` と R2 / KV の post-check 成功を確認する
+
+### R2 path 規約
+
+workflow は R2 に次の path で配置します。
+
+```text
+bpl-app/
+  stable/
+    <version>/
+      windows-x86_64/
+        app.msi
+        app.msi.sig
+```
+
+### latest 更新順序
+
+`app:stable:latest` は R2 upload の後にしか更新しません。build、artifact 収集、upload のいずれかが失敗した場合は workflow を fail させ、latest は進めません。
+
+### 失敗時の扱いとロールバック
+
+- version 抽出、artifact 収集、R2 upload、KV update のどこかで失敗したら workflow は fail します
+- 2 個目の R2 upload に失敗した場合は、先に upload した object を削除して partial upload を残さないようにします
+- `app:stable:latest` は upload 成功後にしか更新しないため、既存版は維持されます
+- もし KV を戻す必要がある場合は、`wrangler kv key put --binding APP_KV "app:stable:latest" "<previous-version>" --remote` を使って手動で直前 version に戻します
+
+### Wrangler v4 の注意
+
+Wrangler v4 では remote の R2 / KV 操作に `--remote` が必要です。release workflow でも `wrangler r2 object put/get/delete` と `wrangler kv key put/get` のすべてで `--remote` を明示しています。
