@@ -1,0 +1,16 @@
+name = "infinitas-arena-update-api"
+main = "src/index.ts"
+compatibility_date = "2026-03-09"
+
+[vars]
+DOWNLOAD_BASE_URL = "https://pub-f873923a35b944bbb316013ecc7e3805.r2.dev"
+
+[[kv_namespaces]]
+binding = "APP_KV"
+id = "3eafa68e99cd442783c5af7ace3f69e1"
+preview_id = "470e5cad2ab84220bd8d2440706ce723"
+
+[[r2_buckets]]
+binding = "APP_BUCKET"
+bucket_name = "infinitas-arena-updates"
+preview_bucket_name = "infinitas-arena-updates"

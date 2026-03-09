@@ -1,0 +1,13 @@
+{
+  "name": "@infinitas/update-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "build": "wrangler deploy --dry-run",
+    "deploy": "wrangler deploy",
+    "test": "tsx --test src/index.test.mjs src/lib/version.test.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  }
+}
