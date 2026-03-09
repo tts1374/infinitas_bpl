@@ -1,5 +1,5 @@
 import type { PlayStyle } from "@infinitas/shared";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Activity, BarChart3, ChevronLeft, History, TrendingUp, ZapOff } from "lucide-react";
 import type { ChartRankingEntry, DetailedMatchHistoryEntry, StatsMatchResult } from "../features/stats/models";
 import {
@@ -52,6 +52,34 @@ function formatMatchPoints(left: number, right: number | null): string {
   }
 
   return `${formatCompactNumber(left)} - ${formatCompactNumber(right)}`;
+}
+
+function formatMetricTotal(value: number | null): string {
+  return value === null ? "--" : value.toLocaleString();
+}
+
+function getDisplayedRank(entry: Pick<DetailedMatchHistoryEntry, "display_rank" | "final_rank">): number | null {
+  return entry.display_rank ?? entry.final_rank;
+}
+
+function getDisplayedMatchPoints(entry: Pick<DetailedMatchHistoryEntry, "display_match_point_total" | "display_opponent_point_total">): string {
+  return formatMatchPoints(entry.display_match_point_total, entry.display_opponent_point_total);
+}
+
+function getPrimaryMetricLabel(entry: Pick<DetailedMatchHistoryEntry, "win_metric">): string {
+  return entry.win_metric === "MISSCOUNT" ? "Total MISS Count" : "Total EX Score";
+}
+
+function getSecondaryMetricLabel(entry: Pick<DetailedMatchHistoryEntry, "win_metric">): string {
+  return entry.win_metric === "MISSCOUNT" ? "Total EX Score" : "Total MISS Count";
+}
+
+function getPrimaryMetricValue(entry: Pick<DetailedMatchHistoryEntry, "win_metric" | "total_bp" | "total_ex_score">): number | null {
+  return entry.win_metric === "MISSCOUNT" ? entry.total_bp : entry.total_ex_score;
+}
+
+function getSecondaryMetricValue(entry: Pick<DetailedMatchHistoryEntry, "win_metric" | "total_bp" | "total_ex_score">): number | null {
+  return entry.win_metric === "MISSCOUNT" ? entry.total_ex_score : entry.total_bp;
 }
 
 function formatSignedNumber(value: number | null, suffix = ""): string {
@@ -134,6 +162,17 @@ function getRoundPointColor(result: StatsMatchResult): string {
   }
 
   return "border-amber-500/30 text-amber-300";
+}
+
+function renderRoundPointBadge(
+  battleType: RuleFilter,
+  game: DetailedMatchHistoryEntry["games"][number],
+): ReactNode {
+  if (battleType === "BPL" && game.game_result === "DRAW") {
+    return "1";
+  }
+
+  return formatCompactNumber(game.round_point);
 }
 
 function getResultBadgeColor(result: StatsMatchResult): string {
@@ -318,8 +357,8 @@ function RatingTrendGraph(props: {
                 className="text-[9px] font-black uppercase italic tracking-tighter"
               >
                 {battleType === "ARENA"
-                  ? `RANK ${getRankText(hoveredEntry.final_rank)}`
-                  : formatMatchPoints(hoveredEntry.match_point_total, hoveredEntry.opponent_point_total)}
+                  ? `RANK ${getRankText(getDisplayedRank(hoveredEntry))}`
+                  : getDisplayedMatchPoints(hoveredEntry)}
               </text>
               <line
                 x1={getX(hoveredIndex ?? 0)}
@@ -456,12 +495,12 @@ export function StatsPage({ onNavigateToLobby }: StatsPageProps) {
                       <div className="flex items-center justify-between px-6 py-4">
                         <div className="flex items-center gap-4">
                           {ruleFilter === "ARENA" ? (
-                            <div className={`rounded px-2 py-1 text-[10px] font-black uppercase italic ${getRankColor(entry.final_rank)}`}>
-                              Rank {getRankText(entry.final_rank)}
+                            <div className={`rounded px-2 py-1 text-[10px] font-black uppercase italic ${getRankColor(getDisplayedRank(entry))}`}>
+                              Rank {getRankText(getDisplayedRank(entry))}
                             </div>
                           ) : (
                             <div className={`rounded px-2 py-1 text-[10px] font-black uppercase italic ${getResultBadgeColor(entry.match_result)}`}>
-                              {formatMatchPoints(entry.match_point_total, entry.opponent_point_total)}
+                              {getDisplayedMatchPoints(entry)}
                             </div>
                           )}
 
@@ -472,7 +511,7 @@ export function StatsPage({ onNavigateToLobby }: StatsPageProps) {
                                   key={game.match_game_id}
                                   className={`rounded border px-1.5 py-0.5 text-[10px] font-mono font-bold ${getRoundPointColor(game.game_result)}`}
                                 >
-                                  {formatCompactNumber(game.round_point)}
+                                  {renderRoundPointBadge(ruleFilter, game)}
                                 </div>
                               ))}
                             </div>
@@ -492,17 +531,23 @@ export function StatsPage({ onNavigateToLobby }: StatsPageProps) {
 
                       {expandedMatchId === entry.match_id ? (
                         <div className="border-t border-white/5 bg-black/20 px-6 pb-4 pt-2">
-                          <div className="mb-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                          <div className="mb-4 grid grid-cols-1 gap-4 md:grid-cols-3">
                             <div className="rounded-xl border border-white/5 bg-white/5 p-3">
-                              <span className="mb-1 block text-[10px] font-bold uppercase text-gray-500">Total EX Score</span>
+                              <span className="mb-1 block text-[10px] font-bold uppercase text-gray-500">{getPrimaryMetricLabel(entry)}</span>
                               <span className="text-lg font-mono font-black text-white">
-                                {entry.total_ex_score === null ? "--" : entry.total_ex_score.toLocaleString()}
+                                {formatMetricTotal(getPrimaryMetricValue(entry))}
+                              </span>
+                            </div>
+                            <div className="rounded-xl border border-white/5 bg-white/5 p-3">
+                              <span className="mb-1 block text-[10px] font-bold uppercase text-gray-500">{getSecondaryMetricLabel(entry)}</span>
+                              <span className="text-lg font-mono font-black text-white">
+                                {formatMetricTotal(getSecondaryMetricValue(entry))}
                               </span>
                             </div>
                             <div className="rounded-xl border border-white/5 bg-white/5 p-3">
                               <span className="mb-1 block text-[10px] font-bold uppercase text-gray-500">Total Points</span>
                               <span className="text-lg font-mono font-black text-cyan-400">
-                                {formatMatchPoints(entry.match_point_total, entry.opponent_point_total)}
+                                {getDisplayedMatchPoints(entry)}
                               </span>
                             </div>
                           </div>

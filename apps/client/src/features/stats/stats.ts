@@ -106,6 +106,48 @@ function compareMetricValues(left: number, right: number, winMetric: WinMetric):
   return left < right ? 1 : -1;
 }
 
+function getArenaPointsForRank(rank: number): number {
+  if (rank === 1) {
+    return 2;
+  }
+
+  if (rank === 2) {
+    return 1;
+  }
+
+  return 0;
+}
+
+function getArenaRankByPlayerId(results: SessionPlayerResult[], winMetric: WinMetric): Map<string, number> {
+  const rankedPlayers = results
+    .filter((entry): entry is SessionPlayerResult & { metric_value: number } => entry.metric_value !== null)
+    .sort((left, right) => {
+      const comparison = compareMetricValues(left.metric_value, right.metric_value, winMetric);
+      if (comparison !== 0) {
+        return comparison > 0 ? -1 : 1;
+      }
+
+      return left.player_id.localeCompare(right.player_id);
+    });
+
+  const rankByPlayerId = new Map<string, number>();
+  let previousMetricValue: number | null = null;
+  let previousRank = 0;
+  rankedPlayers.forEach((entry, index) => {
+    if (previousMetricValue !== null && entry.metric_value === previousMetricValue) {
+      rankByPlayerId.set(entry.player_id, previousRank);
+      return;
+    }
+
+    const rank = index + 1;
+    previousMetricValue = entry.metric_value;
+    previousRank = rank;
+    rankByPlayerId.set(entry.player_id, rank);
+  });
+
+  return rankByPlayerId;
+}
+
 function getBattleType(settings: RoomSettings): StatsBattleType {
   return settings.visibility === "PRIVATE" ? "PRIVATE" : settings.mode;
 }
@@ -393,6 +435,7 @@ interface ArenaPlayerStanding {
   total_ex_score: number | null;
   last_confirmed_at: string | null;
   final_rank: number;
+  display_rank: number;
 }
 
 function mergeMatchGame(existing: MatchGame, incoming: MatchGame): MatchGame {
@@ -555,6 +598,12 @@ function deriveMatchGame(
 
   const others = round.results.filter((entry) => entry.player_id !== myPlayerId);
   const pairwiseScore = getPairwiseScore(myResult, others, session.settings.win_metric);
+  const arenaRankByPlayerId =
+    session.settings.mode === "ARENA"
+      ? getArenaRankByPlayerId(round.results, session.settings.win_metric)
+      : null;
+  const arenaRank = arenaRankByPlayerId?.get(myPlayerId) ?? null;
+  const arenaPoints = arenaRank === null ? 0 : getArenaPointsForRank(arenaRank);
   const bestOpponent = [...others].sort((left, right) => {
     if (left.metric_value === null && right.metric_value === null) {
       return left.player_id.localeCompare(right.player_id);
@@ -595,8 +644,15 @@ function deriveMatchGame(
     chart_level: round.display.level,
     battle_type: getBattleType(session.settings),
     play_mode: session.settings.play_style,
-    game_result: getGameResultFromScore(pairwiseScore),
-    round_point: pairwiseScore,
+    game_result:
+      session.settings.mode === "ARENA"
+        ? arenaPoints === 2
+          ? "WIN"
+          : arenaPoints === 1
+            ? "DRAW"
+            : "LOSE"
+        : getGameResultFromScore(pairwiseScore),
+    round_point: session.settings.mode === "ARENA" ? arenaPoints : pairwiseScore,
     my_ex_score: myMetrics.exScore,
     opponent_ex_score: opponentMetrics.exScore,
     my_bp: myMetrics.bp,
@@ -664,14 +720,15 @@ function buildArenaStandings(
       continue;
     }
 
+    const rankByPlayerId = getArenaRankByPlayerId(round.results, winMetric);
     for (const playerResult of round.results) {
       const standing = standingByPlayerId.get(playerResult.player_id);
       if (!standing) {
         continue;
       }
 
-      const others = round.results.filter((entry) => entry.player_id !== playerResult.player_id);
-      standing.total_points += getPairwiseScore(playerResult, others, winMetric);
+      const rank = rankByPlayerId.get(playerResult.player_id) ?? null;
+      standing.total_points += rank === null ? 0 : getArenaPointsForRank(rank);
       const exScore = toMetrics(playerResult.source_meta, playerResult.metric_value, winMetric).exScore;
       if (exScore === null) {
         tieBreakMissingEx = true;
@@ -707,6 +764,8 @@ function buildArenaStandings(
 
   let previousRank = 0;
   let previousStanding: (typeof ordered)[number] | null = null;
+  let previousDisplayRank = 0;
+  let previousDisplayStanding: (typeof ordered)[number] | null = null;
   const standings = ordered.map((standing, index) => {
     const sameRank =
       previousStanding !== null &&
@@ -714,13 +773,20 @@ function buildArenaStandings(
       previousStanding.total_ex_score === standing.total_ex_score &&
       (previousStanding.last_confirmed_at ?? "") === (standing.last_confirmed_at ?? "");
     const finalRank = sameRank ? previousRank : index + 1;
+    const sameDisplayRank =
+      previousDisplayStanding !== null &&
+      previousDisplayStanding.total_points === standing.total_points;
+    const displayRank = sameDisplayRank ? previousDisplayRank : index + 1;
     previousRank = finalRank;
     previousStanding = standing;
+    previousDisplayRank = displayRank;
+    previousDisplayStanding = standing;
 
     return {
       ...standing,
       total_ex_score: tieBreakMissingEx ? null : standing.total_ex_score,
       final_rank: finalRank,
+      display_rank: displayRank,
     };
   });
 
@@ -807,7 +873,9 @@ function deriveArenaMatchRecord(
     rating_delta: null,
     invalid_reason: ratingDecision.invalidReason,
     final_rank: myStanding?.final_rank ?? null,
+    display_rank: myStanding?.display_rank ?? myStanding?.final_rank ?? null,
     participant_count: session.players.length,
+    win_metric: session.settings.win_metric,
   };
 }
 
@@ -859,7 +927,9 @@ function deriveBplMatchRecord(
     rating_delta: null,
     invalid_reason: ratingDecision.invalidReason,
     final_rank: matchResult === "WIN" ? 1 : matchResult === "LOSE" ? 2 : 1,
+    display_rank: matchResult === "WIN" ? 1 : matchResult === "LOSE" ? 2 : 1,
     participant_count: snapshot.players.length,
+    win_metric: session.settings.win_metric,
   };
 }
 
@@ -955,6 +1025,18 @@ export function getCurrentRating(
   return series === null ? null : archive.rating_series_state[series] ?? null;
 }
 
+function getBplDisplayPointTotals<TGame extends { game_result: StatsMatchResult }>(
+  games: TGame[],
+): { self: number; opponent: number } {
+  return games.reduce(
+    (totals, game) => ({
+      self: totals.self + (game.game_result === "LOSE" ? 0 : 1),
+      opponent: totals.opponent + (game.game_result === "WIN" ? 0 : 1),
+    }),
+    { self: 0, opponent: 0 },
+  );
+}
+
 export function getDetailedMatchHistory(
   archive: StatsArchive,
   battleType: "ARENA" | "BPL",
@@ -989,7 +1071,12 @@ export function getDetailedMatchHistory(
     .map((match) => {
       const games = [...(groupedGames.get(match.match_id) ?? [])].sort((left, right) => left.game_index - right.game_index);
       const hasCompleteExScore = games.length > 0 && games.every((game) => game.my_ex_score !== null);
+      const hasCompleteBp = games.length > 0 && games.every((game) => game.my_bp !== null);
       const opponentPointTotal = battleType === "BPL" ? Math.max(0, games.length - match.match_point_total) : null;
+      const displayPointTotals =
+        battleType === "BPL"
+          ? getBplDisplayPointTotals(games)
+          : { self: match.match_point_total, opponent: null };
 
       return {
         match_id: match.match_id,
@@ -998,11 +1085,16 @@ export function getDetailedMatchHistory(
         rating_delta: match.rating_delta,
         rating_after: match.rating_after,
         final_rank: match.final_rank,
+        display_rank: match.display_rank ?? match.final_rank,
         match_point_total: match.match_point_total,
         opponent_point_total: opponentPointTotal,
+        display_match_point_total: displayPointTotals.self,
+        display_opponent_point_total: displayPointTotals.opponent,
         total_ex_score: hasCompleteExScore
           ? games.reduce((sum, game) => sum + (game.my_ex_score ?? 0), 0)
           : null,
+        total_bp: hasCompleteBp ? games.reduce((sum, game) => sum + (game.my_bp ?? 0), 0) : null,
+        win_metric: match.win_metric ?? "SCORE",
         games,
       };
     });
@@ -1028,9 +1120,10 @@ export function getRecentMatchHistory(
     .slice(0, RECENT_HISTORY_LIMIT)
     .map((match) => {
       const games = (groupedGames.get(match.match_id) ?? []).sort((left, right) => left.game_index - right.game_index);
+      const displayPointTotals = battleType === "BPL" ? getBplDisplayPointTotals(games) : null;
       const detail =
         battleType === "BPL"
-          ? `${formatDecimal(match.match_point_total)}-${formatDecimal(Math.max(0, games.length - match.match_point_total))}`
+          ? `${formatDecimal(displayPointTotals?.self ?? 0)}-${formatDecimal(displayPointTotals?.opponent ?? 0)}`
           : games.map((game) => formatDecimal(game.round_point)).join("-");
 
       return {

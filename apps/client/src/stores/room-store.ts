@@ -53,6 +53,8 @@ export interface RoomConnectionSettings {
 let activeClient: RoomSocketClient | null = null;
 let activeMockScenarioId: string | null = null;
 const requestIdsByKey = new Map<string, string>();
+const DJ_NAME_PATTERN = /^[a-zA-Z0-9.\-*&!?#$]*$/;
+const DJ_NAME_MAX_LENGTH = 6;
 
 export interface MockRoomStoreState {
   scenarioId: string;
@@ -533,11 +535,12 @@ export const roomStore = {
     connection: { roomId: string; joinCode?: string | null },
     settings: RoomConnectionSettings,
   ): boolean {
-    const trimmedDisplayName = settings.displayName.trim();
-    if (trimmedDisplayName.length === 0) {
-      setErrorDialog("Display name required", "Save a non-empty display name before joining.");
+    const displayNameError = validateDisplayName(settings.displayName);
+    if (displayNameError !== null) {
+      setErrorDialog("DJ NAME invalid", displayNameError);
       return false;
     }
+    const trimmedDisplayName = settings.displayName.trim();
 
     closeCurrentClient(false);
     clearRequestIds();
@@ -749,4 +752,21 @@ export const roomStore = {
 
 export function useRoomStore<TSelected>(selector: (state: RoomStoreState) => TSelected): TSelected {
   return useExternalStore(internalStore, selector);
+}
+
+function validateDisplayName(value: string): string | null {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return "DJ NAME は必須です。";
+  }
+
+  if (Array.from(trimmed).length > DJ_NAME_MAX_LENGTH) {
+    return "DJ NAME は6文字以内で入力してください。";
+  }
+
+  if (!DJ_NAME_PATTERN.test(trimmed)) {
+    return "使用可能文字はa-z A-Z 0-9 .- *&!?#$です";
+  }
+
+  return null;
 }

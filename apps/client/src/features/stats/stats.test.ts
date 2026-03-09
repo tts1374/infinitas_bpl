@@ -96,6 +96,7 @@ function makeSession(input: {
   playerIds: string[];
   rounds: SessionRound[];
   mode?: "ARENA" | "BPL";
+  winMetric?: "SCORE" | "MISSCOUNT";
 }): RoomStatsSession {
   return {
     room_id: input.roomId,
@@ -103,7 +104,7 @@ function makeSession(input: {
       visibility: input.battleType === "PRIVATE" ? "PRIVATE" : "PUBLIC",
       join_code: null,
       mode: input.mode ?? (input.playerIds.length === 2 ? "BPL" : "ARENA"),
-      win_metric: "SCORE",
+      win_metric: input.winMetric ?? "SCORE",
       play_style: input.playMode,
       level_filter: "ANY",
       room_comment: "",
@@ -414,7 +415,7 @@ runCase("ARENA match rating uses pairwise pseudo matches from final standing", (
   assert.ok(match);
   assert.equal(match!.final_rank, 2);
   assert.equal(match!.match_result, "WIN");
-  assert.equal(match!.match_point_total, 2 / 3);
+  assert.equal(match!.match_point_total, 1);
   assert.equal(match!.rating_after, 1504);
   assert.equal(match!.rating_delta, 4);
 });
@@ -488,6 +489,76 @@ runCase("ARENA final standing resolves ties by EX total, then confirmation time,
   assert.equal(sharedRankArchive.matches[0]?.final_rank, 1);
   assert.equal(sharedRankArchive.matches[0]?.match_result, "DRAW");
   assert.equal(sharedRankArchive.matches[0]?.rating_after, 1500);
+});
+
+runCase("ARENA display rank keeps shared places when EX score breaks the internal tie", () => {
+  const archive = recordClosedMatch(
+    createEmptyStatsArchive(),
+    makeSession({
+      roomId: "arena-display-rank",
+      battleType: "ARENA",
+      playMode: "SP",
+      playerIds: [MY_PLAYER_ID, "opponent"],
+      mode: "ARENA",
+      rounds: [
+        makeRound(0, "SP", [
+          makeResult({ playerId: MY_PLAYER_ID, metricValue: 900, submittedAt: iso(56), bp: 14, exScore: 900 }),
+          makeResult({ playerId: "opponent", metricValue: 1000, submittedAt: iso(57), bp: 12, exScore: 1000 }),
+        ]),
+        makeRound(1, "SP", [
+          makeResult({ playerId: MY_PLAYER_ID, metricValue: 950, submittedAt: iso(58), bp: 11, exScore: 950 }),
+          makeResult({ playerId: "opponent", metricValue: 860, submittedAt: iso(59), bp: 15, exScore: 960 }),
+        ]),
+      ],
+    }),
+  );
+
+  const detailedHistory = getDetailedMatchHistory(archive, "ARENA", "SP");
+
+  assert.equal(archive.matches[0]?.final_rank, 2);
+  assert.equal(archive.matches[0]?.display_rank, 1);
+  assert.equal(archive.matches[0]?.match_point_total, 3);
+  assert.equal(detailedHistory[0]?.display_rank, 1);
+  assert.equal(detailedHistory[0]?.display_match_point_total, 3);
+});
+
+runCase("BPL detailed history shows tied rounds as 1-1 while preserving MISSCOUNT totals", () => {
+  const archive = recordClosedMatch(
+    createEmptyStatsArchive(),
+    makeSession({
+      roomId: "bpl-tie-display",
+      battleType: "BPL",
+      playMode: "SP",
+      playerIds: [MY_PLAYER_ID, "opponent"],
+      mode: "BPL",
+      winMetric: "MISSCOUNT",
+      rounds: [
+        makeRound(0, "SP", [
+          makeResult({ playerId: MY_PLAYER_ID, metricValue: 10, submittedAt: iso(16), bp: 10, exScore: 2100 }),
+          makeResult({ playerId: "opponent", metricValue: 10, submittedAt: iso(17), bp: 10, exScore: 2000 }),
+        ]),
+        makeRound(1, "SP", [
+          makeResult({ playerId: MY_PLAYER_ID, metricValue: 11, submittedAt: iso(18), bp: 11, exScore: 2050 }),
+          makeResult({ playerId: "opponent", metricValue: 11, submittedAt: iso(19), bp: 11, exScore: 1980 }),
+        ]),
+        makeRound(2, "SP", [
+          makeResult({ playerId: MY_PLAYER_ID, metricValue: 12, submittedAt: iso(20), bp: 12, exScore: 2150 }),
+          makeResult({ playerId: "opponent", metricValue: 12, submittedAt: iso(21), bp: 12, exScore: 2075 }),
+        ]),
+      ],
+    }),
+  );
+
+  const detailedHistory = getDetailedMatchHistory(archive, "BPL", "SP");
+  const history = getRecentMatchHistory(archive, "BPL", "SP");
+
+  assert.equal(archive.matches[0]?.final_rank, 1);
+  assert.equal(detailedHistory[0]?.win_metric, "MISSCOUNT");
+  assert.equal(detailedHistory[0]?.display_match_point_total, 3);
+  assert.equal(detailedHistory[0]?.display_opponent_point_total, 3);
+  assert.equal(detailedHistory[0]?.total_bp, 33);
+  assert.equal(detailedHistory[0]?.total_ex_score, 6300);
+  assert.equal(history[0]?.detail, "3-3");
 });
 
 runCase("DO-provided unrated decision blocks local rating updates", () => {

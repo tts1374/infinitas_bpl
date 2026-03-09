@@ -10,6 +10,9 @@ interface SettingsPageProps {
   onNavigateToLobby: () => void;
 }
 
+const DJ_NAME_PATTERN = /^[a-zA-Z0-9.\-*&!?#$]*$/;
+const DJ_NAME_MAX_LENGTH = 6;
+
 const SOURCE_OPTIONS = [
   {
     id: "inf_daken_counter" as const,
@@ -115,16 +118,17 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
           </div>
 
           <div className="max-w-md space-y-2">
-            <label className="text-[10px] font-black uppercase text-gray-500">Display Name</label>
+            <label className="text-[10px] font-black uppercase text-gray-500">DJ NAME</label>
             <input
               type="text"
               value={draft.displayName}
+              maxLength={DJ_NAME_MAX_LENGTH}
               onChange={(event) => {
                 const nextValue = event.currentTarget.value;
                 settingsStore.update("displayName", nextValue);
                 setDisplayNameError(validateDisplayName(nextValue));
               }}
-              placeholder="PLAYER_NAME"
+              placeholder="DJNAME"
               className="w-full rounded-xl border border-white/10 bg-[#252526] p-4 font-bold text-white outline-none transition-all placeholder:text-gray-600 focus:border-cyan-500"
             />
             {displayNameError ? <p className="text-sm font-semibold text-red-400">{displayNameError}</p> : null}
@@ -296,11 +300,15 @@ function formatUnknownError(error: unknown, fallback: string): string {
 function validateDisplayName(value: string): string | null {
   const trimmed = value.trim();
   if (trimmed.length === 0) {
-    return "Display Name は必須です。";
+    return "DJ NAME は必須です。";
   }
 
-  if (Array.from(trimmed).length > 10) {
-    return "Display Name は10文字以内で入力してください。";
+  if (Array.from(trimmed).length > DJ_NAME_MAX_LENGTH) {
+    return "DJ NAME は6文字以内で入力してください。";
+  }
+
+  if (!DJ_NAME_PATTERN.test(trimmed)) {
+    return "使用可能文字はa-z A-Z 0-9 .- *&!?#$です";
   }
 
   return null;

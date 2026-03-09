@@ -6,6 +6,7 @@ export interface Song {
     id?: string | number;
     title: string;
     artist: string;
+    playStyle?: string;
     difficulty?: string;
     level: string | number;
     genre?: string;
@@ -113,6 +114,61 @@ export function RoomArenaPresentational(props: RoomArenaControlledState) {
 
 function maskJoinCode(joinCode: string): string {
     return '*'.repeat(joinCode.length);
+}
+
+function formatRankLabel(rank: number | null): string {
+    if (rank === null) {
+        return '-';
+    }
+
+    if (rank % 100 >= 11 && rank % 100 <= 13) {
+        return `${rank}th`;
+    }
+
+    switch (rank % 10) {
+        case 1:
+            return `${rank}st`;
+        case 2:
+            return `${rank}nd`;
+        case 3:
+            return `${rank}rd`;
+        default:
+            return `${rank}th`;
+    }
+}
+
+function getDifficultyBadgeClass(difficulty: string | undefined): string {
+    switch (difficulty) {
+        case 'B':
+            return 'bg-green-500 text-black shadow-[0_0_18px_rgba(34,197,94,0.35)]';
+        case 'N':
+            return 'bg-blue-500 text-white shadow-[0_0_18px_rgba(59,130,246,0.35)]';
+        case 'H':
+            return 'bg-yellow-400 text-black shadow-[0_0_20px_rgba(250,204,21,0.45)]';
+        case 'A':
+            return 'bg-red-600 text-white shadow-[0_0_20px_rgba(220,38,38,0.4)]';
+        case 'L':
+            return 'bg-purple-600 text-white shadow-[0_0_20px_rgba(147,51,234,0.4)]';
+        default:
+            return 'bg-gray-600 text-white';
+    }
+}
+
+function getDifficultyBadgeLabel(difficulty: string | undefined): string {
+    switch (difficulty) {
+        case 'B':
+            return 'BEGINNER';
+        case 'N':
+            return 'NORMAL';
+        case 'H':
+            return 'HYPER';
+        case 'A':
+            return 'ANOTHER';
+        case 'L':
+            return 'LEGGENDARIA';
+        default:
+            return difficulty ?? '-';
+    }
 }
 
 export default function RoomArena({ onNavigate, initialStatus, controlled }: RoomProps) {
@@ -415,7 +471,12 @@ export default function RoomArena({ onNavigate, initialStatus, controlled }: Roo
     const currentRoundPlayer = players[roundCount - 1] ?? players[0];
     const currentRoundSong = currentRoundPlayer ? playerPicks[currentRoundPlayer.id] ?? null : null;
     const currentRoundTitle = currentRoundSong?.title ?? 'Unknown Track';
-    const currentRoundArtist = currentRoundSong?.artist ?? '-';
+    const currentRoundPlayStyle = currentRoundSong?.playStyle ?? '-';
+    const currentRoundDifficulty = currentRoundSong?.difficulty ?? '-';
+    const currentRoundLevel = currentRoundSong?.level ?? '?';
+    const resultSongPlayStyle = resultSong?.playStyle ?? '-';
+    const resultSongDifficulty = resultSong?.difficulty ?? '-';
+    const resultSongLevel = resultSong?.level ?? '?';
 
     return (
         <div className="flex h-screen w-screen bg-[#1a1a1b] text-white font-sans overflow-hidden">
@@ -488,6 +549,11 @@ export default function RoomArena({ onNavigate, initialStatus, controlled }: Roo
                                 <h2 className={`max-w-[32rem] text-center text-3xl font-black italic tracking-tighter text-white leading-tight whitespace-normal ${currentRoundTitle.length > 45 ? 'line-clamp-2 break-all' : 'break-all'}`}>
                                     {currentRoundTitle}
                                 </h2>
+                                <div className="mt-2 flex flex-wrap items-center justify-center gap-3 text-xs font-black italic tracking-[0.25em] text-gray-300">
+                                    <span>{currentRoundPlayStyle}</span>
+                                    <span className={`${getDifficultyBadgeClass(currentRoundDifficulty)} rounded-full px-3 py-1 text-[11px] tracking-[0.2em]`}>{getDifficultyBadgeLabel(currentRoundDifficulty)}</span>
+                                    <span className="text-cyan-500">Lv{currentRoundLevel}</span>
+                                </div>
                                 <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Selected By {currentRoundPlayer?.name ?? 'PLAYER_ONE'}</p>
                             </div>
 
@@ -577,6 +643,11 @@ export default function RoomArena({ onNavigate, initialStatus, controlled }: Roo
                                 <h2 className={`mt-4 max-w-[56rem] text-6xl font-black italic tracking-tighter text-white leading-tight whitespace-normal ${resultSong?.title && resultSong.title.length > 45 ? 'line-clamp-2 break-all' : 'break-all'}`}>
                                     {resultSong?.title || 'Unknown Track'}
                                 </h2>
+                                <div className="mt-4 flex flex-wrap items-center gap-3 text-lg font-black italic tracking-[0.2em] text-gray-300">
+                                    <span>{resultSongPlayStyle}</span>
+                                    <span className={`${getDifficultyBadgeClass(resultSongDifficulty)} rounded-full px-4 py-1.5 text-xs tracking-[0.2em]`}>{getDifficultyBadgeLabel(resultSongDifficulty)}</span>
+                                    <span className="text-cyan-500">Lv{resultSongLevel}</span>
+                                </div>
                             </div>
                             <div className="flex flex-col items-end">
                                 <div className="flex items-center gap-4 mb-4">
@@ -675,7 +746,7 @@ export default function RoomArena({ onNavigate, initialStatus, controlled }: Roo
                                             <User size={48} className={isWinner ? 'text-cyan-400' : 'text-gray-500'} />
                                         </div>
                                         <div className="text-center">
-                                            <p className="text-5xl font-black italic tracking-tighter leading-none mb-1">{rank ?? '-'}<span className="text-lg ml-1 text-gray-600">th</span></p>
+                                            <p className="text-5xl font-black italic tracking-tighter leading-none mb-1">{formatRankLabel(rank)}</p>
                                             <p className="max-w-[180px] text-xl font-black italic text-white uppercase leading-tight whitespace-normal break-words line-clamp-2">{p.name}</p>
                                         </div>
                                         <div className="w-full h-[1px] bg-white/10 mt-2" />

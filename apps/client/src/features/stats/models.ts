@@ -8,6 +8,7 @@ import type {
   SubmissionReason,
   SubmissionStatus,
   SubmittedBy,
+  WinMetric,
 } from "@infinitas/shared";
 
 export const STATS_SCHEMA_VERSION = 1;
@@ -81,7 +82,9 @@ export interface MatchRecord {
   rating_delta: number | null;
   invalid_reason: string | null;
   final_rank: number | null;
+  display_rank?: number | null;
   participant_count: number;
+  win_metric?: WinMetric;
 }
 
 export interface MatchGame {
@@ -172,9 +175,14 @@ export interface DetailedMatchHistoryEntry {
   rating_delta: number | null;
   rating_after: number | null;
   final_rank: number | null;
+  display_rank: number | null;
   match_point_total: number;
   opponent_point_total: number | null;
+  display_match_point_total: number;
+  display_opponent_point_total: number | null;
   total_ex_score: number | null;
+  total_bp: number | null;
+  win_metric: WinMetric;
   games: DetailedMatchHistoryGameEntry[];
 }
 

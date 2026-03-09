@@ -1177,7 +1177,17 @@ export function RoomPage() {
         return;
       }
 
-      setChartResults(response.charts);
+      setChartResults((current) => {
+        if (historyMode !== "next") {
+          return response.charts;
+        }
+
+        const existingKeys = new Set(current.map((chart) => chart.chart_key));
+        return [
+          ...current,
+          ...response.charts.filter((chart) => !existingKeys.has(chart.chart_key)),
+        ];
+      });
       setChartCursor(targetCursor);
       setChartNextCursor(response.next_cursor);
       setChartLastLoadedAt(new Date().toISOString());
@@ -1862,9 +1872,12 @@ export function RoomPage() {
     : null;
   const previousRoundSubtitle = formatSongArtist(bplPreviousRound?.artist ?? null);
   const regulationLabel = formatRegulationLabel(snapshot.settings.play_style, snapshot.settings.level_filter);
-  const ownPickCutInTitle = ownPickCutInChart
-    ? formatSongKeyTitle(ownPickCutInChart.title_search_key, ownPickCutInChart.play_style, ownPickCutInChart.difficulty)
-    : null;
+  const ownPickCutInTitle =
+    ownPickCutInChart?.title.trim().length
+      ? ownPickCutInChart.title
+      : ownPickCutInChart
+        ? formatSongKeyTitle(ownPickCutInChart.title_search_key, ownPickCutInChart.play_style, ownPickCutInChart.difficulty)
+        : null;
   const ownPickCutInArtist = formatSongArtist(ownPickCutInChart?.artist ?? null);
   const soundEnabledLabel = savedSettings.voiceMuted
     ? "Sound muted"
@@ -1937,6 +1950,13 @@ export function RoomPage() {
     level: chart.level,
     genre: chart.genre,
   }));
+  const handleLoadMoreCharts = () => {
+    if (chartLoading || chartNextCursor === null) {
+      return;
+    }
+
+    void loadChartCandidates(chartNextCursor, "next");
+  };
   const showPickerModal = snapshot.room_state === "PICKING" && mySubmittedPick === null;
   const pickerModal = (
     <SongSearchModalView
@@ -1946,7 +1966,9 @@ export function RoomPage() {
       selectedLevel={chartLevel ? Number(chartLevel) : null}
       timeLeft={pickingCountdown ?? 120}
       displayedSongs={pickerSongs}
-      totalSongs={chartResults.length + (chartNextCursor === null ? 0 : CHART_SEARCH_PAGE_SIZE)}
+      totalSongs={chartResults.length}
+      hasMore={chartNextCursor !== null}
+      isLoadingMore={chartLoading && chartResults.length > 0}
       onSearchChange={setChartKeyword}
       onToggleDiff={(difficultyId) => {
         const nextDifficulty = getDifficultyFromId(chartDifficulty === getDifficultyFromId(difficultyId) ? null : difficultyId);
@@ -1955,6 +1977,7 @@ export function RoomPage() {
       onToggleLevel={(level) => {
         setChartLevel(chartLevel === String(level) ? "" : String(level));
       }}
+      onLoadMore={handleLoadMoreCharts}
       onSelect={(song) => {
         if (typeof song.id !== "string") {
           return;
@@ -1983,6 +2006,7 @@ export function RoomPage() {
     selectionTitle: string;
     playingTitle: string;
     artist: string;
+    playStyle: string;
     level: string | number;
     difficultyId: string;
   }>();
@@ -2000,6 +2024,7 @@ export function RoomPage() {
         : fallbackTitle,
       playingTitle: resolvedChart?.title ?? fallbackTitle,
       artist: formatSongArtist(resolvedChart?.artist ?? null),
+      playStyle: expectedKey?.play_style ?? snapshot.settings.play_style,
       level: resolvedChart?.level ?? fallbackLevel ?? "?",
       difficultyId: getDifficultyId(expectedKey?.difficulty),
     });
@@ -2066,6 +2091,7 @@ export function RoomPage() {
     return {
       title: song?.playingTitle ?? round.title,
       artist: song?.artist ?? formatSongArtist(round.artist),
+      playStyle: song?.playStyle ?? round.expectedKey?.play_style ?? snapshot.settings.play_style,
       level: song?.level ?? round.level ?? "?",
       ...(song?.difficultyId ? { difficulty: song.difficultyId } : {}),
     };
@@ -2129,6 +2155,7 @@ export function RoomPage() {
       return {
         title: revealActualSong ? roundSong.playingTitle : roundSong.selectionTitle,
         artist: roundSong.artist,
+        playStyle: roundSong.playStyle,
         level: roundSong.level,
         difficulty: roundSong.difficultyId,
       };
@@ -2149,6 +2176,7 @@ export function RoomPage() {
               )
             : resolvedPickChart?.title ?? "DECIDED",
           artist: formatSongArtist(resolvedPickChart?.artist ?? null),
+          playStyle: parsedPickChartKey?.play_style ?? snapshot.settings.play_style,
           level: resolvedPickChart?.level ?? "?",
           difficulty: getDifficultyId(parsedPickChartKey?.difficulty ?? resolvedPickChart?.difficulty),
         };
@@ -2156,7 +2184,7 @@ export function RoomPage() {
     }
 
     if (index === 2) {
-      return { title: "?????", artist: "System Random", level: "??" };
+      return { title: "?????", artist: "System Random", playStyle: snapshot.settings.play_style, level: "??" };
     }
 
     return null;
@@ -2186,6 +2214,7 @@ export function RoomPage() {
             "DECIDED"
           : "DECIDED",
       artist: isOwnPick ? formatSongArtist(resolvedPickChart?.artist ?? null) : "Track Hidden",
+      playStyle: parsedPickChartKey?.play_style ?? snapshot.settings.play_style,
       difficulty: isOwnPick
         ? getDifficultyId(parsedPickChartKey?.difficulty ?? resolvedPickChart?.difficulty)
         : "-",
@@ -2201,6 +2230,7 @@ export function RoomPage() {
     arenaPicks[mockId] = {
       title: roundSong.playingTitle,
       artist: roundSong.artist,
+      playStyle: roundSong.playStyle,
       difficulty: roundSong.difficultyId,
       level: typeof roundSong.level === "number" ? roundSong.level : 12,
     };
@@ -2462,18 +2492,12 @@ export function RoomPage() {
     accumulator.set(
       player.playerId,
       previousPlayer &&
-        previousPlayer.totalPoints === player.totalPoints &&
-        previousPlayer.totalExScore === player.totalExScore
+        previousPlayer.totalPoints === player.totalPoints
         ? previousRank
         : playerIndex + 1,
     );
     return accumulator;
   }, new Map<string, number>());
-  const arenaFinalWinnerPlayerIds = winnerIds.size > 0
-    ? [...winnerIds]
-    : sortedArenaFinalPlayers
-        .filter((player) => (arenaFinalRankByPlayerId.get(player.playerId) ?? null) === 1)
-        .map((player) => player.playerId);
   const arenaFinalResultPlayers = arenaPlayers.reduce<Record<string, RoomArenaFinalResultPlayerSummary>>((accumulator, player, index) => {
     const actualPlayer = orderedPlayers[index] ?? null;
     if (!actualPlayer) {
@@ -2481,10 +2505,11 @@ export function RoomPage() {
     }
 
     const resultPlayer = displayResultPlayers.find((entry) => entry.playerId === actualPlayer.player_id) ?? null;
+    const rank = arenaFinalRankByPlayerId.get(actualPlayer.player_id) ?? null;
     accumulator[player.id] = {
-      rank: arenaFinalRankByPlayerId.get(actualPlayer.player_id) ?? null,
+      rank,
       totalPoints: resultPlayer?.totalPoints ?? 0,
-      isWinner: arenaFinalWinnerPlayerIds.includes(actualPlayer.player_id),
+      isWinner: rank === 1,
     };
     return accumulator;
   }, {});

@@ -96,7 +96,7 @@ function Start-LoggedPowerShell(
 function New-ClientSpec([int]$Index, [string]$RuntimeRoot, [string]$ConfigRoot, [string]$LogRoot) {
   $id = "p$Index"
   $label = "Local P$Index"
-  $displayName = "Local P$Index"
+  $displayName = "Local$Index"
   $playerId = "local-p$Index"
   $instanceRoot = Join-Path $RuntimeRoot "instances\$id"
   $dakenDir = Join-Path $instanceRoot "inf_daken_counter"

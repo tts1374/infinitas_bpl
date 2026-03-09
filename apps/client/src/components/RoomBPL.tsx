@@ -9,6 +9,7 @@ export interface Song {
     id?: string | number;
     title: string;
     artist: string;
+    playStyle?: string;
     level: string | number;
     difficulty?: string | undefined;
     genre?: string;
@@ -97,17 +98,34 @@ export function RoomBPLPresentational(props: RoomBPLControlledState) {
 function getDifficultyBadgeClass(difficulty: string | undefined): string {
     switch (difficulty) {
         case 'B':
-            return 'bg-green-500';
+            return 'bg-green-500 text-black shadow-[0_0_18px_rgba(34,197,94,0.35)]';
         case 'N':
-            return 'bg-blue-500';
+            return 'bg-blue-500 text-white shadow-[0_0_18px_rgba(59,130,246,0.35)]';
         case 'H':
-            return 'bg-yellow-500 text-black';
+            return 'bg-yellow-400 text-black shadow-[0_0_20px_rgba(250,204,21,0.45)]';
         case 'A':
-            return 'bg-red-600';
+            return 'bg-red-600 text-white shadow-[0_0_20px_rgba(220,38,38,0.4)]';
         case 'L':
-            return 'bg-purple-600';
+            return 'bg-purple-600 text-white shadow-[0_0_20px_rgba(147,51,234,0.4)]';
         default:
-            return 'bg-gray-600';
+            return 'bg-gray-600 text-white';
+    }
+}
+
+function getDifficultyBadgeLabel(difficulty: string | undefined): string {
+    switch (difficulty) {
+        case 'B':
+            return 'BEGINNER';
+        case 'N':
+            return 'NORMAL';
+        case 'H':
+            return 'HYPER';
+        case 'A':
+            return 'ANOTHER';
+        case 'L':
+            return 'LEGGENDARIA';
+        default:
+            return difficulty ?? '-';
     }
 }
 
@@ -207,8 +225,13 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
     const resultRegulationLabel = controlled?.resultRegulationLabel ?? '3 STAGES';
     const finalResultPlayers = controlled?.finalResultPlayers ?? {};
     const currentPlayingSong = picks[roundCount - 1] || picks[2];
+    const currentResultSong = picks[roundCount - 1] || picks[2];
+    const currentPlayingSongPlayStyle = currentPlayingSong?.playStyle ?? '-';
     const currentPlayingSongDifficulty = currentPlayingSong?.difficulty ?? 'A';
     const currentPlayingSongLevel = currentPlayingSong?.level ?? '12';
+    const currentResultSongPlayStyle = currentResultSong?.playStyle ?? '-';
+    const currentResultSongDifficulty = currentResultSong?.difficulty ?? 'A';
+    const currentResultSongLevel = currentResultSong?.level ?? '12';
 
     const players = controlled?.players ?? [
         { id: '1', name: 'HOST', isReady: true, isHost: true, side: 'LEFT' },
@@ -657,10 +680,11 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
                                     <h2 className="text-5xl font-black italic tracking-tighter text-white drop-shadow-[0_0_20px_rgba(255,255,255,0.2)] line-clamp-2 leading-tight">
                                         {currentPlayingSong?.title || (roundCount === 3 ? "SYSTEM RANDOM (MAX 300)" : "Unknown Track")}
                                     </h2>
-                                    <div className="flex items-center gap-4 mt-1">
+                                    <div className="flex flex-wrap items-center gap-4 mt-1">
                                         <span className="text-xl font-bold text-gray-500 tracking-widest truncate max-w-xl">{currentPlayingSong?.artist || '-'}</span>
                                         <div className="h-4 w-[1px] bg-white/20" />
-                                        <span className={`${getDifficultyBadgeClass(currentPlayingSongDifficulty)} px-3 py-1 rounded text-sm font-black italic tracking-tighter`}>{currentPlayingSongDifficulty}</span>
+                                        <span className="text-sm font-black italic tracking-[0.25em] text-gray-300">{currentPlayingSongPlayStyle}</span>
+                                        <span className={`${getDifficultyBadgeClass(currentPlayingSongDifficulty)} px-3 py-1 rounded-full text-xs font-black italic tracking-[0.2em]`}>{getDifficultyBadgeLabel(currentPlayingSongDifficulty)}</span>
                                         <span className="text-3xl font-black italic tracking-tighter text-cyan-500">Lv{currentPlayingSongLevel}</span>
                                     </div>
                                 </div>
@@ -806,11 +830,17 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
                                         <div className="bg-amber-500 text-black px-4 py-0.5 font-black italic text-xl tracking-tighter uppercase">Stage Result</div>
                                         <span className="text-lg font-bold text-gray-500 tracking-[0.2em] uppercase">STAGE {roundCount}</span>
                                     </div>
-                                            <div className="mt-2 text-left">
+                                    <div className="mt-2 text-left">
                                         <h2 className="text-3xl font-black italic tracking-tighter text-white leading-tight drop-shadow-2xl line-clamp-1">
-                                            {picks[roundCount - 1]?.title || 'System Random'}
+                                            {currentResultSong?.title || 'System Random'}
                                         </h2>
-                                        <p className="text-base font-bold text-gray-400 mt-0.5 truncate max-w-xl">{picks[roundCount - 1]?.artist || '-'}</p>
+                                        <div className="mt-1 flex flex-wrap items-center gap-3 max-w-xl">
+                                            <p className="text-base font-bold text-gray-400 truncate">{currentResultSong?.artist || '-'}</p>
+                                            <div className="h-4 w-[1px] bg-white/20" />
+                                            <span className="text-xs font-black italic tracking-[0.25em] text-gray-300">{currentResultSongPlayStyle}</span>
+                                            <span className={`${getDifficultyBadgeClass(currentResultSongDifficulty)} px-3 py-1 rounded-full text-xs font-black italic tracking-[0.2em]`}>{getDifficultyBadgeLabel(currentResultSongDifficulty)}</span>
+                                            <span className="text-2xl font-black italic tracking-tighter text-cyan-500">Lv{currentResultSongLevel}</span>
+                                        </div>
                                     </div>
                                 </div>
                                 <div className="flex flex-col items-end gap-2">

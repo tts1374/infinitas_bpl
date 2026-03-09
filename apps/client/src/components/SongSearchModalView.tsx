@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Search, Music, ChevronRight } from 'lucide-react';
 
 export const DIFFICULTIES = [
@@ -28,10 +28,13 @@ export interface SongSearchModalViewProps {
     timeLeft: number;
     displayedSongs: SongSearchModalSong[];
     totalSongs: number;
+    hasMore?: boolean;
+    isLoadingMore?: boolean;
     onSearchChange: (value: string) => void;
     onToggleDiff: (difficultyId: string) => void;
     onToggleLevel: (level: number) => void;
     onSelect: (song: SongSearchModalSong) => void;
+    onLoadMore?: () => void;
     searchPlaceholder?: string;
     subtitle?: string;
     footerLabel?: string;
@@ -45,14 +48,49 @@ export function SongSearchModalView({
     timeLeft,
     displayedSongs,
     totalSongs,
+    hasMore = false,
+    isLoadingMore = false,
     onSearchChange,
     onToggleDiff,
     onToggleLevel,
     onSelect,
+    onLoadMore,
     searchPlaceholder = 'Search by Title or Artist...',
     subtitle = 'Infinitas Arena Battle System',
     footerLabel = 'Project INFINITAS Arena',
 }: SongSearchModalViewProps) {
+    const listViewportRef = useRef<HTMLDivElement | null>(null);
+    const loadMoreRef = useRef<HTMLDivElement | null>(null);
+
+    useEffect(() => {
+        if (!isOpen || !hasMore || isLoadingMore || onLoadMore === undefined || typeof IntersectionObserver === 'undefined') {
+            return;
+        }
+
+        const sentinel = loadMoreRef.current;
+        const root = listViewportRef.current;
+        if (sentinel === null || root === null) {
+            return;
+        }
+
+        const observer = new IntersectionObserver(
+            (entries) => {
+                if (entries.some((entry) => entry.isIntersecting)) {
+                    onLoadMore();
+                }
+            },
+            {
+                root,
+                rootMargin: '160px 0px',
+            },
+        );
+
+        observer.observe(sentinel);
+        return () => {
+            observer.disconnect();
+        };
+    }, [displayedSongs.length, hasMore, isLoadingMore, isOpen, onLoadMore]);
+
     if (!isOpen) return null;
 
     return (
@@ -137,42 +175,49 @@ export function SongSearchModalView({
                     </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-4 space-y-2 custom-scrollbar">
+                <div ref={listViewportRef} className="flex-1 overflow-y-auto p-4 space-y-2 custom-scrollbar">
                     {displayedSongs.length > 0 ? (
-                        displayedSongs.map(song => (
-                            <button
-                                key={song.id ?? `${song.title}:${song.difficulty}:${song.level}`}
-                                onClick={() => onSelect(song)}
-                                className="w-full group bg-white/5 hover:bg-white/10 border border-white/5 hover:border-cyan-500/50 rounded-xl p-4 flex items-center gap-4 transition-all text-left"
-                            >
-                                <div className="w-16 h-16 bg-[#252526] rounded-lg flex-shrink-0 relative overflow-hidden flex items-center justify-center border border-white/5">
-                                    <Music size={24} className="text-gray-700" />
-                                    <div className={`absolute bottom-0 right-0 left-0 h-1 ${DIFFICULTIES.find(d => d.id === song.difficulty)?.color ?? 'bg-slate-500'
-                                        }`} />
-                                </div>
-
-                                <div className="flex-1 overflow-hidden">
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <span className={`text-[10px] font-black px-1.5 py-0.5 rounded text-white ${DIFFICULTIES.find(d => d.id === song.difficulty)?.color ?? 'bg-slate-500'
-                                            }`}>
-                                            {song.difficulty}
-                                        </span>
-                                        <span className="text-[10px] font-black text-cyan-500 tracking-widest uppercase">{song.genre ?? '-'}</span>
+                        <>
+                            {displayedSongs.map(song => (
+                                <button
+                                    key={song.id ?? `${song.title}:${song.difficulty}:${song.level}`}
+                                    onClick={() => onSelect(song)}
+                                    className="w-full group bg-white/5 hover:bg-white/10 border border-white/5 hover:border-cyan-500/50 rounded-xl p-4 flex items-center gap-4 transition-all text-left"
+                                >
+                                    <div className="w-16 h-16 bg-[#252526] rounded-lg flex-shrink-0 relative overflow-hidden flex items-center justify-center border border-white/5">
+                                        <Music size={24} className="text-gray-700" />
+                                        <div className={`absolute bottom-0 right-0 left-0 h-1 ${DIFFICULTIES.find(d => d.id === song.difficulty)?.color ?? 'bg-slate-500'
+                                            }`} />
                                     </div>
-                                    <h3 className="text-lg font-black italic tracking-tighter truncate leading-tight text-white group-hover:text-cyan-400 transition-colors">
-                                        {song.title}
-                                    </h3>
-                                    <p className="text-xs font-bold text-gray-400 truncate group-hover:text-gray-300 transition-colors">{song.artist}</p>
-                                </div>
 
-                                <div className="text-right">
-                                    <div className="text-2xl font-black italic tracking-tighter text-gray-500 group-hover:text-white transition-colors">
-                                        Lv{song.level}
+                                    <div className="flex-1 overflow-hidden">
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <span className={`text-[10px] font-black px-1.5 py-0.5 rounded text-white ${DIFFICULTIES.find(d => d.id === song.difficulty)?.color ?? 'bg-slate-500'
+                                                }`}>
+                                                {song.difficulty}
+                                            </span>
+                                            <span className="text-[10px] font-black text-cyan-500 tracking-widest uppercase">{song.genre ?? '-'}</span>
+                                        </div>
+                                        <h3 className="text-lg font-black italic tracking-tighter truncate leading-tight text-white group-hover:text-cyan-400 transition-colors">
+                                            {song.title}
+                                        </h3>
+                                        <p className="text-xs font-bold text-gray-400 truncate group-hover:text-gray-300 transition-colors">{song.artist}</p>
                                     </div>
-                                    <ChevronRight size={16} className="text-gray-700 group-hover:text-cyan-500 ml-auto transition-colors" />
+
+                                    <div className="text-right">
+                                        <div className="text-2xl font-black italic tracking-tighter text-gray-500 group-hover:text-white transition-colors">
+                                            Lv{song.level}
+                                        </div>
+                                        <ChevronRight size={16} className="text-gray-700 group-hover:text-cyan-500 ml-auto transition-colors" />
+                                    </div>
+                                </button>
+                            ))}
+                            {hasMore || isLoadingMore ? (
+                                <div ref={loadMoreRef} className="flex items-center justify-center py-4 text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">
+                                    {isLoadingMore ? 'Loading More...' : 'Scroll To Load More'}
                                 </div>
-                            </button>
-                        ))
+                            ) : null}
+                        </>
                     ) : (
                         <div className="flex-1 flex flex-col items-center justify-center text-gray-600 gap-4 py-12">
                             <Search size={48} />
@@ -183,7 +228,8 @@ export function SongSearchModalView({
 
                 <footer className="p-4 bg-black/40 border-t border-white/5 flex justify-between items-center text-[10px] font-bold text-gray-500 uppercase tracking-[0.2em]">
                     <div className="flex items-center gap-2">
-                        <span className="text-cyan-500">{displayedSongs.length}</span> / {totalSongs} RESULTS FOUND
+                        <span className="text-cyan-500">{totalSongs}</span> RESULTS LOADED
+                        {hasMore ? <span className="text-amber-400">SCROLL FOR MORE</span> : null}
                     </div>
                     <span>{footerLabel}</span>
                 </footer>
