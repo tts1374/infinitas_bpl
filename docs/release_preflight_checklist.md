@@ -37,15 +37,16 @@ Notes:
 
 - [x] CI workflow が存在する
   - 期待内容: typecheck / build / test を自動実行
-  - 現状メモ: `.github/workflows/` が未整備
+  - 現状メモ: `.github/workflows/ci.yml` と `.github/workflows/release-desktop.yml` が存在する
 - [x] Lint コマンドが存在する
   - 期待内容: ルートまたは workspace から再現可能
-  - 現状メモ: `package.json` 群に `lint` script が未定義
+  - 現状メモ: ルート `package.json` に `npm run lint` が定義されている
 - [x] Worker テストの実行導線が存在する
   - 期待内容: README や script なしでも同じコマンドで再実行できる
-  - 現状メモ: `apps/worker/src/durable/room-state.test.mjs` はあるが、そのままでは `.ts` 読み込みで失敗
+  - 現状メモ: ルート `package.json` に `npm run test:worker` が定義されている
 - [ ] リリース手順書がある
   - 最低限必要: Worker デプロイ手順、client 配布手順、ロールバック手順
+  - 現状メモ: `apps/update-worker/README.md` には update-worker / desktop release はあるが、`apps/worker` の deploy 手順書は未整備
 - [ ] バージョン表記が揃っている
   - 確認対象:
   - `package.json`
@@ -129,22 +130,23 @@ npm run test:client-stats
 
 Worker テスト実行コマンド:
 
-```text
-ここは実行方法を整備したら記入する
+```powershell
+npm run test:worker
 ```
 
 ### 3.6 Lint
 
 - [ ] lint 成功
 
-```text
-lint コマンド追加後に記入する
+```powershell
+npm run lint
 ```
 
 ---
 
 ## 4. Worker / Cloudflare 確認
 
+- [ ] `apps/worker` の deploy 手順書または runbook がある
 - [ ] `wrangler.toml` の本番設定を確認した
 - [ ] Durable Object migration tag が意図通り
 - [ ] KV namespace の本番 ID を確認した
@@ -156,6 +158,25 @@ lint コマンド追加後に記入する
 
 - `apps/worker/wrangler.toml`
 - Cloudflare dashboard の DO / KV / Worker
+
+手動 deploy コマンド:
+
+```powershell
+npm --workspace @infinitas/worker run deploy
+```
+
+### 4.1 Desktop updater release
+
+- [ ] GitHub Secrets を確認した
+  - `TAURI_SIGNING_PRIVATE_KEY`
+  - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
+  - `CLOUDFLARE_API_TOKEN_RELEASE`
+  - `CLOUDFLARE_ACCOUNT_ID`
+- [ ] GitHub Actions `Release Desktop` workflow が実行可能
+- [ ] `apps/update-worker/wrangler.toml` の `DOWNLOAD_BASE_URL` / `APP_KV` / `APP_BUCKET` を確認した
+- [ ] R2 upload 先 path 規約 `bpl-app/stable/<version>/windows-x86_64/` を確認した
+- [ ] `app:stable:latest` を upload 成功後にのみ更新する手順を確認した
+- [ ] Wrangler v4 の `--remote` を使うことを確認した
 
 ---
 
@@ -294,17 +315,18 @@ Reason:
 
 2026-03-09 時点でローカル確認できている項目:
 
+- `npm run lint`: 成功
 - `npm run typecheck`: 成功
 - `npm run build:client`: 成功
 - `cargo check` (`apps/client/src-tauri`): 成功
 - `npm --workspace @infinitas/worker run typecheck`: 成功
 - `npx wrangler deploy --dry-run` (`apps/worker`): 成功
 - `npm run test:client-stats`: 成功
+- `npm run test:worker`: 成功
+- `npm --workspace @infinitas/update-worker run build`: 成功
 
 2026-03-09 時点で未整備または要補強の項目:
 
-- CI workflow
-- lint コマンド
-- Worker テスト実行導線
-- リリース手順書
 - バージョン統一ルール
+- `apps/worker` の deploy 手順書
+- GitHub 上での `Release Desktop` 手動実行結果
