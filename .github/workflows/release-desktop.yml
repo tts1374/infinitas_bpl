@@ -89,7 +89,7 @@ jobs:
 
           $downloadBasePath = $env:INPUT_DOWNLOAD_BASE_PATH
           if ([string]::IsNullOrWhiteSpace($downloadBasePath)) {
-            $downloadBasePath = "bpl-app/stable"
+            $downloadBasePath = "infinitas-arena/stable"
           }
           $downloadBasePath = $downloadBasePath.Trim().Trim("/")
           if ([string]::IsNullOrWhiteSpace($downloadBasePath)) {
