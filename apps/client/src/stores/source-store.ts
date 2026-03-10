@@ -129,6 +129,10 @@ function getMissingPathMessage(source: SourceType, paths: SourcePaths): string |
     return "Set inf-notebook / export/recent.json before starting the watcher.";
   }
 
+  if (source === "inf-notebook" && paths.notebookRecordsRecentJson.trim().length === 0) {
+    return "Set inf-notebook / records/summary.json before starting the watcher.";
+  }
+
   return null;
 }
 

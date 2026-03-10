@@ -31,7 +31,7 @@ pub fn validate_source_directory(
         SourceType::InfDakenCounter => vec![join_path(base_directory, &["today_update.xml"])],
         SourceType::InfNotebook => vec![
             join_path(base_directory, &["export", "recent.json"]),
-            join_path(base_directory, &["records", "recent.json"]),
+            join_path(base_directory, &["records", "summary.json"]),
         ],
     };
 

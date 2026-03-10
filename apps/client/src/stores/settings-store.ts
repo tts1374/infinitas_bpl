@@ -138,7 +138,7 @@ function extractNotebookDirectory(paths: Partial<SourcePaths>): string {
 
   const withoutSuffix = candidate
     .replace(/[\\/]export[\\/]recent\.json$/i, "")
-    .replace(/[\\/]records[\\/]recent\.json$/i, "");
+    .replace(/[\\/]records[\\/]summary\.json$/i, "");
 
   return normalizeDirectory(withoutSuffix === candidate ? extractParentDirectory(candidate) : withoutSuffix);
 }
@@ -168,7 +168,7 @@ export function deriveSourcePaths(sourceDirectories: SourceDirectories): SourceP
     notebookRecordsRecentJson:
       sourceDirectories.notebookDirectory.length === 0
         ? ""
-        : joinPath(sourceDirectories.notebookDirectory, ["records", "recent.json"]),
+        : joinPath(sourceDirectories.notebookDirectory, ["records", "summary.json"]),
   };
 }
 

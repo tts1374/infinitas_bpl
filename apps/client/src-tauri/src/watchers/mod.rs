@@ -408,17 +408,14 @@ fn resolve_watched_files(
             "inf_daken_counter / today_update.xml",
         )?]),
         SourceType::InfNotebook => {
-            let mut paths = vec![require_path(
+            let _ = require_path(
                 &source_paths.notebook_export_recent_json,
                 "inf-notebook / export/recent.json",
-            )?];
-
-            let optional_path = source_paths.notebook_records_recent_json.trim();
-            if !optional_path.is_empty() {
-                paths.push(PathBuf::from(optional_path));
-            }
-
-            Ok(paths)
+            )?;
+            Ok(vec![require_path(
+                &source_paths.notebook_records_recent_json,
+                "inf-notebook / records/summary.json",
+            )?])
         }
     }
 }
