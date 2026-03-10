@@ -23,11 +23,14 @@ const SOURCE_OPTIONS = [
   {
     id: "inf-notebook" as const,
     name: "リザルト手帳",
-    description: "recent.json を監視",
+    description: "summary.json を監視",
     label: "Result Notebook Directory",
     placeholder: "C:\\Users\\you\\Documents\\inf-notebook",
   },
 ];
+
+const HIDDEN_SOURCE_IDS = new Set<(typeof SOURCE_OPTIONS)[number]["id"]>(["inf_daken_counter"]);
+const VISIBLE_SOURCE_OPTIONS = SOURCE_OPTIONS.filter((option) => !HIDDEN_SOURCE_IDS.has(option.id));
 
 export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProps) {
   const draft = useSettingsStore((state) => state.draft);
@@ -150,7 +153,7 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
           </div>
 
           <div className="grid max-w-2xl gap-4 md:grid-cols-2">
-            {SOURCE_OPTIONS.map((option) => (
+            {VISIBLE_SOURCE_OPTIONS.map((option) => (
               <button
                 key={option.id}
                 type="button"
@@ -204,7 +207,7 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
             <p className="text-xs text-gray-500">
               {draft.source === "inf_daken_counter"
                 ? "選択したフォルダ配下の today_update.xml を自動で監視します。"
-                : "選択したフォルダ配下の export/recent.json と records/recent.json を自動で監視します。"}
+                : "選択したフォルダ配下の records/summary.json を監視し、export/recent.json から score/misscount を補完します。"}
             </p>
             {validationMessage ? <p className="text-sm font-semibold text-red-400">{validationMessage}</p> : null}
           </div>

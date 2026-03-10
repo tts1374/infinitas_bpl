@@ -115,7 +115,7 @@ function New-ClientSpec([int]$Index, [string]$RuntimeRoot, [string]$ConfigRoot, 
     WindowTitle = "INFINITAS BPL Client ($label)"
     DakenFile = Join-Path $dakenDir "today_update.xml"
     NotebookExportFile = Join-Path $notebookExportDir "recent.json"
-    NotebookRecordsFile = Join-Path $notebookRecordsDir "recent.json"
+    NotebookRecordsFile = Join-Path $notebookRecordsDir "summary.json"
     CargoTargetDir = Join-Path $RuntimeRoot "cargo-target\$id"
     ConfigPath = Join-Path $ConfigRoot "$id.tauri.dev.json"
     LogPath = Join-Path $LogRoot "$id-tauri.log"
