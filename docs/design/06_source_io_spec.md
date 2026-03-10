@@ -61,11 +61,19 @@ Ph1では以下を前提とする。
 
 ---
 
-## 1.3 タイトル正規化
-`normalize_title_input(raw_title)` を同定処理側で行う。
+## 1.3 タイトル同定
+Ph1(v1) ではソースごとに同定方式を分ける。
+
+### inf-notebook
+- `records/summary.json` の `musicname`（DB由来）をそのまま使用する
+- `music_title_alias` は **exact 一致のみ**で参照する
+  - `alias_scope = 'inf' AND alias = ?`
+- `alias_norm` / 大文字小文字の正規化検索 / fuzzy 検索は行わない
+
+### inf_daken_counter
+従来どおり `normalize_title_input(raw_title)` を同定処理側で行う。
 
 最低限含む処理:
-
 - Unicode NFKC
 - trim
 - 連続空白を1つに正規化
@@ -73,10 +81,6 @@ Ph1では以下を前提とする。
   - `Summer Vacation (CU mix)` -> `Summer Vacation(CU mix)`
 - 英字小文字化
 - 記号の最小正規化
-
-### マスタ参照順
-1. `music_title_alias`
-2. `music.title_search_key`
 
 解決失敗時:
 - `UnmatchedTitleLog` に記録
@@ -99,7 +103,7 @@ Ph1では「現在ラウンドのみ受理（accept_window=0）」であるた�
 
 - ファイルが存在しない
 - 読取失敗
-- JSON/XMLパース失敗
+- JSON/XMLパース失敗（書き込み途中が疑われる場合は短時間リトライ後に判定）
 - 必須フィールド欠落
 
 対応:
@@ -113,17 +117,34 @@ Ph1では「現在ラウンドのみ受理（accept_window=0）」であるた�
 
 ## 2.1 使用ファイル
 必須:
-- `export/recent.json`
+- `records/summary.json`（監視対象）
+- `export/recent.json`（`score` / `misscount` 補完用）
 
-補助:
-- `records/recent.json`
-
-Ph1では、**勝敗判定の一次ソースは `export/recent.json`** とする。  
-`records/recent.json` は補助ログ・デバッグ用途とする。
+Ph1(v1)では、**勝敗判定の一次ソースは `records/summary.json`** とする。  
+`export/recent.json` の `music` / `difficulty` は OCR 由来のため、照合主キーには使わない。
 
 ---
 
-## 2.2 export/recent.json 入力例
+## 2.2 records/summary.json 入力例
+```json
+{
+  "musics": {
+    "Thunderbolt": {
+      "SP": {
+        "ANOTHER": {
+          "latest": {
+            "timestamp": "20250729-201348"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+---
+
+## 2.3 export/recent.json 入力例
 ```json
 {
   "version": "0.19.0.0",
@@ -151,77 +172,69 @@ Ph1では、**勝敗判定の一次ソースは `export/recent.json`** とする
 
 ---
 
-## 2.3 採用フィールド
-### 共通
-- `timestamp`
+## 2.4 summary 差分抽出
+毎回全譜面を再処理せず、前回スナップショットとの差分のみ抽出する。
+
+比較対象:
+- `musics -> <musicname> -> <playtype> -> <difficulty> -> latest`
+
+抽出条件:
+- 前回値と比較して `latest` が変化した譜面のみ
+
+抽出値:
+- `musicname`
+- `playtype`
 - `difficulty`
-- `music`
+- `latest_timestamp`
 
-### SCORE モード
-- `score`
-
-### MISSCOUNT モード
-- `misscount`
-
-### 採用しないフィールド
-- `updated_score`
-- `updated_misscount`
-- `clear`
+`best.score` / `best.misscount` は採用しない。
 
 ---
 
-## 2.4 play_style の扱い
-`export/recent.json` には play_style が含まれない。  
-そのため、ルーム設定の `play_style` を前提に observed_key を構成する。
+## 2.5 recent 補完（timestamp 主体）
+`export/recent.json` は `timestamp -> record[]` の multimap を構築して参照する。
 
-前提:
-- ルームは `SP` または `DP` のどちらか1つに固定
-- クライアントは現在参加中ルームの `play_style` を使用する
+判定:
+- 0件: 短時間リトライ後、未取得なら欠損扱い（`resolved_partial`）
+- 1件: `score` / `misscount` 採用
+- 2件以上: `ambiguous_recent` 扱いで不採用
+
+注意:
+- `recent.music` / `recent.difficulty` は warning 用の整合性チェックに限定
+- OCR 文字列一致は採用条件にしない
 
 ---
 
-## 2.5 observed_key 生成
+## 2.6 observed_key 生成
 ```text
-play_style = room.play_style
-difficulty = export/recent.json.list[].difficulty
-title_search_key = normalize_title_input(music)
+play_style = summary.playtype
+difficulty = summary.difficulty
+title_search_key = alias_scope='inf' AND alias=summary.musicname の exact 解決結果
+score/misscount = export/recent.json (timestamp一致)
 ```
 
 ---
 
-## 2.6 新規イベント判定
-Ph1では以下を採用する。
-
-- `export/recent.json.list[]` の末尾から新しい順に確認
-- `timestamp` を last_seen として保持
-- `timestamp > last_seen_timestamp` のものだけ新規候補とする
-
-候補が複数ある場合:
-- 新しいものから順に見て
-- `observed_key == expected_key` を満たす最初の1件を採用
+## 2.7 監視・再読込
+- watcher は `records/summary.json` を監視する
+- 更新検知後に短い debounce を入れて再読込する
+- parse 失敗時は即エラー確定せず、短時間リトライまたは次回更新待ちとする
 
 ---
 
-## 2.7 records/recent.json の扱い
-`records/recent.json` は以下用途に限定する。
+## 2.8 状態分類
+最低限以下を区別して扱う。
 
-- 補助ログ
-- オプション表示
-- 同定確認補助
-- デバッグ
-
-### records/recent.json から使用してよい情報
-- `play_side`
-- `option`
-- `music`
-- `difficulty`
-
-### 勝敗判定には使わない
-- `update_score`
-- `update_miss_count`
-
-理由:
-- 差分値であり、絶対値として使えないため
+- `resolved_full`:
+  - alias 解決成功
+  - recent 一意突合成功（`score` / `misscount` あり）
+- `resolved_partial`:
+  - alias 解決成功
+  - recent 欠損（再試行後も0件）
+- `unresolved_alias`:
+  - alias exact 0件
+- `ambiguous_recent`:
+  - 同一 timestamp の recent 候補が2件以上
 
 ---
 
@@ -340,8 +353,8 @@ Ph1では以下を採用する。
 - `today_update.xml`
 
 ### inf-notebook
+- `records/summary.json`
 - `export/recent.json`
-- 必要なら `records/recent.json`
 
 ---
 
@@ -362,7 +375,7 @@ Ph1では以下を採用する。
 ### 5.3 採用失敗時
 - key mismatch: 採用しない
 - metric欠落: 採用しない
-- parse失敗: `SOURCE_UNAVAILABLE` 扱い
+- parse失敗（再試行後も継続）: `SOURCE_UNAVAILABLE` 扱い
 
 ---
 
@@ -384,7 +397,8 @@ Ph1では未同定を手動補正して再投入する機能は持たない。
 ## 7. 将来拡張余地
 Ph2以降で以下を追加可能。
 
-- `records/recent.json` の補助利用強化
+- `export/recent.json` の補助利用強化
+- `summary/recent` 反映タイミング差の推定改善
 - source自動診断
 - file watcher + polling のフォールバック
 - 未同定タイトルの管理UI

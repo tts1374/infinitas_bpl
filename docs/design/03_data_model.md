@@ -174,9 +174,17 @@
 - 同点は勝ち数加算なし
 - 終了時に同勝ち数なら総合引き分け
 
-## 6. タイトル同定（入力側正規化）
+## 6. タイトル同定（Ph1 v1）
 
-### 6.1 normalize_title_input(raw_title)（同定処理側）
+### 6.1 inf-notebook
+- `records/summary.json.musicname`（DB由来）を同定入力に使う
+- `music_title_alias` の exact 一致のみで解決する
+  - `alias_scope = 'inf' AND alias = ?`
+- `alias_norm` / case-fold / fuzzy は使わない
+
+### 6.2 inf_daken_counter
+従来どおり `normalize_title_input(raw_title)` を同定処理側で実施する。
+
 最低限:
 - Unicode NFKC
 - trim
@@ -185,30 +193,34 @@
 - 英字小文字化
 - 記号の標準化（最小）
 
-生成物:
-- `title_search_key_in`
-
-### 6.2 マスタ参照（iidx_all_songs_master）
-- `music_title_alias` -> `music.title_search_key` の順で解決
-- 解決失敗:
-  - UnmatchedTitleLogへ記録
-  - Ph1は「未同定＝SKIP/TIMEOUTで割り切り」（手動再割当UIは入れない）
+解決失敗:
+- UnmatchedTitleLogへ記録
+- Ph1は「未同定＝SKIP/TIMEOUTで割り切り」（手動再割当UIは入れない）
 
 ## 7. 監視ソース別の抽出仕様（Ph1）
 
 ### 7.1 リザルト手帳
 入力:
-- `export/recent.json.list[]`
+- `records/summary.json`
+- `export/recent.json.list[]`（補完専用）
 使用:
-- SCORE: `score`（EX SCORE絶対値）
-- MISSCOUNT: `misscount`
+- summary:
+  - `musicname`
+  - `playtype`
+  - `difficulty`
+  - `latest.timestamp`
+- recent:
+  - SCORE: `score`（EX SCORE絶対値）
+  - MISSCOUNT: `misscount`
 同定:
-- `difficulty` + `music`（title）
+- summary の `musicname` を alias exact 解決
+- chart は `textage_id + playtype + difficulty` で特定
 新規イベント判定:
-- `timestamp` を last_seen として保持（内容差分追跡）
+- summary の `latest` 差分のみ抽出
+- recent は `timestamp -> record[]` の multimap で突合
 
-補助（任意）:
-- `records/recent.json` は補助ログ。矛盾時は採用しない（誤採用防止）
+補助:
+- `recent.music` / `recent.difficulty` は warning 用（採否条件には使わない）
 
 ### 7.2 打鍵カウンタ
 入力:
