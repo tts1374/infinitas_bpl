@@ -156,6 +156,9 @@ export class RoomSocketClient {
       return;
     }
 
+    // Any valid server message proves the connection is still alive.
+    this.missedPongs = 0;
+
     if (message.type === "ROOM_JOIN_ACCEPTED") {
       this.options.onStateChange?.("CONNECTED", "ROOM_JOIN_ACCEPTED received.");
     }

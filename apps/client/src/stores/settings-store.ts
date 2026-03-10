@@ -262,6 +262,12 @@ export function getActiveSourceDirectory(settings: Pick<ClientSettings, "source"
     : settings.sourceDirectories.notebookDirectory;
 }
 
+export function isRoomEntryReady(
+  settings: Pick<ClientSettings, "displayName" | "source" | "sourceDirectories">,
+): boolean {
+  return settings.displayName.trim().length > 0 && getActiveSourceDirectory(settings).trim().length > 0;
+}
+
 export function isVoicePlaybackEnabled(
   settings: Pick<ClientSettings, "voiceEnabled" | "voiceMuted" | "voiceVolume">,
 ): boolean {

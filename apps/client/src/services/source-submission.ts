@@ -37,6 +37,67 @@ function observationMatchesExpected(
   );
 }
 
+function observationMatchesRoundWithoutTitleKey(
+  observation: ParsedSourceObservationPayload,
+  expectedKey: ExpectedKey,
+): boolean {
+  const observedPlayStyle = observation.playStyle ?? expectedKey.play_style;
+  return observedPlayStyle === expectedKey.play_style && observation.difficulty === expectedKey.difficulty;
+}
+
+function findObservationForCurrentRound(
+  parsedChange: ParsedSourceChangePayload,
+  expectedKey: ExpectedKey,
+): { observation: ParsedSourceObservationPayload; fallbackUsed: boolean } | null {
+  const strictMatch = parsedChange.observations.find((observation) =>
+    observationMatchesExpected(observation, expectedKey),
+  );
+  if (strictMatch) {
+    return {
+      observation: strictMatch,
+      fallbackUsed: false,
+    };
+  }
+
+  if (parsedChange.source !== "inf-notebook" || parsedChange.observations.length !== 1) {
+    return null;
+  }
+
+  const candidate = parsedChange.observations[0]!;
+  if (!observationMatchesRoundWithoutTitleKey(candidate, expectedKey)) {
+    return null;
+  }
+  const observedTitleSearchKey = candidate.titleSearchKey.trim();
+  if (
+    observedTitleSearchKey.length > 0 &&
+    observedTitleSearchKey !== expectedKey.title_search_key
+  ) {
+    return null;
+  }
+
+  return {
+    observation: candidate,
+    fallbackUsed: true,
+  };
+}
+
+function isNotebookChartMismatch(
+  parsedChange: ParsedSourceChangePayload,
+  expectedKey: ExpectedKey,
+): boolean {
+  if (parsedChange.source !== "inf-notebook" || parsedChange.observations.length !== 1) {
+    return false;
+  }
+
+  const candidate = parsedChange.observations[0]!;
+  if (!observationMatchesRoundWithoutTitleKey(candidate, expectedKey)) {
+    return false;
+  }
+
+  const observedTitleSearchKey = candidate.titleSearchKey.trim();
+  return observedTitleSearchKey.length > 0 && observedTitleSearchKey !== expectedKey.title_search_key;
+}
+
 function getActiveRoundContext(): ActiveRoundContextResult | InactiveRoundResult {
   const roomState = roomStore.getState();
   const snapshot = roomState.snapshot;
@@ -173,15 +234,24 @@ export function submitParsedSourceChange(
     };
   }
 
-  const matchedObservation = parsedChange.observations.find((observation) =>
-    observationMatchesExpected(observation, context.currentRound.expected_key),
+  const matchedObservationResult = findObservationForCurrentRound(
+    parsedChange,
+    context.currentRound.expected_key,
   );
-  if (!matchedObservation) {
+  if (!matchedObservationResult) {
+    if (isNotebookChartMismatch(parsedChange, context.currentRound.expected_key)) {
+      return {
+        ok: false,
+        message:
+          "inf-notebook observation was skipped because title_search_key does not match the current round.",
+      };
+    }
     return {
       ok: false,
       message: "No observation matched the current round expected key.",
     };
   }
+  const matchedObservation = matchedObservationResult.observation;
 
   const metricValue =
     context.snapshot.settings.win_metric === "SCORE"
@@ -194,12 +264,15 @@ export function submitParsedSourceChange(
 
   const observedPlayStyle =
     matchedObservation.playStyle ?? context.currentRound.expected_key.play_style;
+  const observedTitleSearchKey = matchedObservationResult.fallbackUsed
+    ? context.currentRound.expected_key.title_search_key
+    : matchedObservation.titleSearchKey;
   const sent = roomStore.submitResult({
     round_index: context.currentRound.round_index,
     observed_key: {
       play_style: observedPlayStyle,
       difficulty: matchedObservation.difficulty,
-      title_search_key: matchedObservation.titleSearchKey,
+      title_search_key: observedTitleSearchKey,
     },
     metric_value: metricValue,
     source_meta: {
@@ -222,6 +295,11 @@ export function submitParsedSourceChange(
 
   const timestampLabel =
     matchedObservation.timestamp.trim().length > 0 ? ` (${matchedObservation.timestamp})` : "";
+  if (matchedObservationResult.fallbackUsed) {
+    roomStore.noteLocalEvent(
+      "inf-notebook fallback matched by playStyle/difficulty; expected title_search_key applied.",
+    );
+  }
   const message =
     `Auto-submitted ${context.snapshot.settings.win_metric} from ${originLabel}${timestampLabel}.`;
   roomStore.noteLocalEvent(message);

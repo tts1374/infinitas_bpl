@@ -580,12 +580,14 @@ function DebugSection(props: { title: string; children: ReactNode; defaultOpen?:
 export function RoomPage() {
   const snapshot = useRoomStore((state) => state.snapshot);
   const resultReady = useRoomStore((state) => state.resultReady);
+  const connectionPlayerId = useRoomStore((state) => state.connectionPlayerId);
   const connectionStatus = useRoomStore((state) => state.connectionStatus);
   const connectionDetail = useRoomStore((state) => state.connectionDetail);
   const roundConfirmations = useRoomStore((state) => state.roundConfirmations);
   const endedRoundIndices = useRoomStore((state) => state.endedRoundIndices);
   const eventLog = useRoomStore((state) => state.eventLog);
   const savedSettings = useSettingsStore((state) => state.saved);
+  const activePlayerId = connectionPlayerId ?? savedSettings.playerId;
   const archiveStatus = useLocalResultArchiveStore((state) => state.status);
   const archiveStorage = useLocalResultArchiveStore((state) => state.storage);
   const archivePath = useLocalResultArchiveStore((state) => state.filePath);
@@ -620,7 +622,9 @@ export function RoomPage() {
   const cutInTimeoutRef = useRef<number | null>(null);
   const arenaLobbyLogSequenceRef = useRef(0);
   const previousArenaLobbySnapshotRef = useRef<RoomStateSnapshot | null>(null);
-  const mySubmittedPick = snapshot?.picks.find((pick) => pick.player_id === savedSettings.playerId) ?? null;
+  const pickerModalVisibleRef = useRef(false);
+  const mySubmittedPick = snapshot?.picks.find((pick) => pick.player_id === activePlayerId) ?? null;
+  const showPickerModal = snapshot?.room_state === "PICKING" && mySubmittedPick === null;
 
   async function loadChartCandidates(targetCursor: string | null, appendResults: boolean): Promise<void> {
     if (snapshot === null || snapshot.room_state !== "PICKING") {
@@ -696,6 +700,22 @@ export function RoomPage() {
       }
     }
   }
+
+  useEffect(() => {
+    const wasVisible = pickerModalVisibleRef.current;
+    pickerModalVisibleRef.current = showPickerModal;
+    if (!showPickerModal || wasVisible) {
+      return;
+    }
+
+    chartRequestIdRef.current += 1;
+    setChartLoading(false);
+    setChartResults([]);
+    setChartNextCursor(null);
+    setChartDifficulty("");
+    setChartLevel("");
+    setChartKeyword("");
+  }, [showPickerModal]);
 
   useEffect(() => {
     if (snapshot?.room_state !== "PICKING") {
@@ -915,14 +935,14 @@ export function RoomPage() {
 
   useEffect(() => {
     const roomHost =
-      snapshot?.players.find((player) => player.player_id === savedSettings.playerId) ?? null;
+      snapshot?.players.find((player) => player.player_id === activePlayerId) ?? null;
     const amHost =
-      snapshot?.host_player_id === savedSettings.playerId || roomHost?.role === "HOST";
+      snapshot?.host_player_id === activePlayerId || roomHost?.role === "HOST";
 
     if (snapshot?.room_state === "LOBBY" && amHost && roomHost && !roomHost.ready) {
       roomStore.send("READY_SET", { ready: true });
     }
-  }, [savedSettings.playerId, snapshot]);
+  }, [activePlayerId, snapshot]);
 
   useEffect(() => {
     if (
@@ -984,7 +1004,7 @@ export function RoomPage() {
     const hostName =
       snapshot.players.find((player) => player.player_id === snapshot.host_player_id)?.display_name ?? "HOST";
     const meInRoom =
-      snapshot.players.find((player) => player.player_id === savedSettings.playerId) ?? null;
+      snapshot.players.find((player) => player.player_id === activePlayerId) ?? null;
 
     if (previousSnapshot === null || previousSnapshot.room_id !== snapshot.room_id) {
       const initialLogs: RoomArenaLogEntry[] = [
@@ -1068,7 +1088,7 @@ export function RoomPage() {
     }
 
     previousArenaLobbySnapshotRef.current = snapshot;
-  }, [savedSettings.playerId, snapshot]);
+  }, [activePlayerId, snapshot]);
 
   if (snapshot === null) {
     return (
@@ -1089,8 +1109,8 @@ export function RoomPage() {
     );
   }
 
-  const me = snapshot.players.find((player) => player.player_id === savedSettings.playerId) ?? null;
-  const isHost = snapshot.host_player_id === savedSettings.playerId || me?.role === "HOST";
+  const me = snapshot.players.find((player) => player.player_id === activePlayerId) ?? null;
+  const isHost = snapshot.host_player_id === activePlayerId || me?.role === "HOST";
   const currentRound = snapshot.current_round;
   const lobbyStartIssues = snapshot.room_state === "LOBBY" ? getLobbyStartIssues(snapshot) : [];
   const currentRoundDisplay =
@@ -1396,7 +1416,6 @@ export function RoomPage() {
 
     void loadChartCandidates(chartNextCursor, true);
   };
-  const showPickerModal = snapshot.room_state === "PICKING" && mySubmittedPick === null;
   const pickerModal = (
     <SongSearchModalView
       isOpen={showPickerModal}
@@ -1643,7 +1662,7 @@ export function RoomPage() {
 
     const resolvedPickChart = getResolvedPickChart(pick.pick_chart_key);
     const parsedPickChartKey = parsePickChartKey(pick.pick_chart_key);
-    const isOwnPick = pick.player_id === savedSettings.playerId;
+    const isOwnPick = pick.player_id === activePlayerId;
 
     arenaPicks[mockId] = {
       title:
@@ -2015,24 +2034,23 @@ export function RoomPage() {
       );
     }
 
+    const selfActualPlayerId = me?.player_id ?? null;
+    const selfMockPlayerId = selfActualPlayerId ? (actualToMockId.get(selfActualPlayerId) ?? null) : null;
+
     const onMockSkip = (mockPlayerId: string) => {
       if (!currentRound) {
         return;
       }
 
-      const targetPlayerId = mockIdToActualId.get(mockPlayerId);
-      if (!targetPlayerId) {
+      if (selfActualPlayerId === null || selfMockPlayerId === null) {
         return;
       }
 
-      if (targetPlayerId === savedSettings.playerId) {
-        roomStore.skipSelf(currentRound.round_index, "OTHER");
+      if (mockPlayerId !== selfMockPlayerId) {
         return;
       }
 
-      if (isHost) {
-        roomStore.skipHostAssign(currentRound.round_index, targetPlayerId, "OTHER");
-      }
+      roomStore.skipSelf(currentRound.round_index, "OTHER");
     };
     const onPrimaryRoomAction = () => {
       if (snapshot.room_state !== "LOBBY") {
@@ -2110,6 +2128,7 @@ export function RoomPage() {
         finalWinningPlayerName: bplWinningPlayerName,
         isHost,
         players: bplPlayers,
+        selfPlayerId: selfMockPlayerId ?? (isHost ? "1" : "2"),
         disablePrimaryAction: snapshot.room_state !== "LOBBY" || (isHost && lobbyStartIssues.length > 0),
         disableLeave: leaveRoomDisabled,
         searchModal: pickerModal,
@@ -2185,6 +2204,7 @@ export function RoomPage() {
       totalRounds: arenaTotalRounds,
       isHost,
       allPlayers: arenaPlayers,
+      selfPlayerId: selfMockPlayerId ?? (isHost ? "1" : "2"),
       searchModal: pickerModal,
       disablePrimaryAction: snapshot.room_state !== "LOBBY" || (isHost && lobbyStartIssues.length > 0),
       disableLeave: leaveRoomDisabled,

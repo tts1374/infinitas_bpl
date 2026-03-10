@@ -78,6 +78,7 @@ export interface RoomBPLControlledState {
     finalWinningPlayerName?: string;
     isHost: boolean;
     players: RoomBPLPlayer[];
+    selfPlayerId?: string;
     disablePrimaryAction?: boolean;
     disableLeave?: boolean;
     searchModal?: ReactNode;
@@ -214,9 +215,9 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
     const playTime = controlled?.playTime ?? playTimeState;
     const playingPhase = controlled?.playingPhase ?? playingPhaseState;
     const playingCountdownSeconds = controlled?.playingCountdownSeconds ?? (
-        playingPhase === 'MUSIC_SELECT' ? (45 - playTime) :
-            playingPhase === 'PLAY_START' ? (55 - playTime) :
-                (playTime - 55)
+        playingPhase === 'MUSIC_SELECT' ? (60 - playTime) :
+            playingPhase === 'PLAY_START' ? (75 - playTime) :
+                (playTime - 75)
     );
     const playerStatus = controlled?.playerStatus ?? playerStatusState;
     const playerMetrics = controlled?.playerMetrics ?? {};
@@ -237,6 +238,7 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
         { id: '1', name: 'HOST', isReady: true, isHost: true, side: 'LEFT' },
         { id: '2', name: 'GUEST', isReady: isReady, isHost: false, side: 'RIGHT' },
     ];
+    const selfPlayerId = controlled?.selfPlayerId ?? (isHost ? '1' : '2');
     const finalWinningPlayerName = controlled?.finalWinningPlayerName ?? players[0]?.name ?? '';
 
     const handleStartMatch = () => {
@@ -328,8 +330,8 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
                 const next = prev + 1;
 
                 // フェーズ遷移
-                if (next < 45) setPlayingPhase('MUSIC_SELECT');
-                else if (next < 55) setPlayingPhase('PLAY_START');
+                if (next < 60) setPlayingPhase('MUSIC_SELECT');
+                else if (next < 75) setPlayingPhase('PLAY_START');
                 else setPlayingPhase('IN_PLAY');
 
                 return next;
@@ -712,7 +714,7 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
 
                                     {/* Notifications Mock */}
                                     <div className="mt-4 flex flex-col items-center min-h-[2.5rem] justify-center">
-                                        {playTime >= 35 && playTime < 45 && (
+                                        {playTime >= 50 && playTime < 60 && (
                                             <div className="flex gap-1 animate-pulse">
                                                 {[...Array(5)].map((_, i) => (
                                                     <div key={i} className="w-2 h-2 rounded-full bg-cyan-500 shadow-[0_0_10px_rgba(6,182,212,0.8)]" />
@@ -720,7 +722,7 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
                                                 <span className="text-[10px] font-black text-cyan-400 ml-2">TIME SYNC BEEP</span>
                                             </div>
                                         )}
-                                        {playTime >= 52 && playTime < 55 && (
+                                        {playTime >= 72 && playTime < 75 && (
                                             <div className="flex gap-1 animate-pulse">
                                                 {[...Array(3)].map((_, i) => (
                                                     <div key={i} className="w-3 h-3 rounded-full bg-red-600 shadow-[0_0_10px_rgba(220,38,38,0.8)]" />
@@ -764,7 +766,7 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
                                     <div className="flex gap-4">
                                         {playerStatus[p.id] === 'UNCONFIRMED' && (
                                             <>
-                                                {p.id === '1' ? ( // 自分(Host)
+                                                {p.id === selfPlayerId ? (
                                                     <>
                                                         <button
                                                             onClick={() => handleSkip(p.id)}
@@ -772,14 +774,6 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
                                                         >
                                                             SKIP
                                                         </button>
-                                                        {playTime > 240 && ( // 4分以降 代理SKIP
-                                                            <button
-                                                                onClick={() => handleSkip('2')}
-                                                                className="flex-1 bg-red-600 hover:bg-red-500 text-white py-3 rounded-2xl font-black italic tracking-widest transition-all shadow-lg shadow-red-600/20 text-sm"
-                                                            >
-                                                                PROXY SKIP
-                                                            </button>
-                                                        )}
                                                     </>
                                                 ) : (
                                                     <div className="flex-1 h-12 bg-white/5 rounded-2xl flex items-center justify-center">
@@ -802,7 +796,7 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
                         </div>
 
                         {/* HOST CONTROL BAR */}
-                        {isHost && playingPhase === 'IN_PLAY' && playTime >= (240 + 55) && (
+                        {isHost && playingPhase === 'IN_PLAY' && playTime >= (240 + 75) && (
                             <div className="mt-4 flex justify-center">
                                 <button
                                     className="bg-red-600/20 hover:bg-red-600 text-red-500 hover:text-white px-10 py-3 rounded-full border-2 border-red-500/30 text-xs font-black italic tracking-[0.3em] transition-all uppercase shadow-lg shadow-red-600/20"

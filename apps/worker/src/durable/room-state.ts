@@ -539,14 +539,15 @@ export class RoomLobbyState {
     player.connected = false;
     player.left_at = now;
 
-    if (canNewPlayerJoin(this.roomState)) {
+    const keepDisconnectedSlot = wasHost && hostCloseReason === "HOST_DISCONNECTED";
+    if (canNewPlayerJoin(this.roomState) && !keepDisconnectedSlot) {
       this.players.delete(playerId);
     } else {
       player.rejoin_until = computeRejoinUntil(now);
     }
 
-    if (wasHost && !roomWasClosed) {
-      this.close(hostCloseReason, now);
+    if (wasHost && !roomWasClosed && hostCloseReason === "HOST_ABORTED") {
+      this.close("HOST_ABORTED", now);
     }
 
     return { changed: true, was_host: wasHost, room_was_closed: roomWasClosed };
@@ -691,40 +692,67 @@ export class RoomLobbyState {
   }
 
   getNextAlarmAt(): Date | null {
+    const hostDisconnectDeadline = this.getHostDisconnectDeadline();
+    let baseAlarm: Date | null = null;
+
     if (this.roomState === "LOBBY" && this.readyCheckDeadline !== null) {
-      return this.readyCheckDeadline;
+      baseAlarm = this.readyCheckDeadline;
     }
 
     if (this.roomState === "PICKING") {
       if (this.matchDeadline === null) {
-        return this.pickingDeadline;
+        baseAlarm = this.pickingDeadline;
+      } else if (this.pickingDeadline === null) {
+        baseAlarm = this.matchDeadline;
+      } else {
+        baseAlarm =
+          this.pickingDeadline.getTime() <= this.matchDeadline.getTime()
+            ? this.pickingDeadline
+            : this.matchDeadline;
       }
+    }
 
-      if (this.pickingDeadline === null) {
-        return this.matchDeadline;
+    if (this.roomState === "PLAYING" && this.currentRound !== null) {
+      if (this.matchDeadline === null) {
+        baseAlarm = this.getCurrentRoundDeadline();
+      } else {
+        const currentRoundDeadline = this.getCurrentRoundDeadline();
+        if (currentRoundDeadline === null) {
+          baseAlarm = this.matchDeadline;
+        } else {
+          baseAlarm =
+            currentRoundDeadline.getTime() <= this.matchDeadline.getTime()
+              ? currentRoundDeadline
+              : this.matchDeadline;
+        }
       }
-
-      return this.pickingDeadline.getTime() <= this.matchDeadline.getTime()
-        ? this.pickingDeadline
-        : this.matchDeadline;
     }
 
-    if (this.roomState !== "PLAYING" || this.currentRound === null) {
-      return null;
+    if (baseAlarm === null) {
+      return hostDisconnectDeadline;
     }
 
-    if (this.matchDeadline === null) {
-      return this.getCurrentRoundDeadline();
+    if (hostDisconnectDeadline === null) {
+      return baseAlarm;
     }
 
-    const currentRoundDeadline = this.getCurrentRoundDeadline();
-    if (currentRoundDeadline === null) {
-      return this.matchDeadline;
+    return hostDisconnectDeadline.getTime() <= baseAlarm.getTime()
+      ? hostDisconnectDeadline
+      : baseAlarm;
+  }
+
+  closeHostDisconnectIfExpired(now: Date): boolean {
+    const hostDisconnectDeadline = this.getHostDisconnectDeadline();
+    if (
+      this.roomState === "CLOSED" ||
+      hostDisconnectDeadline === null ||
+      now.getTime() < hostDisconnectDeadline.getTime()
+    ) {
+      return false;
     }
 
-    return currentRoundDeadline.getTime() <= this.matchDeadline.getTime()
-      ? currentRoundDeadline
-      : this.matchDeadline;
+    this.close("HOST_DISCONNECTED", now);
+    return true;
   }
 
   submitResult(
@@ -1450,6 +1478,19 @@ export class RoomLobbyState {
     return Array.from(this.players.values()).sort(
       (left, right) => left.joined_at.getTime() - right.joined_at.getTime(),
     );
+  }
+
+  private getHostDisconnectDeadline(): Date | null {
+    if (this.roomState === "CLOSED" || this.hostPlayerId === null) {
+      return null;
+    }
+
+    const host = this.players.get(this.hostPlayerId);
+    if (!host || host.connected || host.rejoin_until === null) {
+      return null;
+    }
+
+    return host.rejoin_until;
   }
 
   private resolveDuplicatePick(

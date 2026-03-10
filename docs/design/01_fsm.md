@@ -13,7 +13,7 @@
 
 ## 2. 用語
 - ルーム: 対戦セッション単位（DOインスタンス）
-- ホスト: ルーム作成者（固定。落ちたら解散）
+- ホスト: ルーム作成者（固定。非明示切断時は `rejoin_cooldown` 以内の再接続を許容し、超過で解散）
 - プレイヤー: 参加者（最大4）
 - ラウンド: PLAYING中の1譜面単位（譜面リストのindex）
 
@@ -48,9 +48,9 @@
 - `ready_check_ttl = 20min`（LOBBY開始または `RESULT -> LOBBY` 復帰から。超過で解散）
 - `picking_ttl = 120s`（PICKING開始から。超過で未pick者をランダム補完して凍結）
 - `round_soft_ttl = 5min`（`count_go` 以降。超過で未確定者をTIMEOUT確定）
-- `host_skip_unlock_seconds = 240s`（ラウンド開始から4分経過後にホスト代理SKIP可）
+- `host_skip_unlock_seconds = 240s`（現行v1では代理SKIP無効。将来拡張用の予約値）
 - `match_ttl = 30min`（`START_MATCH` 成功時、すなわち `PICKING` 開始時から固定）
-- `rejoin_cooldown = 10s`（退出後の同一ルーム再入室抑止。クライアント/UI側でも表示）
+- `rejoin_cooldown = 10s`（退出後の同一ルーム再入室抑止。ホスト非明示切断時の再接続猶予にも使用）
 
 ## 5. ルーム作成設定（RoomSettings / Ph1）
 - `visibility`: `PUBLIC | PRIVATE`
@@ -130,11 +130,10 @@
 - 1ラウンドにつき 1プレイヤーの採用は「初回のみ」
 - 既に `PLAYED/SKIPPED/TIMEOUT` のプレイヤーからの追加提出は拒否（ログには残してよいが勝敗に使わない）
 
-### 9.4 代理SKIP（悪用防止）
-- `round_started_at + host_skip_unlock_seconds` 以降
-- 未確定者に対してのみホストが `SKIP` を付与可能
+### 9.4 SKIP（自己申告のみ）
+- SKIP は常に本人のみ実行可能（`SKIP_SELF`）
+- 他プレイヤーへの代理 SKIP（`SKIP_HOST_ASSIGN`）は受理しない
 - SKIP理由は必須: `UNOWNED | TECH | OTHER`
-- 代理付与ログを結果に残す（付与者ID/時刻）
 
 ### 9.5 強制進行（FORCE_ADVANCE）
 - ホストのみ
@@ -166,7 +165,7 @@
 ### 9.8 離脱
 - PLAYING開始後の新規参加は不可
 - PLAYING中に退出したプレイヤーは、その時点で未確定なら `TIMEOUT`、以後のラウンドも `TIMEOUT` として扱う
-- ホスト切断: 即 `CLOSED`
+- ホスト切断（`HOST_DISCONNECTED`）: `rejoin_cooldown` 経過まで再接続猶予。超過で `CLOSED`
 
 ## 10. RESULT（集計 payload）
 ### 10.1 勝敗指標

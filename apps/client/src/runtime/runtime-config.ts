@@ -44,6 +44,16 @@ function readFlagParam(name: string): boolean {
   return value === "1" || value === "true" || value === "yes" || value === "on";
 }
 
+function readOptionalFlagParam(name: string): boolean | undefined {
+  const value = readSearchParam(name);
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const normalized = value.toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
+}
+
 function readNumberParam(name: string, fallback: number): number {
   const value = Number(readSearchParam(name));
   return Number.isFinite(value) ? value : fallback;
@@ -78,9 +88,10 @@ const updaterTimeoutEnv =
   updaterTimeoutEnvRaw && updaterTimeoutEnvRaw.length > 0
     ? Number(updaterTimeoutEnvRaw)
     : Number.NaN;
+const debugUiEnabled = readOptionalFlagParam("debugUi") ?? import.meta.env.DEV;
 
 export const runtimeConfig: RuntimeConfig = {
-  debugUiEnabled: import.meta.env.DEV,
+  debugUiEnabled,
   instanceId,
   instanceLabel: readSearchParam("label") ?? displayName ?? instanceId ?? "default",
   mockScenarioId: readSearchParam("scenario") ?? null,

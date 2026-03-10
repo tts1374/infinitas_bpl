@@ -20,15 +20,15 @@ Ph1で固定するタイマー値、制約値、表示/運用上の定数を整�
 - `ROUND_SOFT_TTL_SECONDS = 300`
   - START音声時点から5分で未確定者をTIMEOUT確定
 - `HOST_SKIP_UNLOCK_SECONDS = 240`
-  - ラウンド開始後4分経過でホスト代理SKIP可
-- `ROUND_MUSIC_SELECT_SECONDS = 45`
-  - ROUND_BEGINから45秒間は `MUSIC SELECT`
-- `ROUND_STAGE_COUNTDOWN_AT_SECONDS = 35`
-  - ROUND_BEGINから35秒後に残り10秒カウント開始（`count_beep`）
-- `ROUND_START_CALL_AT_SECONDS = 52`
-  - ROUND_BEGINから52秒後に残り3秒カウント開始（`count_beep`）
-- `ROUND_PLAY_BEGIN_AT_SECONDS = 55`
-  - ROUND_BEGINから55秒後に実プレイ開始（`count_go`）
+  - 現行v1では代理SKIP無効のため、将来拡張用の予約値
+- `ROUND_MUSIC_SELECT_SECONDS = 60`
+  - ROUND_BEGINから60秒間は `MUSIC SELECT`
+- `ROUND_STAGE_COUNTDOWN_AT_SECONDS = 50`
+  - ROUND_BEGINから50秒後に残り10秒カウント開始（`count_beep`）
+- `ROUND_START_CALL_AT_SECONDS = 72`
+  - ROUND_BEGINから72秒後に残り3秒カウント開始（`count_beep`）
+- `ROUND_PLAY_BEGIN_AT_SECONDS = 75`
+  - ROUND_BEGINから75秒後に実プレイ開始（`count_go`）
 
 ## 1.3 マッチ全体
 - `MATCH_TTL_MINUTES = 30`
@@ -38,6 +38,7 @@ Ph1で固定するタイマー値、制約値、表示/運用上の定数を整�
 ## 1.4 再入室
 - `REJOIN_COOLDOWN_SECONDS = 10`
   - 同一ルームへ退出後すぐ再入室する場合のクールダウン
+  - ホストが非明示切断した場合の再接続猶予
 
 ---
 
@@ -138,7 +139,7 @@ Ph1で固定するタイマー値、制約値、表示/運用上の定数を整�
 - `START_REQUIRES_MIN_PLAYERS`
 - `RESULT_KEY_MISMATCH`
 - `ROUND_ALREADY_CONFIRMED`
-- `HOST_SKIP_LOCKED`
+- `HOST_SKIP_LOCKED`（互換性維持のため定義のみ残置）
 - `ROOM_STATE_LOST`
 - `SOURCE_UNAVAILABLE`
 

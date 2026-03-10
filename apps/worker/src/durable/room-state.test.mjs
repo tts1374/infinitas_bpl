@@ -211,6 +211,62 @@ test("RESULT -> LOBBY clears ready and match transient state without auto-start"
   assert.deepEqual(state.startMatch("host", new Date("2026-03-08T00:04:20.000Z")), { ok: true });
 });
 
+test("HOST_ABORTED closes room immediately", () => {
+  const state = createState();
+  const leaveResult = state.leavePlayer(
+    "host",
+    new Date("2026-03-08T00:05:00.000Z"),
+    "HOST_ABORTED",
+  );
+
+  assert.deepEqual(leaveResult, { changed: true, was_host: true, room_was_closed: false });
+
+  const snapshot = state.toSnapshot();
+  assert.equal(snapshot.room_state, "CLOSED");
+  assert.equal(snapshot.close_reason, "HOST_ABORTED");
+});
+
+test("HOST_DISCONNECTED does not close immediately and can recover within cooldown", () => {
+  const state = createState();
+  const disconnectedAt = new Date("2026-03-08T00:05:00.000Z");
+  const leaveResult = state.leavePlayer("host", disconnectedAt, "HOST_DISCONNECTED");
+
+  assert.deepEqual(leaveResult, { changed: true, was_host: true, room_was_closed: false });
+  assert.equal(state.getRoomState(), "LOBBY");
+  assert.equal(state.closeHostDisconnectIfExpired(new Date("2026-03-08T00:05:09.000Z")), false);
+
+  const snapshotAfterDisconnect = state.toSnapshot();
+  const disconnectedHost = snapshotAfterDisconnect.players.find((player) => player.player_id === "host");
+  assert.ok(disconnectedHost);
+  assert.equal(disconnectedHost.connected, false);
+  assert.notEqual(disconnectedHost.rejoin_until, null);
+
+  assert.equal(
+    state.joinPlayer({
+      player_id: "host",
+      display_name: "Host",
+      source: "inf-notebook",
+      now: new Date("2026-03-08T00:05:06.000Z"),
+    }).ok,
+    true,
+  );
+  assert.equal(state.closeHostDisconnectIfExpired(new Date("2026-03-08T00:05:20.000Z")), false);
+  assert.equal(state.getRoomState(), "LOBBY");
+});
+
+test("HOST_DISCONNECTED closes room when cooldown expires", () => {
+  const state = createState();
+  const disconnectedAt = new Date("2026-03-08T00:05:00.000Z");
+  state.leavePlayer("host", disconnectedAt, "HOST_DISCONNECTED");
+
+  assert.equal(state.closeHostDisconnectIfExpired(new Date("2026-03-08T00:05:11.000Z")), true);
+
+  const snapshot = state.toSnapshot();
+  assert.equal(snapshot.room_state, "CLOSED");
+  assert.equal(snapshot.close_reason, "HOST_DISCONNECTED");
+  assert.equal(state.getNextAlarmAt(), null);
+});
+
 test("strict rated match is true only on fully completed clean match", () => {
   const state = createState();
   prepareMatch(state);

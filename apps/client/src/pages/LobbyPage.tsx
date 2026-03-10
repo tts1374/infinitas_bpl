@@ -13,12 +13,12 @@ import {
   type RoomSettings,
 } from "@infinitas/shared";
 import { AlertCircle, ChevronLeft, ChevronRight, Eye, EyeOff, Key, Lock, MessageSquare, Plus, RefreshCcw, Search, Trophy, Users, X } from "lucide-react";
-import { useDeferredValue, useEffect, useState, type ReactNode } from "react";
+import { useDeferredValue, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { createRoom } from "../services/worker-api-client";
 import { lobbyStore, useLobbyStore } from "../stores/lobby-store";
 import { roomStore, useRoomStore } from "../stores/room-store";
-import { useSettingsStore } from "../stores/settings-store";
+import { isRoomEntryReady, useSettingsStore } from "../stores/settings-store";
 
 const defaultCreateDraft: RoomSettings = {
   visibility: "PUBLIC",
@@ -105,16 +105,16 @@ export function LobbyPage() {
   const [joinModalCode, setJoinModalCode] = useState("");
   const [joinModalError, setJoinModalError] = useState<string | null>(null);
   const [searchDraft, setSearchDraft] = useState(filters.roomComment);
+  const createRoomInFlightRef = useRef(false);
   const deferredSearchDraft = useDeferredValue(searchDraft);
+  const roomEntryReady = isRoomEntryReady(savedSettings);
+  const roomEntryRequiredMessage = "DJ NAME と DATA SOURCE を設定してからルーム作成・参加を行ってください。";
 
   const manualJoinCodeError = validateJoinCode(manualJoinCode);
   const createJoinCodeError = validateJoinCode(createDraft.join_code ?? "");
   const currentPage = previousCursors.length + 1;
   const pageButtons = Array.from({ length: currentPage + (nextCursor === null ? 0 : 1) }, (_, index) => index + 1);
-
-  useEffect(() => {
-    void lobbyStore.refresh(savedSettings.apiBaseUrl);
-  }, [savedSettings.apiBaseUrl]);
+  const createBusy = busyAction === "create";
 
   useEffect(() => {
     if (deferredSearchDraft === filters.roomComment) {
@@ -126,6 +126,20 @@ export function LobbyPage() {
     }, 180);
     return () => window.clearTimeout(timer);
   }, [deferredSearchDraft, filters.roomComment, savedSettings.apiBaseUrl]);
+
+  function closeManualJoinModal(): void {
+    setShowManualJoinCode(false);
+    setShowManualJoin(false);
+    setManualRoomId("");
+    setManualJoinCode("");
+  }
+
+  function closeCreateRoomModal(): void {
+    setShowCreateJoinCode(false);
+    setShowCreateRoom(false);
+    setCreateDraft({ ...defaultCreateDraft });
+    setLocalMessage(null);
+  }
 
   async function enterRoom(roomId: string, joinCode?: string | null): Promise<void> {
     roomStore.connect(
@@ -164,6 +178,10 @@ export function LobbyPage() {
   }
 
   function requestJoin(room: RoomListingEntry): void {
+    if (!roomEntryReady) {
+      return;
+    }
+
     if (room.has_join_code) {
       setSelectedRoomForJoin(room);
       setJoinModalCode("");
@@ -187,18 +205,20 @@ export function LobbyPage() {
         <div className="flex flex-wrap gap-4">
           <button
             type="button"
+            disabled={!roomEntryReady}
             onClick={() => {
               setShowManualJoinCode(false);
               setShowManualJoin(true);
             }}
-            className="flex items-center gap-2 rounded-lg border border-white/10 bg-[#2d2d30] px-5 py-2.5 text-sm font-bold transition-all hover:bg-[#353538] active:scale-95"
+            className="flex items-center gap-2 rounded-lg border border-white/10 bg-[#2d2d30] px-5 py-2.5 text-sm font-bold transition-all hover:bg-[#353538] active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Key size={18} className="text-gray-400" /> IDを手動入力
           </button>
           <button
             type="button"
+            disabled={!roomEntryReady}
             onClick={() => setShowCreateRoom(true)}
-            className="flex items-center gap-2 rounded-lg bg-cyan-500 px-6 py-2.5 font-black text-black shadow-[0_0_20px_rgba(6,182,212,0.4)] transition-all hover:bg-cyan-400 active:scale-95"
+            className="flex items-center gap-2 rounded-lg bg-cyan-500 px-6 py-2.5 font-black text-black shadow-[0_0_20px_rgba(6,182,212,0.4)] transition-all hover:bg-cyan-400 active:scale-95 disabled:cursor-not-allowed disabled:bg-gray-700 disabled:text-gray-400 disabled:shadow-none"
           >
             <Plus size={22} /> ルーム作成
           </button>
@@ -280,6 +300,12 @@ export function LobbyPage() {
           <span>{errorMessage}</span>
         </div>
       ) : null}
+      {!roomEntryReady ? (
+        <div className="mb-6 flex items-center gap-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm font-bold text-amber-200">
+          <AlertCircle size={16} />
+          <span>{roomEntryRequiredMessage}</span>
+        </div>
+      ) : null}
 
       <div className="flex-1">
         <div className="mb-8 grid gap-4">
@@ -292,7 +318,11 @@ export function LobbyPage() {
               <div
                 key={room.room_id}
                 onClick={() => requestJoin(room)}
-                className="group relative flex cursor-pointer items-center justify-between overflow-hidden rounded-xl border border-white/5 bg-[#2d2d30] p-5 transition-all hover:translate-x-1 hover:border-cyan-500/40 hover:bg-[#353538]"
+                className={`group relative flex items-center justify-between overflow-hidden rounded-xl border border-white/5 bg-[#2d2d30] p-5 transition-all ${
+                  roomEntryReady
+                    ? "cursor-pointer hover:translate-x-1 hover:border-cyan-500/40 hover:bg-[#353538]"
+                    : "cursor-not-allowed opacity-60"
+                }`}
               >
                 <div className="absolute -bottom-4 right-24 select-none text-7xl font-black italic uppercase tracking-tighter text-white/[0.02]">
                   {room.mode}
@@ -329,7 +359,7 @@ export function LobbyPage() {
                   </div>
                   <button
                     type="button"
-                    disabled={busyAction !== null}
+                    disabled={busyAction !== null || !roomEntryReady}
                     onClick={(event) => {
                       event.stopPropagation();
                       requestJoin(room);
@@ -396,16 +426,13 @@ export function LobbyPage() {
             <div className="relative flex min-h-full items-center justify-center p-4">
               <div className="w-full max-w-[520px] overflow-hidden rounded-2xl border border-white/10 bg-[#252526] shadow-[0_20px_60px_rgba(0,0,0,0.6)]">
                 <div className="flex items-center justify-between border-b border-white/5 bg-white/[0.02] px-8 py-6">
-                  <h2 className="flex items-center gap-3 text-xl font-bold">
+                  <h2 className="flex items-center gap-3 text-xl font-bold text-white">
                     <Key size={22} className="text-cyan-400" />
                     IDを手動入力して参加
                   </h2>
                   <button
                     type="button"
-                    onClick={() => {
-                      setShowManualJoinCode(false);
-                      setShowManualJoin(false);
-                    }}
+                    onClick={closeManualJoinModal}
                     className="rounded-full p-1 text-gray-500 transition-all hover:bg-white/5 hover:text-white"
                   >
                     <X size={24} />
@@ -413,12 +440,12 @@ export function LobbyPage() {
                 </div>
                 <div className="flex flex-col gap-8 bg-[#252526] p-10">
                   <div className="space-y-3">
-                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">Room ID (UUID)</label>
+                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-300">Room ID (UUID)</label>
                     <input
                       type="text"
                       value={manualRoomId}
                       placeholder="00000000-0000-0000-0000-000000000000"
-                      className="w-full rounded-xl border border-white/10 bg-[#1e1e1e] p-4 font-mono text-sm outline-none transition-all focus:border-cyan-500"
+                      className="w-full rounded-xl border border-white/10 bg-[#1e1e1e] p-4 font-mono text-sm text-white outline-none transition-all placeholder:text-gray-600 focus:border-cyan-500"
                       onChange={(event) => {
                         setManualRoomId(event.currentTarget.value);
                       }}
@@ -426,7 +453,7 @@ export function LobbyPage() {
                   </div>
                   <div className="space-y-3">
                     <div className="flex items-end justify-between">
-                      <label className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">Join Code (合言葉)</label>
+                      <label className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-300">Join Code (合言葉)</label>
                       {manualJoinCodeError ? <span className="text-[10px] font-bold text-red-500">{manualJoinCodeError}</span> : null}
                     </div>
                     <div className="relative">
@@ -455,21 +482,18 @@ export function LobbyPage() {
                   <div className="mt-4 flex gap-4">
                     <button
                       type="button"
-                      onClick={() => {
-                        setShowManualJoinCode(false);
-                        setShowManualJoin(false);
-                      }}
-                      className="flex-1 rounded-xl bg-white/5 py-4 font-bold transition-all hover:bg-white/10"
+                      onClick={closeManualJoinModal}
+                      className="flex-1 rounded-xl bg-white/5 py-4 font-bold text-white transition-all hover:bg-white/10"
                     >
                       キャンセル
                     </button>
                     <button
                       type="button"
-                      disabled={busyAction !== null || manualRoomId.trim().length === 0 || manualJoinCodeError !== null}
+                      disabled={!roomEntryReady || busyAction !== null || manualRoomId.trim().length === 0 || manualJoinCodeError !== null}
                       className={`flex-1 rounded-xl py-4 font-black transition-all shadow-[0_10px_20px_rgba(6,182,212,0.2)] ${
-                        busyAction !== null || manualRoomId.trim().length === 0 || manualJoinCodeError !== null
+                        !roomEntryReady || busyAction !== null || manualRoomId.trim().length === 0 || manualJoinCodeError !== null
                           ? "cursor-not-allowed bg-gray-800 text-gray-600"
-                          : "bg-cyan-500 text-black hover:bg-cyan-400"
+                          : "bg-cyan-500 text-white hover:bg-cyan-400"
                       }`}
                       onClick={() => {
                         setBusyAction("join");
@@ -501,7 +525,7 @@ export function LobbyPage() {
               </h2>
               <button
                 type="button"
-                onClick={() => setShowCreateRoom(false)}
+                onClick={closeCreateRoomModal}
                 className="rounded-full p-1 text-gray-500 transition-all hover:bg-white/5 hover:text-white"
               >
                 <X size={24} />
@@ -727,20 +751,29 @@ export function LobbyPage() {
               <div className="mt-2 flex gap-4">
                 <button
                   type="button"
-                  onClick={() => setShowCreateRoom(false)}
+                  onClick={closeCreateRoomModal}
                   className="flex-1 rounded-xl bg-white/5 py-4 font-bold text-white transition-all hover:bg-white/10"
                 >
                   キャンセル
                 </button>
                 <button
                   type="button"
-                  disabled={busyAction !== null || createJoinCodeError !== null}
+                  disabled={!roomEntryReady || busyAction !== null || createJoinCodeError !== null}
                   className={`flex-1 rounded-xl py-4 font-black transition-all shadow-[0_10px_30px_rgba(6,182,212,0.3)] ${
-                    busyAction !== null || createJoinCodeError !== null
+                    !roomEntryReady || busyAction !== null || createJoinCodeError !== null
                       ? "cursor-not-allowed bg-gray-800 text-gray-600"
                       : "bg-cyan-500 text-black hover:bg-cyan-400"
                   }`}
                   onClick={() => {
+                    if (createRoomInFlightRef.current) {
+                      return;
+                    }
+                    if (!roomEntryReady) {
+                      setLocalMessage(roomEntryRequiredMessage);
+                      return;
+                    }
+
+                    createRoomInFlightRef.current = true;
                     setBusyAction("create");
                     setLocalMessage(null);
                     void createRoom(savedSettings.apiBaseUrl, createDraft)
@@ -754,11 +787,19 @@ export function LobbyPage() {
                         setLocalMessage(error instanceof Error ? error.message : "Failed to create room.");
                       })
                       .finally(() => {
+                        createRoomInFlightRef.current = false;
                         setBusyAction(null);
                       });
                   }}
                 >
-                  ルームを作成する
+                  <span className="flex items-center justify-center gap-2">
+                    {createBusy ? (
+                      <RefreshCcw size={16} className="animate-spin" />
+                    ) : (
+                      <Plus size={18} />
+                    )}
+                    {createBusy ? "作成中..." : "ルームを作成する"}
+                  </span>
                 </button>
               </div>
             </div>
@@ -845,8 +886,13 @@ export function LobbyPage() {
                 </button>
                 <button
                   type="button"
-                  disabled={busyAction !== null || joinModalError !== null || joinModalCode.length !== JOIN_CODE_LENGTH}
+                  disabled={!roomEntryReady || busyAction !== null || joinModalError !== null || joinModalCode.length !== JOIN_CODE_LENGTH}
                   onClick={() => {
+                    if (!roomEntryReady) {
+                      setJoinModalError(roomEntryRequiredMessage);
+                      return;
+                    }
+
                     const normalizedCode = normalizeJoinCodeInput(joinModalCode);
                     const validationError = validateJoinCode(normalizedCode);
                     setJoinModalCode(normalizedCode);
@@ -860,7 +906,7 @@ export function LobbyPage() {
                     });
                   }}
                   className={`rounded-2xl py-4 font-black transition-all ${
-                    busyAction !== null || joinModalError !== null || joinModalCode.length !== JOIN_CODE_LENGTH
+                    !roomEntryReady || busyAction !== null || joinModalError !== null || joinModalCode.length !== JOIN_CODE_LENGTH
                       ? "cursor-not-allowed bg-gray-800 text-gray-600 opacity-50"
                       : "bg-cyan-500 text-black shadow-[0_10px_30px_rgba(6,182,212,0.3)] hover:bg-cyan-400"
                   }`}

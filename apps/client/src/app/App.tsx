@@ -11,9 +11,10 @@ import { localResultArchiveService } from "../services/result-archive";
 import { runtimeConfig } from "../runtime/runtime-config";
 import { statsArchiveService } from "../services/stats-archive";
 import { voiceAnnouncerService } from "../services/voice-announcer";
+import { lobbyStore } from "../stores/lobby-store";
 import { roomStore, useRoomStore } from "../stores/room-store";
 import { sourceStore } from "../stores/source-store";
-import { settingsStore, useSettingsStore } from "../stores/settings-store";
+import { isRoomEntryReady, settingsStore, useSettingsStore } from "../stores/settings-store";
 
 export function App() {
   const savedSettings = useSettingsStore((state) => state.saved);
@@ -24,6 +25,8 @@ export function App() {
   const [mockScenario] = useState(() =>
     runtimeConfig.mockScenarioId ? getVisualScenario(runtimeConfig.mockScenarioId) : null,
   );
+  const roomEntryReady = isRoomEntryReady(savedSettings);
+  const shouldShowSetupDialog = activeView === "lobby" && roomSnapshot === null && !roomEntryReady;
 
   const mockScenarioRequested = runtimeConfig.mockScenarioId !== null;
 
@@ -37,11 +40,20 @@ export function App() {
 
   useEffect(() => {
     if (roomSnapshot === null && activeView === "room" && roomConnectionStatus === "DISCONNECTED") {
+      lobbyStore.resetFilters();
       startTransition(() => {
         setActiveView("lobby");
       });
     }
   }, [activeView, roomConnectionStatus, roomSnapshot]);
+
+  useEffect(() => {
+    if (activeView !== "lobby") {
+      return;
+    }
+
+    void lobbyStore.refresh(savedSettings.apiBaseUrl);
+  }, [activeView, savedSettings.apiBaseUrl]);
 
   useEffect(() => {
     if (mockScenarioRequested) {
@@ -163,6 +175,30 @@ export function App() {
       </section>
 
       {dialog ? <ErrorDialog dialog={dialog} onClose={dismissDialog} /> : null}
+      {shouldShowSetupDialog ? (
+        <div className="fixed inset-0 z-[2800] flex items-center justify-center bg-black/85 p-4 backdrop-blur-md">
+          <div className="w-full max-w-[460px] overflow-hidden rounded-3xl border border-amber-500/20 bg-[#1a1a1c] shadow-[0_30px_90px_rgba(0,0,0,0.9)]">
+            <div className="p-8 text-center">
+              <p className="mb-3 text-[10px] font-black uppercase tracking-[0.35em] text-amber-300">Setup Required</p>
+              <h2 className="text-2xl font-black tracking-tight text-white">まずは設定を行いましょう</h2>
+              <p className="mt-3 text-sm font-semibold leading-relaxed text-gray-300">
+                DJ NAME と DATA SOURCE を設定すると、
+                <br />
+                ルーム作成と参加が可能になります。
+              </p>
+            </div>
+            <div className="px-8 pb-8">
+              <button
+                type="button"
+                onClick={() => navigate("settings")}
+                className="w-full rounded-2xl bg-amber-400 py-4 text-sm font-black uppercase tracking-[0.2em] text-black transition-all hover:bg-amber-300"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {mockScenarioRequested ? (
         <div className="fixed right-4 top-4 z-[400] flex items-center gap-3 rounded-2xl border border-white/10 bg-black/80 px-4 py-3 shadow-2xl backdrop-blur-xl">

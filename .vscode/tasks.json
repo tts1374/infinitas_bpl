@@ -51,6 +51,36 @@
       "problemMatcher": []
     },
     {
+      "label": "Client Dev Server",
+      "type": "shell",
+      "command": "npm",
+      "args": [
+        "--workspace",
+        "@infinitas/client",
+        "run",
+        "dev"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "isBackground": true,
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      },
+      "problemMatcher": {
+        "owner": "custom",
+        "pattern": {
+          "regexp": "^(?!)"
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".+",
+          "endsPattern": "https?://localhost:1420/?"
+        }
+      }
+    },
+    {
       "label": "INFINITAS BPL Dev Stack",
       "dependsOn": [
         "Worker Dev",

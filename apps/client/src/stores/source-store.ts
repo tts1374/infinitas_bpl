@@ -117,7 +117,10 @@ function handleWatcherEvent(payload: SourceWatcherEventPayload): void {
     return;
   }
 
-  submitParsedSourceChange(payload.parserOutput, payload.parserOutput.source);
+  const outcome = submitParsedSourceChange(payload.parserOutput, payload.parserOutput.source);
+  if (!outcome.ok) {
+    roomStore.noteLocalEvent(`Source auto-submit skipped: ${outcome.message}`);
+  }
 }
 
 function getMissingPathMessage(source: SourceType, paths: SourcePaths): string | null {

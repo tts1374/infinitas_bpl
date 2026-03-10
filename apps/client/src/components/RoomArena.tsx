@@ -94,6 +94,7 @@ export interface RoomArenaControlledState {
     finalResultPlayers?: Record<string, RoomArenaFinalResultPlayerSummary>;
     isHost: boolean;
     allPlayers: RoomArenaPlayer[];
+    selfPlayerId?: string;
     searchModal?: ReactNode;
     disablePrimaryAction?: boolean;
     disableLeave?: boolean;
@@ -289,6 +290,7 @@ export default function RoomArena({ onNavigate, initialStatus, controlled }: Roo
     ];
 
     const players = allMockPlayers.slice(0, currentPlayers);
+    const selfPlayerId = controlled?.selfPlayerId ?? (isHost ? '1' : '2');
     const hasJoinCode = joinCode.trim().length > 0;
     const maskedJoinCode = hasJoinCode ? maskJoinCode(joinCode) : '';
     const shortRoomId = roomId.length > 18 ? `${roomId.slice(0, 18)}…` : roomId;
@@ -596,7 +598,7 @@ export default function RoomArena({ onNavigate, initialStatus, controlled }: Roo
                                     <div className="flex items-center gap-4">
                                         {playerStatus[p.id] === 'UNCONFIRMED' && (
                                             <>
-                                                {p.id === '1' ? (
+                                                {p.id === selfPlayerId ? (
                                                     <button onClick={() => handleSkip(p.id)} className="flex-1 bg-white/5 hover:bg-white/10 border border-white/10 py-3 rounded-xl font-black italic text-sm transition-all">SKIP ROUND</button>
                                                 ) : (
                                                     <div className="flex-1 h-12 bg-white/5 rounded-xl border border-white/5 flex items-center justify-center">

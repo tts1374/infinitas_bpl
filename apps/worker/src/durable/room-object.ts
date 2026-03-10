@@ -37,6 +37,13 @@ interface RoomSocketSession {
   playerId: string | null;
 }
 
+interface SocketCloseContext {
+  trigger: "close" | "error";
+  code: number | null;
+  reason: string | null;
+  wasClean: boolean | null;
+}
+
 interface DurableObjectStorageLike {
   get<T>(key: string): Promise<T | undefined>;
   put<T>(key: string, value: T): Promise<void>;
@@ -292,27 +299,6 @@ function parseSkipPayload(payload: unknown): { request_id: string; round_index: 
   };
 }
 
-function parseSkipHostAssignPayload(
-  payload: unknown,
-): { request_id: string; round_index: number; target_player_id: string; reason: SkipReason } | null {
-  const parsedSkip = parseSkipPayload(payload);
-  if (parsedSkip === null || !isRecord(payload)) {
-    return null;
-  }
-
-  const targetPlayerId = asOptionalString(payload.target_player_id)?.trim() ?? "";
-  if (targetPlayerId.length === 0) {
-    return null;
-  }
-
-  return {
-    request_id: parsedSkip.request_id,
-    round_index: parsedSkip.round_index,
-    target_player_id: targetPlayerId,
-    reason: parsedSkip.reason,
-  };
-}
-
 export class RoomDurableObject {
   private readonly roomState = new RoomLobbyState(workerChartMaster);
   private readonly sessionsBySocket = new Map<WebSocket, RoomSocketSession>();
@@ -380,6 +366,7 @@ export class RoomDurableObject {
   async alarm(): Promise<void> {
     await this.readyPromise;
     await this.processDueTransitions(new Date());
+    await this.syncAlarm();
   }
 
   private async handleInternalInitialize(request: Request): Promise<Response> {
@@ -433,11 +420,21 @@ export class RoomDurableObject {
     socket.addEventListener("message", (event) => {
       void this.handleSocketMessage(socket, event);
     });
-    socket.addEventListener("close", () => {
-      void this.handleSocketClose(socket);
+    socket.addEventListener("close", (event: CloseEvent) => {
+      void this.handleSocketClose(socket, {
+        trigger: "close",
+        code: event.code,
+        reason: event.reason,
+        wasClean: event.wasClean,
+      });
     });
     socket.addEventListener("error", () => {
-      void this.handleSocketClose(socket);
+      void this.handleSocketClose(socket, {
+        trigger: "error",
+        code: null,
+        reason: null,
+        wasClean: null,
+      });
     });
   }
 
@@ -541,11 +538,28 @@ export class RoomDurableObject {
     }
   }
 
-  private async handleSocketClose(socket: WebSocket): Promise<void> {
+  private async handleSocketClose(
+    socket: WebSocket,
+    context: SocketCloseContext,
+  ): Promise<void> {
     const session = this.sessionsBySocket.get(socket);
     if (!session) {
       return;
     }
+
+    const roomId = this.roomState.isInitialized()
+      ? this.roomState.getRoomId()
+      : "(uninitialized)";
+    console.info("[room-do] socket closed", {
+      roomId,
+      playerId: session.playerId,
+      roomState: this.roomState.getRoomState(),
+      trigger: context.trigger,
+      code: context.code,
+      reason: context.reason,
+      wasClean: context.wasClean,
+      activeSocketCount: this.sessionsBySocket.size,
+    });
 
     this.sessionsBySocket.delete(socket);
     await this.handleRoomLeave(session, false);
@@ -616,6 +630,15 @@ export class RoomDurableObject {
       new Date(),
       closeSocket ? "HOST_ABORTED" : "HOST_DISCONNECTED",
     );
+    console.info("[room-do] leave player", {
+      roomId: this.roomState.getRoomId(),
+      playerId,
+      closeSocket,
+      leaveReason: closeSocket ? "HOST_ABORTED" : "HOST_DISCONNECTED",
+      wasHost: leaveResult.was_host,
+      roomWasClosed: leaveResult.room_was_closed,
+      roomState: this.roomState.getRoomState(),
+    });
     if (!leaveResult.changed) {
       if (closeSocket) {
         this.safeCloseSocket(session.socket, 1000, "Left room.");
@@ -625,10 +648,16 @@ export class RoomDurableObject {
 
     if (leaveResult.was_host && !leaveResult.room_was_closed) {
       await this.persistRoomRecord();
-      await this.clearAlarm();
-      this.broadcastRoomClosed(true);
-      await this.cleanupLobbyEntry();
-      this.disconnectAll(4000, "Host left.");
+      await this.syncAlarm();
+      if (this.roomState.getRoomState() === "CLOSED") {
+        await this.clearAlarm();
+        this.broadcastRoomClosed(true);
+        await this.cleanupLobbyEntry();
+        this.disconnectAll(4000, closeSocket ? "Host left." : "Host disconnected.");
+        return;
+      }
+
+      this.broadcastRoomUpdated();
       return;
     }
 
@@ -878,51 +907,14 @@ export class RoomDurableObject {
 
   private async handleSkipHostAssign(
     session: RoomSocketSession,
-    message: ClientMessage<"SKIP_HOST_ASSIGN">,
+    _message: ClientMessage<"SKIP_HOST_ASSIGN">,
   ): Promise<void> {
     if (session.playerId === null) {
       this.sendError(session.socket, "INVALID_STATE", "Send ROOM_JOIN before this message.");
       return;
     }
 
-    const payload = parseSkipHostAssignPayload(message.payload);
-    if (payload === null) {
-      this.sendError(session.socket, "INVALID_STATE", "SKIP_HOST_ASSIGN payload is invalid.");
-      return;
-    }
-
-    if (this.isDuplicateRequest(session.playerId, message.type, payload.request_id)) {
-      this.sendStateSnapshot(session.socket);
-      return;
-    }
-
-    const previousState = this.roomState.getRoomState();
-    const result = this.roomState.assignHostSkip(
-      session.playerId,
-      payload.round_index,
-      payload.target_player_id,
-      payload.reason,
-      new Date(),
-    );
-    if (!result.ok) {
-      switch (result.reason) {
-        case "NOT_HOST":
-          this.sendError(session.socket, "NOT_HOST", "Only the host can assign a skip.");
-          return;
-        case "HOST_SKIP_LOCKED":
-          this.sendError(session.socket, "HOST_SKIP_LOCKED", "Host skip is locked until the round has been active for 240 seconds.");
-          return;
-        case "ROUND_ALREADY_CONFIRMED":
-          this.sendError(session.socket, "ROUND_ALREADY_CONFIRMED", "Target player already confirmed for this round.");
-          return;
-        default:
-          this.sendError(session.socket, "INVALID_STATE", "SKIP_HOST_ASSIGN is unavailable in the current state.");
-          return;
-      }
-    }
-
-    this.rememberRequest(session.playerId, message.type, payload.request_id);
-    await this.publishRoundTransition(previousState, result);
+    this.sendError(session.socket, "INVALID_STATE", "SKIP_HOST_ASSIGN is disabled. Use SKIP_SELF.");
   }
 
   private async handleForceAdvance(
@@ -1207,6 +1199,10 @@ export class RoomDurableObject {
   }
 
   private async processDueTransitions(now: Date): Promise<boolean> {
+    if (await this.closeHostDisconnectOnTimeout(now)) {
+      return true;
+    }
+
     if (await this.closeReadyCheckOnTimeout(now)) {
       return true;
     }
@@ -1234,6 +1230,20 @@ export class RoomDurableObject {
     }
 
     return false;
+  }
+
+  private async closeHostDisconnectOnTimeout(now: Date): Promise<boolean> {
+    const closed = this.roomState.closeHostDisconnectIfExpired(now);
+    if (!closed) {
+      return false;
+    }
+
+    await this.persistRoomRecord();
+    await this.clearAlarm();
+    this.broadcastRoomClosed(true);
+    await this.cleanupLobbyEntry();
+    this.disconnectAll(4000, "Host disconnected.");
+    return true;
   }
 
   private async closeReadyCheckOnTimeout(now: Date): Promise<boolean> {

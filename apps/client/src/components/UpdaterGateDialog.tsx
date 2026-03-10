@@ -72,6 +72,18 @@ function createPhaseCopy(snapshot: AppUpdaterState): {
         buttonLabel: null,
       };
     case "failed":
+      if (snapshot.failure?.stage === "check") {
+        return {
+          title: "起動しています",
+          statusText: "起動前の準備を進めています...",
+          bodyLines: ["現在のバージョンで起動します。"],
+          Icon: LoaderCircle,
+          accentClass: "text-cyan-300",
+          iconClass: "border-cyan-500/20 bg-cyan-500/10 text-cyan-300",
+          buttonLabel: null,
+        };
+      }
+
       return {
         title: "更新に失敗しました",
         statusText: snapshot.failure?.message ?? "更新の確認に失敗しました",
@@ -98,6 +110,11 @@ function createPhaseCopy(snapshot: AppUpdaterState): {
 
 export function UpdaterGateDialog({ snapshot, onStartUpdate }: UpdaterGateDialogProps) {
   const copy = createPhaseCopy(snapshot);
+  const shouldAnimateIcon =
+    snapshot.phase === "checking" ||
+    snapshot.phase === "downloading" ||
+    snapshot.phase === "installing" ||
+    (snapshot.phase === "failed" && snapshot.failure?.stage === "check");
   const progressPercent = snapshot.progress.percent;
   const showProgress = snapshot.phase === "downloading" || snapshot.phase === "installing";
   const showVersionMeta = snapshot.currentVersion !== null || snapshot.nextVersion !== null;
@@ -123,7 +140,7 @@ export function UpdaterGateDialog({ snapshot, onStartUpdate }: UpdaterGateDialog
             <copy.Icon
               size={42}
               strokeWidth={2.5}
-              className={snapshot.phase === "checking" || snapshot.phase === "downloading" || snapshot.phase === "installing" ? "animate-spin" : undefined}
+              className={shouldAnimateIcon ? "animate-spin" : undefined}
             />
           </div>
 

@@ -1,0 +1,20 @@
+{
+  "identifier": "com.infinitas.bpl.client.cfprodplayer1",
+  "build": {
+    "beforeDevCommand": "cmd /c exit 0",
+    "devUrl": "http://localhost:1420?instance=cf-prod-player1&label=PLAYER1&name=PLYR01&playerId=cf-prod-player1&api=https://infinitas-arena.tts1374.workers.dev&debugUi=0"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "INFINITAS Arena PLAYER1",
+        "width": 1280,
+        "height": 900,
+        "minWidth": 1280,
+        "minHeight": 900,
+        "resizable": true
+      }
+    ]
+  }
+}

@@ -32,6 +32,7 @@ export interface RoomDialogState {
 export interface RoomStoreState {
   roomId: string | null;
   joinCode: string | null;
+  connectionPlayerId: string | null;
   connectionStatus: RoomConnectionStatus;
   connectionDetail: string;
   snapshot: RoomStateSnapshot | null;
@@ -50,11 +51,24 @@ export interface RoomConnectionSettings {
   source: SourceType;
 }
 
+interface RoomReconnectContext {
+  connection: {
+    roomId: string;
+    joinCode: string | null;
+  };
+  settings: RoomConnectionSettings;
+}
+
 let activeClient: RoomSocketClient | null = null;
 let activeMockScenarioId: string | null = null;
 const requestIdsByKey = new Map<string, string>();
 const DJ_NAME_PATTERN = /^[a-zA-Z0-9.\-*&!?#$]*$/;
 const DJ_NAME_MAX_LENGTH = 6;
+const RECONNECT_DELAY_MS = 1_200;
+const RECONNECT_MAX_ATTEMPTS = 5;
+let reconnectContext: RoomReconnectContext | null = null;
+let reconnectTimer: number | null = null;
+let reconnectAttempts = 0;
 
 export interface MockRoomStoreState {
   scenarioId: string;
@@ -81,6 +95,7 @@ export interface RoomAudioEvent {
 const initialState: RoomStoreState = {
   roomId: null,
   joinCode: null,
+  connectionPlayerId: null,
   connectionStatus: "DISCONNECTED",
   connectionDetail: "No active room.",
   snapshot: null,
@@ -117,6 +132,46 @@ function appendEventLog(message: string): void {
 
 function clearRequestIds(): void {
   requestIdsByKey.clear();
+}
+
+function clearReconnectTimer(): void {
+  if (reconnectTimer !== null) {
+    window.clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+}
+
+function clearReconnectContext(): void {
+  clearReconnectTimer();
+  reconnectAttempts = 0;
+  reconnectContext = null;
+}
+
+function resetReconnectAttempts(): void {
+  clearReconnectTimer();
+  reconnectAttempts = 0;
+}
+
+function canAutoReconnect(state: RoomStoreState): boolean {
+  return (
+    activeMockScenarioId === null &&
+    reconnectContext !== null &&
+    state.snapshot !== null &&
+    state.snapshot.room_state !== "CLOSED" &&
+    state.connectionStatus !== "CLOSED"
+  );
+}
+
+function hasReconnectInFlight(state: RoomStoreState): boolean {
+  return (
+    reconnectContext !== null &&
+    state.snapshot !== null &&
+    state.snapshot.room_state !== "CLOSED" &&
+    (reconnectTimer !== null ||
+      reconnectAttempts > 0 ||
+      state.connectionStatus === "CONNECTING" ||
+      state.connectionStatus === "JOINING")
+  );
 }
 
 function getOrCreateRequestId(key: string): string {
@@ -356,6 +411,171 @@ function updateClosedSnapshot(closeReason: CloseReason, closedAt: string, result
   }));
 }
 
+function startSocketConnection(
+  connection: { roomId: string; joinCode: string | null },
+  settings: RoomConnectionSettings,
+  resetState: boolean,
+): boolean {
+  const displayNameError = validateDisplayName(settings.displayName);
+  if (displayNameError !== null) {
+    setErrorDialog("DJ NAME invalid", displayNameError);
+    return false;
+  }
+  const trimmedDisplayName = settings.displayName.trim();
+
+  closeCurrentClient(false);
+  activeMockScenarioId = null;
+
+  if (resetState) {
+    clearRequestIds();
+    internalStore.setState({
+      ...initialState,
+      roomId: connection.roomId,
+      joinCode: connection.joinCode,
+      connectionPlayerId: settings.playerId,
+      connectionStatus: "CONNECTING",
+      connectionDetail: `Opening room ${connection.roomId}.`,
+    });
+  } else {
+    internalStore.setState((state) => ({
+      ...state,
+      roomId: connection.roomId,
+      joinCode: connection.joinCode,
+      connectionPlayerId: settings.playerId,
+      connectionStatus: "CONNECTING",
+      connectionDetail: `Reconnecting room ${connection.roomId} (${reconnectAttempts}/${RECONNECT_MAX_ATTEMPTS}).`,
+    }));
+  }
+
+  const client = new RoomSocketClient({
+    apiBaseUrl: settings.apiBaseUrl,
+    roomId: connection.roomId,
+    playerId: settings.playerId,
+    displayName: trimmedDisplayName,
+    source: settings.source,
+    joinCode: connection.joinCode,
+    onMessage(message) {
+      handleServerMessage(client, message);
+    },
+    onStateChange(state, detail) {
+      if (activeClient !== client) {
+        return;
+      }
+
+      if (state === "CONNECTED") {
+        resetReconnectAttempts();
+      }
+
+      internalStore.setState((currentState) => ({
+        ...currentState,
+        connectionStatus:
+          currentState.connectionStatus === "CLOSED" ? currentState.connectionStatus : mapSocketState(state),
+        connectionDetail: detail,
+      }));
+    },
+    onError(error) {
+      if (activeClient !== client) {
+        return;
+      }
+
+      internalStore.setState((state) => ({
+        ...state,
+        connectionStatus: "ERROR",
+        connectionDetail: error.message,
+      }));
+    },
+    onClose(event) {
+      if (activeClient !== client) {
+        return;
+      }
+
+      activeClient = null;
+      const stateBeforeClose = internalStore.getState();
+      const shouldAutoReconnect = event.code !== 1000 && canAutoReconnect(stateBeforeClose);
+      internalStore.setState((state) => ({
+        ...state,
+        connectionStatus:
+          state.connectionStatus === "CLOSED"
+            ? "CLOSED"
+            : shouldAutoReconnect
+              ? "DISCONNECTED"
+              : event.code === 1000
+                ? "DISCONNECTED"
+                : "ERROR",
+        connectionDetail:
+          state.connectionStatus === "CLOSED"
+            ? state.connectionDetail
+            : event.reason || `Socket closed (${event.code}).`,
+      }));
+
+      if (shouldAutoReconnect) {
+        scheduleReconnect();
+      } else {
+        resetReconnectAttempts();
+      }
+    },
+  });
+
+  activeClient = client;
+
+  try {
+    client.connect();
+    return true;
+  } catch (error) {
+    activeClient = null;
+    internalStore.setState((state) => ({
+      ...state,
+      connectionStatus: "ERROR",
+      connectionDetail: error instanceof Error ? error.message : "Failed to connect.",
+    }));
+    if (resetState) {
+      setErrorDialog("Connection failed", error instanceof Error ? error.message : "Failed to connect.");
+    }
+    return false;
+  }
+}
+
+function scheduleReconnect(): void {
+  const state = internalStore.getState();
+  if (!canAutoReconnect(state)) {
+    return;
+  }
+
+  if (reconnectAttempts >= RECONNECT_MAX_ATTEMPTS) {
+    internalStore.setState((currentState) => ({
+      ...currentState,
+      connectionStatus: "ERROR",
+      connectionDetail: "Reconnect limit reached. Rejoin the room.",
+    }));
+    setErrorDialog("Connection lost", "Reconnect limit reached. Rejoin the room.");
+    clearReconnectContext();
+    return;
+  }
+
+  reconnectAttempts += 1;
+  const attempt = reconnectAttempts;
+  appendEventLog(`Connection lost. Reconnecting (${attempt}/${RECONNECT_MAX_ATTEMPTS})...`);
+  internalStore.setState((currentState) => ({
+    ...currentState,
+    connectionStatus: "CONNECTING",
+    connectionDetail: `Reconnecting (${attempt}/${RECONNECT_MAX_ATTEMPTS})...`,
+  }));
+
+  clearReconnectTimer();
+  reconnectTimer = window.setTimeout(() => {
+    reconnectTimer = null;
+    const context = reconnectContext;
+    if (context === null || activeClient !== null) {
+      return;
+    }
+
+    const connected = startSocketConnection(context.connection, context.settings, false);
+    if (!connected) {
+      scheduleReconnect();
+    }
+  }, RECONNECT_DELAY_MS);
+}
+
 function handleServerMessage(client: RoomSocketClient, message: ServerMessage): void {
   if (activeClient !== client) {
     return;
@@ -414,6 +634,7 @@ function handleServerMessage(client: RoomSocketClient, message: ServerMessage): 
       const payload = message.payload as ServerMessagePayloadMap["ROOM_JOIN_REJECTED"];
       const { snapshot } = internalStore.getState();
       const dialog = joinRejectDialog(payload.reason, snapshot !== null);
+      clearReconnectContext();
       closeCurrentClient(false);
       internalStore.setState((state) => ({
         ...state,
@@ -453,6 +674,7 @@ function handleServerMessage(client: RoomSocketClient, message: ServerMessage): 
     }
     case "ROOM_CLOSED": {
       const payload = message.payload as ServerMessagePayloadMap["ROOM_CLOSED"];
+      clearReconnectContext();
       clearRequestIds();
       updateClosedSnapshot(payload.close_reason, payload.closed_at, payload.result_ready);
       pushAudioEvent({
@@ -487,6 +709,7 @@ function handleServerMessage(client: RoomSocketClient, message: ServerMessage): 
             : payload.message;
 
       if (payload.code === "ROOM_STATE_LOST") {
+        clearReconnectContext();
         closeCurrentClient(false);
         updateClosedSnapshot("FORCE_CLOSED", message.server_time, internalStore.getState().resultReady !== null);
         appendEventLog("Room state lost. Showing the latest local snapshot.");
@@ -513,6 +736,7 @@ function handleServerMessage(client: RoomSocketClient, message: ServerMessage): 
 export const roomStore = {
   ...internalStore,
   hydrateMockScenario(input: MockRoomStoreState): void {
+    clearReconnectContext();
     closeCurrentClient(false);
     clearRequestIds();
     activeMockScenarioId = input.scenarioId;
@@ -535,94 +759,30 @@ export const roomStore = {
     connection: { roomId: string; joinCode?: string | null },
     settings: RoomConnectionSettings,
   ): boolean {
-    const displayNameError = validateDisplayName(settings.displayName);
-    if (displayNameError !== null) {
-      setErrorDialog("DJ NAME invalid", displayNameError);
-      return false;
-    }
-    const trimmedDisplayName = settings.displayName.trim();
-
-    closeCurrentClient(false);
-    clearRequestIds();
-    activeMockScenarioId = null;
-
-    internalStore.setState({
-      ...initialState,
-      roomId: connection.roomId,
-      joinCode: connection.joinCode?.trim() || null,
-      connectionStatus: "CONNECTING",
-      connectionDetail: `Opening room ${connection.roomId}.`,
-    });
-
-    const client = new RoomSocketClient({
-      apiBaseUrl: settings.apiBaseUrl,
-      roomId: connection.roomId,
-      playerId: settings.playerId,
-      displayName: trimmedDisplayName,
-      source: settings.source,
-      joinCode: connection.joinCode ?? null,
-      onMessage(message) {
-        handleServerMessage(client, message);
+    const normalizedJoinCode = connection.joinCode?.trim() || null;
+    reconnectContext = {
+      connection: {
+        roomId: connection.roomId,
+        joinCode: normalizedJoinCode,
       },
-      onStateChange(state, detail) {
-        if (activeClient !== client) {
-          return;
-        }
-
-        internalStore.setState((currentState) => ({
-          ...currentState,
-          connectionStatus:
-            currentState.connectionStatus === "CLOSED" ? currentState.connectionStatus : mapSocketState(state),
-          connectionDetail: detail,
-        }));
+      settings: {
+        ...settings,
+        displayName: settings.displayName.trim(),
       },
-      onError(error) {
-        if (activeClient !== client) {
-          return;
-        }
+    };
+    resetReconnectAttempts();
 
-        internalStore.setState((state) => ({
-          ...state,
-          connectionStatus: "ERROR",
-          connectionDetail: error.message,
-        }));
-        setErrorDialog("WebSocket error", error.message);
+    return startSocketConnection(
+      {
+        roomId: connection.roomId,
+        joinCode: normalizedJoinCode,
       },
-      onClose(event) {
-        if (activeClient !== client) {
-          return;
-        }
-
-        activeClient = null;
-        internalStore.setState((state) => ({
-          ...state,
-          connectionStatus:
-            state.connectionStatus === "CLOSED" ? "CLOSED" : event.code === 1000 ? "DISCONNECTED" : "ERROR",
-          connectionDetail:
-            state.connectionStatus === "CLOSED"
-              ? state.connectionDetail
-              : event.reason || `Socket closed (${event.code}).`,
-        }));
-      },
-    });
-
-    activeClient = client;
-
-    try {
-      client.connect();
-      return true;
-    } catch (error) {
-      activeClient = null;
-      internalStore.setState((state) => ({
-        ...state,
-        connectionStatus: "ERROR",
-        connectionDetail: error instanceof Error ? error.message : "Failed to connect.",
-      }));
-      setErrorDialog("Connection failed", error instanceof Error ? error.message : "Failed to connect.");
-      return false;
-    }
+      settings,
+      true,
+    );
   },
   leaveRoom(): void {
+    clearReconnectContext();
     closeCurrentClient(true);
     clearRequestIds();
     activeMockScenarioId = null;
@@ -673,6 +833,11 @@ export const roomStore = {
     }
 
     if (activeClient === null) {
+      const state = internalStore.getState();
+      if (hasReconnectInFlight(state)) {
+        return false;
+      }
+
       setErrorDialog("No active room", "Join a room before sending room actions.");
       pushAudioEvent({
         kind: "error",

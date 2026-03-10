@@ -21,14 +21,16 @@ export interface LobbyStoreState {
   lastLoadedAt: string | null;
 }
 
+const defaultFilters: LobbyFilters = {
+  mode: "",
+  playStyle: "",
+  levelFilter: "",
+  roomComment: "",
+};
+
 const internalStore = createExternalStore<LobbyStoreState>({
   rooms: [],
-  filters: {
-    mode: "",
-    playStyle: "",
-    levelFilter: "",
-    roomComment: "",
-  },
+  filters: defaultFilters,
   currentCursor: null,
   previousCursors: [],
   nextCursor: null,
@@ -104,6 +106,15 @@ export const lobbyStore = {
   },
   async refresh(baseUrl: string): Promise<void> {
     await loadLobbyPage(baseUrl, null, []);
+  },
+  resetFilters(): void {
+    internalStore.setState((state) => ({
+      ...state,
+      filters: defaultFilters,
+      currentCursor: null,
+      previousCursors: [],
+      nextCursor: null,
+    }));
   },
   async nextPage(baseUrl: string): Promise<void> {
     const state = internalStore.getState();
