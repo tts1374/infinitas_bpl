@@ -5,9 +5,8 @@ LOBBY 系本体 Cloudflare Worker を提供する package です。
 ## Cloudflare リソース
 
 - Worker: `infinitas-arena`
-- Durable Object binding: `ROOM_DO`
-- KV binding: `ROOM_LOBBY_KV`
-- migration tag: `v1-room-do-lobby`
+- Durable Object binding: `ROOM_DO` / `LOBBY_DIRECTORY_DO`
+- migration tags: `v1-room-do-lobby`, `v1-lobby-directory-do`
 
 この package は updater 用 Worker ではありません。desktop release は [release-desktop.yml](../../.github/workflows/release-desktop.yml)、updater API は [apps/update-worker](../update-worker/README.md) を使います。
 
@@ -43,13 +42,12 @@ LOBBY Worker の production deploy は [deploy-worker.yml](../../.github/workflo
 - `CLOUDFLARE_API_TOKEN_WORKER`
 - `CLOUDFLARE_ACCOUNT_ID`
 
-`CLOUDFLARE_API_TOKEN_WORKER` は LOBBY Worker deploy 専用です。Wrangler 実行時の認証にのみ使い、desktop release や updater 用 KV 更新には使いません。
+`CLOUDFLARE_API_TOKEN_WORKER` は LOBBY Worker deploy 専用です。Wrangler 実行時の認証にのみ使い、desktop release や updater 用更新には使いません。
 
 想定する最小権限:
 
 - `Account Settings: Read`
 - `Workers Scripts: Edit`
-- `Workers KV Storage: Edit`
 
 ### 必要な GitHub Variables
 

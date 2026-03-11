@@ -6,11 +6,14 @@ compatibility_date = "2025-01-01"
 name = "ROOM_DO"
 class_name = "RoomDurableObject"
 
-[[kv_namespaces]]
-binding = "ROOM_LOBBY_KV"
-id = "178977f3a6914369b3afd7d82b6e183b"
-preview_id = "34dd03c3d53e4006b64f57d680076bb2"
+[[durable_objects.bindings]]
+name = "LOBBY_DIRECTORY_DO"
+class_name = "LobbyDirectoryDO"
 
 [[migrations]]
 tag = "v1-room-do-lobby"
 new_sqlite_classes = ["RoomDurableObject"]
+
+[[migrations]]
+tag = "v1-lobby-directory-do"
+new_sqlite_classes = ["LobbyDirectoryDO"]
