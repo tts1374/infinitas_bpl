@@ -1,19 +1,20 @@
 import {
   JOIN_CODE_LENGTH,
   LEVEL_FILTERS,
+  MATCH_TTL_MINUTES,
   MAX_PLAYERS_OPTIONS,
   MODES,
   PLAY_STYLES,
-  ROOM_KV_EXPIRES_MINUTES,
   ROOM_COMMENT_ALLOW_EMPTY,
   ROOM_COMMENT_ALLOW_NEWLINE,
   ROOM_COMMENT_MAX_LENGTH,
+  type LobbyRoomSummary,
   type RoomSettings,
   WIN_METRICS,
 } from "@infinitas/shared";
 import type { CreateRoomResponse } from "../types/api";
 import type { WorkerEnv } from "../types/env";
-import { putLobbyRoom, type StoredLobbyRoomEntry } from "../kv/lobby-kv";
+import { upsertLobbyDirectoryRoom } from "./lobby-directory";
 import { generateJoinCode, isValidJoinCode, normalizeJoinCode } from "./join-code";
 import { initializeRoomDurableObject } from "./room-do";
 import { asEnumValue, asNullableString, asOptionalString, isRecord } from "../utils/validation";
@@ -34,7 +35,7 @@ function normalizeVisibility(value: unknown): RoomSettings["visibility"] | undef
 }
 
 function computeRoomExpiry(createdAt: Date): Date {
-  return new Date(createdAt.getTime() + ROOM_KV_EXPIRES_MINUTES * 60_000);
+  return new Date(createdAt.getTime() + MATCH_TTL_MINUTES * 60_000);
 }
 
 function ensureRoomComment(value: unknown): string {
@@ -124,24 +125,30 @@ function parseCreateRoomPayload(payload: unknown): CreateRoomInput {
   };
 }
 
-function toLobbyEntry(roomId: string, input: CreateRoomInput): StoredLobbyRoomEntry {
-  if (input.settings.visibility === "PRIVATE") {
-    throw new Error("PRIVATE room must not be written to lobby.");
+function deriveRoomName(settings: RoomSettings): string {
+  const comment = settings.room_comment.trim();
+  if (comment.length > 0) {
+    return comment;
   }
 
+  return `${settings.mode} ${settings.play_style}`;
+}
+
+function toLobbySummary(roomId: string, input: CreateRoomInput): LobbyRoomSummary {
+  const createdAt = input.createdAt.getTime();
   return {
-    room_id: roomId,
-    visibility: input.settings.visibility,
-    public_lobby_candidate: true,
-    has_join_code: input.settings.join_code !== null,
-    mode: input.settings.mode,
-    win_metric: input.settings.win_metric,
-    play_style: input.settings.play_style,
-    level_filter: input.settings.level_filter,
-    room_comment: input.settings.room_comment,
-    max_players: input.settings.max_players,
-    created_at: input.createdAt.toISOString(),
-    expires_at: input.expiresAt.toISOString(),
+    roomId,
+    roomName: deriveRoomName(input.settings),
+    ownerUserId: "",
+    ownerDisplayName: "",
+    isPublic: input.settings.visibility === "PUBLIC",
+    currentPlayers: 0,
+    maxPlayers: input.settings.max_players,
+    isFull: false,
+    status: "LOBBY",
+    ttlStartedAt: createdAt,
+    createdAt,
+    updatedAt: createdAt,
   };
 }
 
@@ -156,7 +163,7 @@ export async function createRoom(
   await initializeRoomDurableObject(env, roomId, parsed.settings, createdAtIso);
 
   if (parsed.settings.visibility === "PUBLIC") {
-    await putLobbyRoom(env, toLobbyEntry(roomId, parsed));
+    await upsertLobbyDirectoryRoom(env, toLobbySummary(roomId, parsed));
   }
 
   return {
