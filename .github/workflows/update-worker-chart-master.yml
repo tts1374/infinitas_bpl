@@ -1,0 +1,72 @@
+name: Update Worker chart master
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "10 18 * * *"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: update-worker-chart-master
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: v1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Rebuild worker chart master snapshot
+        run: python scripts/build_worker_chart_master.py
+
+      - name: Create pull request when snapshot changes
+        id: create_pr
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          base: v1
+          branch: codex/auto-update-worker-chart-master
+          delete-branch: true
+          commit-message: "chore(worker): update generated iidx song master"
+          title: "chore(worker): update generated iidx song master"
+          body: |
+            ## Summary
+            - Rebuilt `apps/worker/src/master/generated/iidx-song-master.json` from the latest `tts1374/iidx_all_songs_master` release.
+            - This PR was created automatically by `.github/workflows/update-worker-chart-master.yml`.
+
+            ## Run details
+            - Trigger: `${{ github.event_name }}`
+            - Workflow run: `${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}`
+          add-paths: |
+            apps/worker/src/master/generated/iidx-song-master.json
+
+      - name: Enable auto-merge for update PR
+        if: steps.create_pr.outputs.pull-request-number != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          pr_number="${{ steps.create_pr.outputs.pull-request-number }}"
+          repo_auto_merge_enabled="$(gh api repos/${{ github.repository }} --jq '.allow_auto_merge')"
+
+          if [[ "${repo_auto_merge_enabled}" != "true" ]]; then
+            echo "::warning::Repository auto-merge is disabled. Enable 'Allow auto-merge' in repository settings to activate this step."
+            exit 0
+          fi
+
+          if [[ "$(gh pr view "${pr_number}" --json autoMergeRequest --jq '.autoMergeRequest != null')" == "true" ]]; then
+            echo "Auto-merge already enabled for PR #${pr_number}."
+            exit 0
+          fi
+
+          gh pr merge --auto --squash "${pr_number}"

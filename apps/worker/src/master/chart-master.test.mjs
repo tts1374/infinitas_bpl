@@ -1,0 +1,147 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { createRoomChartMaster } from "./chart-master.ts";
+
+function createSnapshot() {
+  return {
+    metadata: {
+      source_repo: "test/repo",
+      release_tag: "test-tag",
+      sqlite_file_name: "test.sqlite",
+      schema_version: "1",
+      generated_at: "2026-03-11T00:00:00.000Z",
+      sha256: "test-hash",
+      byte_size: 1,
+    },
+    charts: [
+      {
+        play_style: "SP",
+        difficulty: "HYPER",
+        level: 10,
+        title: "Blue Fire",
+        title_qualifier: "",
+        artist: "Unit A",
+        genre: "TRANCE",
+        title_search_key: "blue fire",
+      },
+      {
+        play_style: "SP",
+        difficulty: "ANOTHER",
+        level: 12,
+        title: "Blue Fire",
+        title_qualifier: "",
+        artist: "Unit A",
+        genre: "TRANCE",
+        title_search_key: "blue fire",
+      },
+      {
+        play_style: "SP",
+        difficulty: "NORMAL",
+        level: 8,
+        title: "Night Sky",
+        title_qualifier: "",
+        artist: "Unit B",
+        genre: "HOUSE",
+        title_search_key: "night sky",
+      },
+      {
+        play_style: "DP",
+        difficulty: "HYPER",
+        level: 10,
+        title: "Blue Fire",
+        title_qualifier: "",
+        artist: "Unit A",
+        genre: "TRANCE",
+        title_search_key: "blue fire",
+      },
+    ],
+    aliases: {
+      "Blue Fire (Alias)": "blue fire",
+      "NightSky": "night sky",
+    },
+  };
+}
+
+test("searchCharts applies filters and pagination", () => {
+  const master = createRoomChartMaster(createSnapshot());
+
+  const page1 = master.searchCharts({
+    play_style: "SP",
+    level_filter: "ANY",
+    keyword: "blue",
+    limit: 1,
+  });
+  assert.equal(page1.charts.length, 1);
+  assert.equal(page1.charts[0]?.chart_key, "SP::HYPER::blue fire");
+  assert.equal(page1.next_cursor, "1");
+
+  const page2 = master.searchCharts({
+    play_style: "SP",
+    level_filter: "ANY",
+    keyword: "blue",
+    cursor: page1.next_cursor ?? undefined,
+    limit: 1,
+  });
+  assert.equal(page2.charts.length, 1);
+  assert.equal(page2.charts[0]?.chart_key, "SP::ANOTHER::blue fire");
+  assert.equal(page2.next_cursor, null);
+});
+
+test("resolvePickChartKey supports direct and alias lookup", () => {
+  const master = createRoomChartMaster(createSnapshot());
+
+  const direct = master.resolvePickChartKey("SP::HYPER::blue fire", "SP", "ANY");
+  assert.equal(direct?.chart_key, "SP::HYPER::blue fire");
+
+  const aliased = master.resolvePickChartKey("SP::HYPER::Blue Fire (Alias)", "SP", "ANY");
+  assert.equal(aliased?.chart_key, "SP::HYPER::blue fire");
+
+  const jsonAliased = master.resolvePickChartKey(
+    JSON.stringify({
+      difficulty: "HYPER",
+      title: "Blue Fire (Alias)",
+    }),
+    "SP",
+    "ANY",
+  );
+  assert.equal(jsonAliased?.chart_key, "SP::HYPER::blue fire");
+
+  const playStyleMismatch = master.resolvePickChartKey("DP::HYPER::blue fire", "SP", "ANY");
+  assert.equal(playStyleMismatch, null);
+
+  const levelMismatch = master.resolvePickChartKey("SP::HYPER::blue fire", "SP", "LV12");
+  assert.equal(levelMismatch, null);
+});
+
+test("pickRandomUnusedChart respects preferred options and used chart keys", () => {
+  const master = createRoomChartMaster(createSnapshot());
+
+  const preferred = master.pickRandomUnusedChart({
+    play_style: "SP",
+    level_filter: "LV12",
+    used_chart_keys: new Set(),
+    seed: "seed-preferred",
+    preferred_difficulty: "ANOTHER",
+    preferred_level: 12,
+  });
+  assert.equal(preferred?.chart_key, "SP::ANOTHER::blue fire");
+
+  const fallback = master.pickRandomUnusedChart({
+    play_style: "SP",
+    level_filter: "LV8_10",
+    used_chart_keys: new Set(["SP::HYPER::blue fire"]),
+    seed: "seed-fallback",
+    preferred_difficulty: "ANOTHER",
+    preferred_level: 10,
+  });
+  assert.ok(fallback);
+  assert.equal(fallback?.chart_key, "SP::NORMAL::night sky");
+
+  const exhausted = master.pickRandomUnusedChart({
+    play_style: "SP",
+    level_filter: "LV8_10",
+    used_chart_keys: new Set(["SP::HYPER::blue fire", "SP::NORMAL::night sky"]),
+    seed: "seed-exhausted",
+  });
+  assert.equal(exhausted, null);
+});

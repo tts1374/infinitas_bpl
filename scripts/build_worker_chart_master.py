@@ -73,6 +73,7 @@ def build_payload(sqlite_path: Path, release_tag: str, manifest: dict) -> dict:
             FROM chart c
             JOIN music m ON m.music_id = c.music_id
             WHERE c.is_active = 1
+              AND c.is_inf_active = 1
               AND m.is_inf_active = 1
             ORDER BY m.title_search_key, c.play_style, c.difficulty
             """
@@ -99,6 +100,7 @@ def build_payload(sqlite_path: Path, release_tag: str, manifest: dict) -> dict:
             JOIN music m ON m.textage_id = a.textage_id
             JOIN chart c ON c.music_id = m.music_id
             WHERE c.is_active = 1
+              AND c.is_inf_active = 1
               AND m.is_inf_active = 1
             ORDER BY alias, m.title_search_key
             """
