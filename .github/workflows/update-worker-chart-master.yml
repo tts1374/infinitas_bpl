@@ -31,6 +31,7 @@ jobs:
         run: python scripts/build_worker_chart_master.py
 
       - name: Create pull request when snapshot changes
+        id: create_pr
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -49,3 +50,17 @@ jobs:
             - Workflow run: `${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}`
           add-paths: |
             apps/worker/src/master/generated/iidx-song-master.json
+
+      - name: Enable auto-merge for update PR
+        if: steps.create_pr.outputs.pull-request-number != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          pr_number="${{ steps.create_pr.outputs.pull-request-number }}"
+
+          if [[ "$(gh pr view "${pr_number}" --json autoMergeRequest --jq '.autoMergeRequest != null')" == "true" ]]; then
+            echo "Auto-merge already enabled for PR #${pr_number}."
+            exit 0
+          fi
+
+          gh pr merge --auto --squash "${pr_number}"
