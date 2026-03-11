@@ -26,7 +26,7 @@ Ph1 では以下を重視する。
 ### 1.2 サーバ
 - **Cloudflare Workers**
 - **Durable Objects**
-- **Cloudflare KV**
+- **LobbyDirectoryDO（Durable Object）**
 
 ### 1.3 共通
 - **TypeScript**
@@ -50,10 +50,10 @@ Ph1 では以下を重視する。
 - EC2 常駐よりも初期コストを抑えやすい
 - 「ルーム = 1DO」として FSM を素直に実装できる
 
-### 2.3 KV を採用する理由
-- 公開ロビー一覧の軽量メタを保持する用途に十分
-- ルーム本体の状態を DO と分離できる
-- 一覧取得時の責務を「KV候補取得 + DO詳細照会」に分離できる
+### 2.3 LobbyDirectoryDO を採用する理由
+- 公開ロビー一覧の正本を DO storage に集約し、反映遅延を抑制できる
+- KV の最終整合依存を排除し、ルーム更新と一覧反映を同一 DO 契約で扱える
+- TTL 清掃と表示条件フィルタを一覧正本側で一元管理できる
 
 ---
 
@@ -116,7 +116,7 @@ Ph1 では以下を重視する。
 - HTTP エンドポイント提供
 - WebSocket Upgrade の入口
 - room_id に応じて DO へルーティング
-- 公開ロビー一覧の取得（KV候補取得 + DO照会 + フィルタ）
+- 公開ロビー一覧の取得（LobbyDirectoryDO 取得 + TTL 清掃 + フィルタ）
 
 ### Durable Object の責務
 - ルーム状態の保持
@@ -129,13 +129,14 @@ Ph1 では以下を重視する。
 - ホスト代理SKIP
 - 結果集計
 - ルーム内ブロードキャスト
-- 一覧API向け詳細状態の参照元（`room_state` / `players.length` / `settings.max_players`）
+- 一覧要約（`LobbyRoomSummary`）の生成と `LobbyDirectoryDO` への通知
+- `ttlStartedAt` を含む寿命起点の維持
 
-### KV の責務
-- 公開ロビー一覧用の軽量メタと `public_lobby_candidate` の保持
-- `visibility = PUBLIC` のルームだけを登録
-- `public_lobby_candidate` は `PUBLIC` かつ `LOBBY` の候補フラグとして更新
-- CLOSED 時に削除
+### LobbyDirectoryDO の責務
+- 公開ロビー一覧の正本保持（storage 永続化 / constructor 復元）
+- 一覧取得時と更新時の TTL 清掃
+- 表示条件（公開・非満員・LOBBY/READY_CHECK・TTL 未超過）のフィルタ
+- `upsertRoom` / `removeRoom` による RoomDO からの更新受理
 
 ---
 
@@ -224,8 +225,7 @@ Ph1 では認証を導入しない。
 ## 11. Cloudflare 環境構成（Ph1）
 
 - Workers: 1
-- Durable Object Namespace: 1
-- KV Namespace: 1
+- Durable Object Namespace: 2（RoomDO / LobbyDirectoryDO）
 - D1: 使用しない
 - R2: 使用しない
 - Queue: 使用しない

@@ -3,7 +3,7 @@
 ## 0. 前提（実装基盤）
 - ルーム = 1 Durable Object（以下 DO）
 - Worker は HTTP/WS の入口（ルーティングのみ）。FSMはDO内で完結。
-- ルーム一覧（公開ロビー）は Cloudflare KV に軽量保存する（DOに負荷を寄せない）。
+- 公開ロビー一覧の正本は `LobbyDirectoryDO` とし、KV はロビー用途で使わない。
 - 先着順・時刻基準は DO の `Date.now()` を正とする（単一実体なので整合が取れる）。
 
 ## 1. 識別子
@@ -62,16 +62,23 @@
 - `room_comment`: string
 - `max_players`: `2 | 3 | 4`
 
-### 公開ロビー（KV）
-- `visibility = PUBLIC` のルームだけを公開ロビー候補として扱う
-- KVには「軽量メタ + public_lobby_candidate」だけを保存し、詳細状態はDOを正とする
-  - room_id, visibility, public_lobby_candidate, join_code有無（値は保存しない）, mode, play_style, level_filter, win_metric, room_comment, max_players, created_at, expires_at
-- `public_lobby_candidate = true` の条件は `visibility = PUBLIC` かつ `room_state = LOBBY`
-- `public_lobby_candidate` は `LOBBY` 入り / `LOBBY` 離脱 / ルーム終了（CLOSED）時だけ更新する
-- Worker の一覧APIは KV の候補を読んだ後、対応する DO から `room_state`、`players.length`、`settings.max_players` を導出して人数表示と満員判定を確定する
-- DO 参照成功時に `room_state != LOBBY` または満員と判定できた候補は一覧から除外する
-- DO 参照失敗時は一覧全体を失敗させず候補を残し、人数表示を unavailable として扱う
-- ルーム終了（CLOSED）時にKVから削除
+### 公開ロビー（LobbyDirectoryDO）
+- `LobbyDirectoryDO` が公開ロビー一覧の唯一の正本を保持する
+- 一覧要約は `LobbyRoomSummary`（`roomId`, `roomName`, `ownerUserId`, `ownerDisplayName`, `isPublic`, `currentPlayers`, `maxPlayers`, `isFull`, `status`, `ttlStartedAt`, `createdAt`, `updatedAt`）を保持する
+- `ttlStartedAt` は TTL 判定専用で、次のタイミングでのみ更新する
+  - `LOBBY` 開始
+  - `PICKING` 開始（`START_MATCH` 成功）
+  - `RESULT -> LOBBY` 復帰
+- 一覧表示条件（`GET /api/lobby`）
+  - `isPublic = true`
+  - `isFull = false`
+  - `status in [LOBBY, READY_CHECK]`
+  - TTL 未超過
+- TTL 判定
+  - `status in [LOBBY, READY_CHECK]`: `now - ttlStartedAt > ready_check_ttl` で期限切れ
+  - `status in [PICKING, PLAYING, RESULT]`: `now - ttlStartedAt > match_ttl` で期限切れ
+- `LobbyDirectoryDO` は一覧取得時/更新時に期限切れルームを清掃する
+- ルーム終了（CLOSED）時は `LobbyDirectoryDO` から削除する
 
 ## 6. LOBBY（参加・設定閲覧）
 - 参加/退出は自由（最大 `max_players`）
@@ -208,5 +215,5 @@
 - ホスト操作で即 `CLOSED` も可
 - 対戦正常終了時は `RESULT` に入り、必要に応じて `RESULT -> LOBBY` で再戦準備に戻す
 - 部分結果は各クライアントのローカル保存（snapshot）で表示可能とする
-- `CLOSED` 遷移時にKVのロビー情報を削除する
+- `CLOSED` 遷移時に `LobbyDirectoryDO` のロビー情報を削除する
 - `cancel` SE は `close_reason != ALL_ROUNDS_COMPLETED` のときのみ1回だけ鳴らす
