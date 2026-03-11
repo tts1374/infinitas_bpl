@@ -1,161 +1,66 @@
-import type { LevelFilter, Mode, PlayStyle, RoomListQuery, RoomListingEntry } from "@infinitas/shared";
-import { listRooms } from "../services/worker-api-client";
+import type { LobbyRoomSummary } from "@infinitas/shared";
+import { listLobby } from "../services/worker-api-client";
 import { createExternalStore, useExternalStore } from "./create-store";
 
-export interface LobbyFilters {
-  mode: Mode | "";
-  playStyle: PlayStyle | "";
-  levelFilter: LevelFilter | "";
-  roomComment: string;
-}
-
 export interface LobbyStoreState {
-  rooms: RoomListingEntry[];
-  filters: LobbyFilters;
-  currentCursor: string | null;
-  previousCursors: Array<string | null>;
-  nextCursor: string | null;
-  activeRoomCount: number;
+  rooms: LobbyRoomSummary[];
   loading: boolean;
   errorMessage: string | null;
   lastLoadedAt: string | null;
+  serverTime: number | null;
 }
-
-const defaultFilters: LobbyFilters = {
-  mode: "",
-  playStyle: "",
-  levelFilter: "",
-  roomComment: "",
-};
 
 const internalStore = createExternalStore<LobbyStoreState>({
   rooms: [],
-  filters: defaultFilters,
-  currentCursor: null,
-  previousCursors: [],
-  nextCursor: null,
-  activeRoomCount: 0,
   loading: false,
   errorMessage: null,
   lastLoadedAt: null,
+  serverTime: null,
 });
-
-async function loadLobbyPage(
-  baseUrl: string,
-  cursor: string | null,
-  previousCursors: Array<string | null>,
-): Promise<void> {
-  const state = internalStore.getState();
-  const query: RoomListQuery = {};
-
-  if (cursor !== null) {
-    query.cursor = cursor;
-  }
-  if (state.filters.mode) {
-    query.mode = state.filters.mode;
-  }
-  if (state.filters.playStyle) {
-    query.play_style = state.filters.playStyle;
-  }
-  if (state.filters.levelFilter) {
-    query.level_filter = state.filters.levelFilter;
-  }
-  if (state.filters.roomComment.trim().length > 0) {
-    query.room_comment = state.filters.roomComment.trim();
-  }
-
-  internalStore.setState((currentState) => ({
-    ...currentState,
-    loading: true,
-    errorMessage: null,
-  }));
-
-  try {
-    const response = await listRooms(baseUrl, query);
-    internalStore.setState((currentState) => ({
-      ...currentState,
-      rooms: response.rooms,
-      currentCursor: cursor,
-      previousCursors,
-      nextCursor: response.next_cursor,
-      activeRoomCount: response.active_room_count,
-      loading: false,
-      errorMessage: null,
-      lastLoadedAt: new Date().toISOString(),
-    }));
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to load lobby.";
-    internalStore.setState((currentState) => ({
-      ...currentState,
-      loading: false,
-      errorMessage: message,
-    }));
-  }
-}
 
 export const lobbyStore = {
   ...internalStore,
-  updateFilter<K extends keyof LobbyFilters>(key: K, value: LobbyFilters[K]): void {
-    internalStore.setState((state) => ({
-      ...state,
-      filters: {
-        ...state.filters,
-        [key]: value,
-      },
-    }));
-  },
-  async refresh(baseUrl: string): Promise<void> {
-    await loadLobbyPage(baseUrl, null, []);
-  },
-  resetFilters(): void {
-    internalStore.setState((state) => ({
-      ...state,
-      filters: defaultFilters,
-      currentCursor: null,
-      previousCursors: [],
-      nextCursor: null,
-    }));
-  },
-  async nextPage(baseUrl: string): Promise<void> {
-    const state = internalStore.getState();
-    if (state.nextCursor === null) {
-      return;
-    }
-
-    await loadLobbyPage(baseUrl, state.nextCursor, [...state.previousCursors, state.currentCursor]);
-  },
-  async previousPage(baseUrl: string): Promise<void> {
-    const state = internalStore.getState();
-    if (state.previousCursors.length === 0) {
-      return;
-    }
-
-    const previousCursor = state.previousCursors[state.previousCursors.length - 1] ?? null;
-    await loadLobbyPage(baseUrl, previousCursor, state.previousCursors.slice(0, -1));
-  },
-  async goToPage(baseUrl: string, pageNumber: number): Promise<void> {
-    const state = internalStore.getState();
-    const currentPage = state.previousCursors.length + 1;
-
-    if (pageNumber < 1 || pageNumber === currentPage) {
-      return;
-    }
-
-    if (pageNumber === currentPage + 1) {
-      if (state.nextCursor === null) {
-        return;
+  upsertOptimistic(room: LobbyRoomSummary): void {
+    internalStore.setState((state) => {
+      const nextRooms = [...state.rooms];
+      const existingIndex = nextRooms.findIndex((entry) => entry.roomId === room.roomId);
+      if (existingIndex >= 0) {
+        nextRooms[existingIndex] = room;
+      } else {
+        nextRooms.unshift(room);
       }
 
-      await loadLobbyPage(baseUrl, state.nextCursor, [...state.previousCursors, state.currentCursor]);
-      return;
-    }
+      return {
+        ...state,
+        rooms: nextRooms,
+      };
+    });
+  },
+  async refresh(baseUrl: string): Promise<void> {
+    internalStore.setState((state) => ({
+      ...state,
+      loading: true,
+      errorMessage: null,
+    }));
 
-    if (pageNumber > currentPage) {
-      return;
+    try {
+      const response = await listLobby(baseUrl);
+      internalStore.setState((state) => ({
+        ...state,
+        rooms: response.rooms,
+        loading: false,
+        errorMessage: null,
+        serverTime: response.serverTime,
+        lastLoadedAt: new Date().toISOString(),
+      }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to load lobby.";
+      internalStore.setState((state) => ({
+        ...state,
+        loading: false,
+        errorMessage: message,
+      }));
     }
-
-    const targetCursor = pageNumber === 1 ? null : state.previousCursors[pageNumber - 1] ?? null;
-    await loadLobbyPage(baseUrl, targetCursor, state.previousCursors.slice(0, Math.max(0, pageNumber - 1)));
   },
 };
 
