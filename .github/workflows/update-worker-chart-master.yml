@@ -57,6 +57,12 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pr_number="${{ steps.create_pr.outputs.pull-request-number }}"
+          repo_auto_merge_enabled="$(gh api repos/${{ github.repository }} --jq '.allow_auto_merge')"
+
+          if [[ "${repo_auto_merge_enabled}" != "true" ]]; then
+            echo "::warning::Repository auto-merge is disabled. Enable 'Allow auto-merge' in repository settings to activate this step."
+            exit 0
+          fi
 
           if [[ "$(gh pr view "${pr_number}" --json autoMergeRequest --jq '.autoMergeRequest != null')" == "true" ]]; then
             echo "Auto-merge already enabled for PR #${pr_number}."
