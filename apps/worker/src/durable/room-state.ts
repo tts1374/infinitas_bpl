@@ -728,6 +728,10 @@ export class RoomLobbyState {
       }
     }
 
+    if (this.roomState === "RESULT" && this.matchDeadline !== null) {
+      baseAlarm = this.matchDeadline;
+    }
+
     if (baseAlarm === null) {
       return hostDisconnectDeadline;
     }
@@ -1017,10 +1021,18 @@ export class RoomLobbyState {
   expireMatchIfNeeded(now: Date): RoundTransitionResult | null {
     if (
       this.matchDeadline === null ||
-      (this.roomState !== "PICKING" && this.roomState !== "PLAYING") ||
+      (this.roomState !== "PICKING" && this.roomState !== "PLAYING" && this.roomState !== "RESULT") ||
       now.getTime() < this.matchDeadline.getTime()
     ) {
       return null;
+    }
+
+    if (this.roomState === "RESULT") {
+      this.close("MATCH_TTL_EXPIRED", now);
+      return {
+        confirmations: [],
+        ...(this.resultReadyPayload === null ? {} : { result_ready: this.resultReadyPayload }),
+      };
     }
 
     if (this.roomState === "PICKING" || this.currentRound === null) {
@@ -1413,7 +1425,6 @@ export class RoomLobbyState {
     this.roomState = "RESULT";
     this.readyCheckDeadline = null;
     this.pickingDeadline = null;
-    this.matchDeadline = null;
     this.resultDeadline = null;
     this.closeReason = null;
     this.closedAt = null;

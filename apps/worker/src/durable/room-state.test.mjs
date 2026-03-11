@@ -416,3 +416,18 @@ test("conflicting final result blocks rating", () => {
   assert.equal(summary.rated_block_reason, "result_conflict");
   assert.deepEqual(summary.winner_player_ids.sort(), ["guest", "host"]);
 });
+
+test("MATCH_TTL expires in RESULT and closes room", () => {
+  const state = createState();
+  prepareMatch(state);
+
+  playCurrentRound(state, 0, 2200, 2100, "2026-03-08T00:02");
+  playCurrentRound(state, 1, 2300, 2000, "2026-03-08T00:03");
+
+  assert.equal(state.getRoomState(), "RESULT");
+
+  const transition = state.expireMatchIfNeeded(new Date("2026-03-08T00:31:01.000Z"));
+  assert.ok(transition);
+  assert.equal(state.getRoomState(), "CLOSED");
+  assert.equal(state.toSnapshot().close_reason, "MATCH_TTL_EXPIRED");
+});
