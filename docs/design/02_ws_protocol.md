@@ -8,8 +8,8 @@
 - 冪等化: クライアント送信は `client_msg_id`（UUID）必須。DO内で `(player_id, client_msg_id)` を重複排除。
 
 ## 1. 接続経路（推奨）
-- `POST /api/rooms`（HTTP）: ルーム作成（room_id払い出し、KVへ軽量メタ登録）
-- `GET /api/rooms`（HTTP）: 公開ロビー一覧（KV読み）
+- `POST /api/rooms`（HTTP）: ルーム作成（room_id払い出し、RoomDO初期化、LobbyDirectoryDO登録）
+- `GET /api/lobby`（HTTP）: 公開ロビー一覧（LobbyDirectoryDO読み）
 - `GET /api/rooms/:room_id/ws?join_code=...`（WS Upgrade）: ルームへ接続（Workerがroom_idのDOへルーティング）
 
 ## 2. 共通Envelope

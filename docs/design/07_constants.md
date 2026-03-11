@@ -51,8 +51,8 @@ Ph1で固定するタイマー値、制約値、表示/運用上の定数を整�
   - 2回無応答で切断扱い
 
 ## 2.2 一覧API
-- `ROOM_LIST_PAGE_SIZE = 10`
-  - ロビー一覧1ページの件数
+- `LOBBY_POLL_INTERVAL_SECONDS = 10`
+  - v1 のロビー一覧同期周期（polling）
 
 ---
 
@@ -115,18 +115,16 @@ Ph1で固定するタイマー値、制約値、表示/運用上の定数を整�
 
 ---
 
-## 6. ロビー/KV関連定数
+## 6. ロビー関連定数
 
 ## 6.1 visibility
 - `VISIBILITY_OPTIONS = ["PUBLIC", "PRIVATE"]`
 
-## 6.2 KV一覧保持
-- `ROOM_KV_EXPIRES_AT = CREATED_AT + 30 minutes`
-  - 作成時点でexpires_at設定
-- `ROOM_LIST_EXCLUDE_EXPIRED = true`
-  - `expires_at <= now` は一覧から除外
-- `PUBLIC_LOBBY_CANDIDATE_FIELD = "public_lobby_candidate"`
-  - `visibility = PUBLIC` かつ `room_state = LOBBY` の候補フラグ
+## 6.2 LobbyDirectory 一覧保持
+- `LOBBY_READY_CHECK_TTL_MS = 20 * 60 * 1000`
+- `LOBBY_MATCH_TTL_MS = 30 * 60 * 1000`
+- `LOBBY_STATUS_VISIBLE = ["LOBBY", "READY_CHECK"]`
+- TTL 判定は `ttlStartedAt` のみを使う
 
 ---
 

@@ -1,3 +1,4 @@
+import { LOBBY_POLL_INTERVAL_MS } from "@infinitas/shared";
 import { startTransition, useEffect, useState } from "react";
 import { AppSidebar, type AppView } from "../components/AppSidebar";
 import { captureElementAsPng } from "../dev/visual-capture";
@@ -40,7 +41,6 @@ export function App() {
 
   useEffect(() => {
     if (roomSnapshot === null && activeView === "room" && roomConnectionStatus === "DISCONNECTED") {
-      lobbyStore.resetFilters();
       startTransition(() => {
         setActiveView("lobby");
       });
@@ -53,6 +53,13 @@ export function App() {
     }
 
     void lobbyStore.refresh(savedSettings.apiBaseUrl);
+    const intervalId = window.setInterval(() => {
+      void lobbyStore.refresh(savedSettings.apiBaseUrl);
+    }, LOBBY_POLL_INTERVAL_MS);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
   }, [activeView, savedSettings.apiBaseUrl]);
 
   useEffect(() => {

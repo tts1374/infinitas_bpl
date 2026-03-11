@@ -1,7 +1,5 @@
-import type { ChartSearchEntry } from "@infinitas/shared/models/chart-search";
-import type { RoomSettings } from "@infinitas/shared";
+import type { ChartSearchEntry, LobbyListResponse, RoomSettings } from "@infinitas/shared";
 import type { ISO8601String } from "@infinitas/shared/models/common";
-import type { RoomListingEntry } from "@infinitas/shared/models/room-listing";
 
 export interface ApiErrorResponse {
   error: {
@@ -17,11 +15,7 @@ export interface CreateRoomResponse {
   settings: RoomSettings;
 }
 
-export interface ListRoomsResponse {
-  rooms: RoomListingEntry[];
-  next_cursor: string | null;
-  active_room_count: number;
-}
+export type ListLobbyResponse = LobbyListResponse;
 
 export interface ChartSearchResponse {
   charts: ChartSearchEntry[];

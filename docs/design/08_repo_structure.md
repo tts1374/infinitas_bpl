@@ -206,7 +206,7 @@ Rust 側の監視イベント/設定モデル。
 
 ## 4.1 目的
 
-Cloudflare Workers + Durable Objects + KV によるサーバ側を配置する。
+Cloudflare Workers + Durable Objects によるサーバ側を配置する。
 Worker は入口、DO はルーム状態管理本体とする。
 
 ---
@@ -220,7 +220,6 @@ apps/worker/
     routes/
     durable/
     services/
-    kv/
     utils/
     types/
   wrangler.toml
@@ -246,21 +245,17 @@ HTTP / WS Upgrade の入口。
 * `rooms.ts`
 
   * `POST /api/rooms`
-  * `GET /api/rooms`
   * `GET /api/rooms/:room_id/ws`
+* `lobby.ts`
+
+  * `GET /api/lobby`
 
 ### services
 
 * room 作成補助
 * join_code 生成
-* cursor pagination
 * request validation
-
-### kv
-
-* 公開ロビー用 KV I/O
-* 軽量メタ登録/削除
-* `expires_at` の扱い
+* LobbyDirectoryDO 呼び出し
 
 ### utils
 
@@ -275,6 +270,7 @@ HTTP / WS Upgrade の入口。
 ```text
 apps/worker/src/durable/
   room-object.ts
+  lobby-directory-object.ts
   room-fsm.ts
   room-state.ts
   room-timers.ts
@@ -326,7 +322,6 @@ apps/worker/src/durable/
 * `packages/shared`
 * Cloudflare Workers runtime
 * Durable Objects
-* KV
 
 ---
 
@@ -363,7 +358,7 @@ packages/shared/
 * `07_constants.md` に対応する共有定数
 * タイマー値
 * join_code 長さ/文字集合
-* page size
+* lobby polling 間隔
 * metric値
 * エラーコード
 

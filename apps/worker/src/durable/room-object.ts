@@ -1,8 +1,10 @@
 import {
   LEVEL_FILTERS,
+  MATCH_TTL_MS,
   MAX_PLAYERS_OPTIONS,
   MODES,
   PLAY_STYLES,
+  READY_CHECK_TTL_MS,
   SKIP_REASONS,
   SOURCE_TYPES,
   WIN_METRICS,
@@ -10,16 +12,17 @@ import {
   type ErrorCode,
   type ExpectedKey,
   type JsonObject,
+  type LobbyRoomSummary,
   type RequestIdPayload,
   type RoomJoinPayload,
-  type RoomState,
   type RoomSettings,
+  type RoomStateSnapshot,
   type SkipReason,
   type ServerMessagePayloadMap,
   type ServerMessageType,
 } from "@infinitas/shared";
-import { deleteLobbyRoom, setLobbyRoomCandidate } from "../kv/lobby-kv";
 import { normalizeJoinCode } from "../services/join-code";
+import { removeLobbyDirectoryRoom, upsertLobbyDirectoryRoom } from "../services/lobby-directory";
 import type { WorkerEnv } from "../types/env";
 import { asEnumValue, asOptionalString, isRecord } from "../utils/validation";
 import { createServerEnvelope, decodeClientMessage } from "./ws-codec";
@@ -334,10 +337,6 @@ export class RoomDurableObject {
     if (url.pathname === "/internal/init" && request.method === "POST") {
       return this.handleInternalInitialize(request);
     }
-    if (url.pathname === "/internal/lobby-summary" && request.method === "GET") {
-      return this.handleInternalLobbySummary();
-    }
-
     if (!isWebSocketUpgradeRequest(request)) {
       return new Response("Expected websocket upgrade request.", { status: 426 });
     }
@@ -386,6 +385,7 @@ export class RoomDurableObject {
       this.roomState.initialize(parsed);
       await this.persistRoomRecord();
       await this.syncAlarm();
+      await this.syncLobbyDirectory();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to initialize room.";
       return jsonResponse(400, { error: message });
@@ -394,19 +394,6 @@ export class RoomDurableObject {
     return jsonResponse(200, {
       ok: true,
       room_id: this.roomState.getRoomId(),
-    });
-  }
-
-  private handleInternalLobbySummary(): Response {
-    if (!this.roomState.isInitialized()) {
-      return jsonResponse(404, { error: "Room is not initialized." });
-    }
-
-    const snapshot = this.roomState.toSnapshot();
-    return jsonResponse(200, {
-      room_state: snapshot.room_state,
-      current_members: snapshot.players.length,
-      max_players: snapshot.settings.max_players,
     });
   }
 
@@ -606,6 +593,7 @@ export class RoomDurableObject {
 
     session.playerId = message.player_id;
     await this.persistRoomRecord();
+    await this.syncLobbyDirectory();
 
     this.send(session.socket, "ROOM_JOIN_ACCEPTED", {
       room_state_snapshot: this.roomState.toSnapshot(),
@@ -652,16 +640,18 @@ export class RoomDurableObject {
       if (this.roomState.getRoomState() === "CLOSED") {
         await this.clearAlarm();
         this.broadcastRoomClosed(true);
-        await this.cleanupLobbyEntry();
+        await this.removeLobbyDirectoryEntry();
         this.disconnectAll(4000, closeSocket ? "Host left." : "Host disconnected.");
         return;
       }
 
+      await this.syncLobbyDirectory();
       this.broadcastRoomUpdated();
       return;
     }
 
     await this.persistRoomRecord();
+    await this.syncLobbyDirectory();
     this.broadcastRoomUpdated();
     if (closeSocket) {
       this.safeCloseSocket(session.socket, 1000, "Left room.");
@@ -714,7 +704,6 @@ export class RoomDurableObject {
       return;
     }
 
-    const previousState = this.roomState.getRoomState();
     const result = this.roomState.startMatch(session.playerId, new Date());
     if (!result.ok) {
       switch (result.reason) {
@@ -742,7 +731,7 @@ export class RoomDurableObject {
     this.rememberRequest(session.playerId, message.type, payload.request_id);
     await this.persistRoomRecord();
     await this.syncAlarm();
-    await this.syncLobbyCandidateForStateChange(previousState);
+    await this.syncLobbyDirectory();
     this.broadcast("ROOM_NOTIFICATION", {
       kind: "match_found",
       event_id: this.nextEventId("match_found"),
@@ -771,7 +760,6 @@ export class RoomDurableObject {
       return;
     }
 
-    const previousState = this.roomState.getRoomState();
     const result = this.roomState.returnToLobby(session.playerId, new Date());
     if (!result.ok) {
       if (result.reason === "NOT_HOST") {
@@ -786,7 +774,7 @@ export class RoomDurableObject {
     this.rememberRequest(session.playerId, message.type, payload.request_id);
     await this.persistRoomRecord();
     await this.syncAlarm();
-    await this.syncLobbyCandidateForStateChange(previousState);
+    await this.syncLobbyDirectory();
     this.broadcastRoomUpdated();
   }
 
@@ -821,6 +809,7 @@ export class RoomDurableObject {
     this.broadcastFrozenRoundTransition(result.frozen_rounds, result.round_begin);
 
     await this.syncAlarm();
+    await this.syncLobbyDirectory();
     this.broadcastRoomUpdated();
   }
 
@@ -844,7 +833,6 @@ export class RoomDurableObject {
       return;
     }
 
-    const previousState = this.roomState.getRoomState();
     const result = this.roomState.submitResult(
       session.playerId,
       payload.round_index,
@@ -868,7 +856,7 @@ export class RoomDurableObject {
     }
 
     this.rememberRequest(session.playerId, message.type, payload.request_id);
-    await this.publishRoundTransition(previousState, result);
+    await this.publishRoundTransition(result);
   }
 
   private async handleSkipSelf(session: RoomSocketSession, message: ClientMessage<"SKIP_SELF">): Promise<void> {
@@ -888,7 +876,6 @@ export class RoomDurableObject {
       return;
     }
 
-    const previousState = this.roomState.getRoomState();
     const result = this.roomState.skipSelf(session.playerId, payload.round_index, payload.reason, new Date());
     if (!result.ok) {
       switch (result.reason) {
@@ -902,7 +889,7 @@ export class RoomDurableObject {
     }
 
     this.rememberRequest(session.playerId, message.type, payload.request_id);
-    await this.publishRoundTransition(previousState, result);
+    await this.publishRoundTransition(result);
   }
 
   private async handleSkipHostAssign(
@@ -937,7 +924,6 @@ export class RoomDurableObject {
       return;
     }
 
-    const previousState = this.roomState.getRoomState();
     const result = this.roomState.forceAdvance(session.playerId, new Date());
     if (!result.ok) {
       switch (result.reason) {
@@ -955,7 +941,7 @@ export class RoomDurableObject {
     }
 
     this.rememberRequest(session.playerId, message.type, payload.request_id);
-    await this.publishRoundTransition(previousState, result);
+    await this.publishRoundTransition(result);
   }
 
   private findSessionByPlayerId(playerId: string): RoomSocketSession | null {
@@ -1186,16 +1172,15 @@ export class RoomDurableObject {
     await this.state.storage.put(ROOM_RECORD_STORAGE_KEY, record);
   }
 
-  private async publishRoundTransition(previousState: RoomState, result: RoundTransitionResult): Promise<void> {
+  private async publishRoundTransition(result: RoundTransitionResult): Promise<void> {
     await this.persistRoomRecord();
     await this.syncAlarm();
-    await this.syncLobbyCandidateForStateChange(previousState);
+    await this.syncLobbyDirectory();
     this.broadcastRoundTransition(result);
     this.broadcastRoomUpdated();
     if (this.roomState.getRoomState() === "CLOSED") {
       this.broadcastRoomClosed();
     }
-    await this.cleanupLobbyEntryIfClosed();
   }
 
   private async processDueTransitions(now: Date): Promise<boolean> {
@@ -1207,26 +1192,25 @@ export class RoomDurableObject {
       return true;
     }
 
-    const previousState = this.roomState.getRoomState();
     const pickingTransition = this.roomState.expirePickingIfNeeded(now);
     if (pickingTransition !== null) {
       await this.persistRoomRecord();
       this.broadcastPickingTimeoutTransition(pickingTransition);
       await this.syncAlarm();
-      await this.syncLobbyCandidateForStateChange(previousState);
+      await this.syncLobbyDirectory();
       this.broadcastRoomUpdated();
       return false;
     }
 
     const matchTransition = this.roomState.expireMatchIfNeeded(now);
     if (matchTransition !== null) {
-      await this.publishRoundTransition(previousState, matchTransition);
+      await this.publishRoundTransition(matchTransition);
       return false;
     }
 
     const roundTransition = this.roomState.expireCurrentRoundIfNeeded(now);
     if (roundTransition !== null) {
-      await this.publishRoundTransition(previousState, roundTransition);
+      await this.publishRoundTransition(roundTransition);
     }
 
     return false;
@@ -1241,7 +1225,7 @@ export class RoomDurableObject {
     await this.persistRoomRecord();
     await this.clearAlarm();
     this.broadcastRoomClosed(true);
-    await this.cleanupLobbyEntry();
+    await this.removeLobbyDirectoryEntry();
     this.disconnectAll(4000, "Host disconnected.");
     return true;
   }
@@ -1255,52 +1239,126 @@ export class RoomDurableObject {
     await this.persistRoomRecord();
     await this.clearAlarm();
     this.broadcastRoomClosed(true);
-    await this.cleanupLobbyEntry();
+    await this.removeLobbyDirectoryEntry();
     this.disconnectAll(4001, "Ready check timed out.");
     return true;
   }
 
-  private async cleanupLobbyEntry(): Promise<void> {
+  private deriveLobbyRoomName(snapshot: RoomStateSnapshot): string {
+    const comment = snapshot.settings.room_comment.trim();
+    if (comment.length > 0) {
+      return comment;
+    }
+
+    return `${snapshot.settings.mode} ${snapshot.settings.play_style}`;
+  }
+
+  private resolveLobbyStatus(roomState: RoomStateSnapshot["room_state"]): LobbyRoomSummary["status"] | null {
+    switch (roomState) {
+      case "LOBBY":
+      case "PICKING":
+      case "PLAYING":
+      case "RESULT":
+        return roomState;
+      default:
+        return null;
+    }
+  }
+
+  private resolveLobbyTtlStartedAt(snapshot: RoomStateSnapshot, createdAtMs: number): number {
+    const parseTimestamp = (value: string | null): number | null => {
+      if (value === null) {
+        return null;
+      }
+
+      const parsed = Date.parse(value);
+      return Number.isFinite(parsed) ? parsed : null;
+    };
+
+    if (snapshot.room_state === "LOBBY") {
+      const readyCheckDeadline = parseTimestamp(snapshot.timers.ready_check_deadline);
+      if (readyCheckDeadline !== null) {
+        return readyCheckDeadline - READY_CHECK_TTL_MS;
+      }
+      return createdAtMs;
+    }
+
+    const matchDeadline = parseTimestamp(snapshot.timers.match_deadline);
+    if (matchDeadline !== null) {
+      return matchDeadline - MATCH_TTL_MS;
+    }
+
+    return createdAtMs;
+  }
+
+  private buildLobbySummary(snapshot: RoomStateSnapshot, nowMs: number): LobbyRoomSummary | null {
+    if (snapshot.settings.visibility !== "PUBLIC") {
+      return null;
+    }
+
+    const status = this.resolveLobbyStatus(snapshot.room_state);
+    if (status === null) {
+      return null;
+    }
+
+    if (typeof snapshot.created_at !== "string") {
+      return null;
+    }
+    const createdAtMs = Date.parse(snapshot.created_at);
+    if (!Number.isFinite(createdAtMs)) {
+      return null;
+    }
+
+    const hostPlayer = snapshot.players.find((player) => player.player_id === snapshot.host_player_id);
+    const currentPlayers = snapshot.players.length;
+    const maxPlayers = snapshot.settings.max_players;
+
+    return {
+      roomId: snapshot.room_id,
+      roomName: this.deriveLobbyRoomName(snapshot),
+      ownerUserId: hostPlayer?.player_id ?? snapshot.host_player_id,
+      ownerDisplayName: hostPlayer?.display_name ?? "",
+      isPublic: true,
+      currentPlayers,
+      maxPlayers,
+      isFull: currentPlayers >= maxPlayers,
+      status,
+      ttlStartedAt: this.resolveLobbyTtlStartedAt(snapshot, createdAtMs),
+      createdAt: createdAtMs,
+      updatedAt: nowMs,
+    };
+  }
+
+  private async removeLobbyDirectoryEntry(): Promise<void> {
     if (!this.roomState.isInitialized()) {
       return;
     }
 
     try {
-      await deleteLobbyRoom(this.env, this.roomState.getRoomId());
+      await removeLobbyDirectoryRoom(this.env, this.roomState.getRoomId());
     } catch {
-      // no-op: list API has expires_at guard as fallback
+      // no-op: lobby listing is best-effort from room events
     }
   }
 
-  private async cleanupLobbyEntryIfClosed(): Promise<void> {
-    if (this.roomState.getRoomState() !== "CLOSED") {
-      return;
-    }
-
-    await this.cleanupLobbyEntry();
-  }
-
-  private async syncLobbyCandidateForStateChange(previousState: RoomState): Promise<void> {
+  private async syncLobbyDirectory(): Promise<void> {
     if (!this.roomState.isInitialized()) {
       return;
     }
 
-    const settings = this.roomState.getSettings();
-    if (settings.visibility !== "PUBLIC") {
-      return;
-    }
+    const snapshot = this.roomState.toSnapshot();
+    const nowMs = Date.now();
+    const summary = this.buildLobbySummary(snapshot, nowMs);
 
-    const nextState = this.roomState.getRoomState();
-    const wasCandidate = previousState === "LOBBY";
-    const isCandidate = nextState === "LOBBY";
-    if (wasCandidate === isCandidate || nextState === "CLOSED") {
+    if (summary === null) {
+      await this.removeLobbyDirectoryEntry();
       return;
     }
 
     try {
-      await setLobbyRoomCandidate(this.env, this.roomState.getRoomId(), isCandidate);
+      await upsertLobbyDirectoryRoom(this.env, summary);
     } catch {
-      // no-op: stale candidate rows are filtered by DO lookup where possible
+      // no-op: listing will converge on next state update/poll
     }
   }
 }
