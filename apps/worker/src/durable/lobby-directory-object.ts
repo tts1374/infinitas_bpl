@@ -1,4 +1,14 @@
-import { LOBBY_ROOM_STATUSES, MATCH_TTL_MS, READY_CHECK_TTL_MS, type LobbyListResponse, type LobbyRoomSummary } from "@infinitas/shared";
+import {
+  LEVEL_FILTERS,
+  LOBBY_ROOM_STATUSES,
+  MATCH_TTL_MS,
+  MODES,
+  PLAY_STYLES,
+  READY_CHECK_TTL_MS,
+  WIN_METRICS,
+  type LobbyListResponse,
+  type LobbyRoomSummary,
+} from "@infinitas/shared";
 import { isRecord } from "../utils/validation";
 
 interface DurableObjectStorageLike {
@@ -41,6 +51,17 @@ function parseLobbyRoomSummary(payload: unknown): LobbyRoomSummary | null {
   const roomName = typeof payload.roomName === "string" ? payload.roomName : "";
   const ownerUserId = typeof payload.ownerUserId === "string" ? payload.ownerUserId : "";
   const ownerDisplayName = typeof payload.ownerDisplayName === "string" ? payload.ownerDisplayName : "";
+  const mode = MODES.includes(payload.mode as (typeof MODES)[number]) ? (payload.mode as (typeof MODES)[number]) : "ARENA";
+  const playStyle = PLAY_STYLES.includes(payload.playStyle as (typeof PLAY_STYLES)[number])
+    ? (payload.playStyle as (typeof PLAY_STYLES)[number])
+    : "SP";
+  const levelFilter = LEVEL_FILTERS.includes(payload.levelFilter as (typeof LEVEL_FILTERS)[number])
+    ? (payload.levelFilter as (typeof LEVEL_FILTERS)[number])
+    : "ANY";
+  const winMetric = WIN_METRICS.includes(payload.winMetric as (typeof WIN_METRICS)[number])
+    ? (payload.winMetric as (typeof WIN_METRICS)[number])
+    : "SCORE";
+  const hasJoinCode = typeof payload.hasJoinCode === "boolean" ? payload.hasJoinCode : false;
   const isPublic = typeof payload.isPublic === "boolean" ? payload.isPublic : null;
   const currentPlayers = typeof payload.currentPlayers === "number" ? payload.currentPlayers : null;
   const maxPlayers = payload.maxPlayers === 2 || payload.maxPlayers === 3 || payload.maxPlayers === 4 ? payload.maxPlayers : null;
@@ -69,6 +90,11 @@ function parseLobbyRoomSummary(payload: unknown): LobbyRoomSummary | null {
     roomName,
     ownerUserId,
     ownerDisplayName,
+    mode,
+    playStyle,
+    levelFilter,
+    winMetric,
+    hasJoinCode,
     isPublic,
     currentPlayers,
     maxPlayers,
