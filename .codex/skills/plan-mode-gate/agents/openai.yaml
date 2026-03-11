@@ -1,0 +1,4 @@
+interface:
+  display_name: "Plan Mode Gate"
+  short_description: "Decide Plan Mode and generate task drafts"
+  default_prompt: "Classify change risk and decide if Plan Mode is required before implementation."

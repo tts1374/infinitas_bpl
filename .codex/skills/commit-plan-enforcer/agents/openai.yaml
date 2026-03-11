@@ -1,0 +1,4 @@
+interface:
+  display_name: "Commit Plan Enforcer"
+  short_description: "Enforce task commit split and sequence"
+  default_prompt: "Validate commit sequence against tasks commit plan and block out-of-plan commits."

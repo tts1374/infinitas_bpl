@@ -385,17 +385,22 @@ test("mismatched observed_key poisons the match even if the player later submits
   assert.equal(summary.rated_block_reason, "mismatch_observed_key");
 });
 
-test("BPL early finish is unrated because not all rounds completed", () => {
+test("BPL always plays 3 stages before entering RESULT", () => {
   const state = createState({ mode: "BPL", max_players: 2 });
   prepareMatch(state);
 
   playCurrentRound(state, 0, 2200, 2100, "2026-03-08T00:02");
   playCurrentRound(state, 1, 2300, 2000, "2026-03-08T00:03");
+  assert.equal(state.getRoomState(), "PLAYING");
+  assert.equal(state.toSnapshot().current_round?.round_index, 2);
+
+  playCurrentRound(state, 2, 2400, 2300, "2026-03-08T00:04");
 
   const summary = getResultSummary(state);
   assert.equal(state.getRoomState(), "RESULT");
-  assert.equal(summary.is_rated, false);
-  assert.equal(summary.rated_block_reason, "incomplete_match");
+  assert.equal(summary.is_rated, true);
+  assert.equal(summary.rated_block_reason, null);
+  assert.deepEqual(summary.winner_player_ids, ["host"]);
 });
 
 test("conflicting final result blocks rating", () => {

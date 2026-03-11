@@ -1,0 +1,4 @@
+interface:
+  display_name: "Windows UTF-8 Safe Write"
+  short_description: "Prevent encoding and line-ending corruption"
+  default_prompt: "Apply safe read/write steps on Windows to preserve UTF-8 no BOM and LF with clean diffs."

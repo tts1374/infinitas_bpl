@@ -1687,14 +1687,7 @@ export class RoomLobbyState {
       return false;
     }
 
-    if (roundIndex >= this.frozenRounds.length - 1) {
-      return true;
-    }
-
-    const wins = this.computeBplWins(roundIndex);
-    const requiredWins = Math.floor(this.frozenRounds.length / 2) + 1;
-
-    return [...wins.values()].some((count) => count >= requiredWins);
+    return roundIndex >= this.frozenRounds.length - 1;
   }
 
   private computeBplWins(maxRoundIndex: number): Map<string, number> {

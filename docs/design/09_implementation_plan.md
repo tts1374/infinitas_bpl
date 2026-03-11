@@ -23,7 +23,7 @@ Ph1 の完成条件は以下とする。
 - Cloudflare Worker + Durable Object + KV が動作する
 - ロビー作成・一覧取得・入室ができる
 - READY_CHECK -> PICKING -> PLAYING -> RESULT の一連の遷移が成立する
-- ARENA / BPL（BO3）が動作する
+- ARENA / BPL（3 STAGE）が動作する
 - SCORE / MISSCOUNT の勝敗判定が動作する
 - `inf_daken_counter` / `inf-notebook` の両ソースで監視提出ができる
 - expected一致による採用制御ができる
@@ -289,7 +289,7 @@ DO から read-only の譜面マスタを参照できるようにし、凍結譜
 - host_skip_unlock_seconds
 - FORCE_ADVANCE
 - ARENA 配点
-- BPL BO3 集計
+- BPL 3 STAGE 集計
 - RESULT_READY
 
 ### 完了条件
