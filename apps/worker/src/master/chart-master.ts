@@ -65,6 +65,9 @@ export interface RandomUnusedChartOptions {
   seed: string;
   preferred_difficulty?: ChartDifficulty;
   preferred_level?: number | null;
+  preferred_level_min?: number | null;
+  preferred_level_max?: number | null;
+  enforce_level_range?: boolean;
 }
 
 export interface SearchChartsOptions {
@@ -412,12 +415,27 @@ export function createRoomChartMaster(snapshotInput: WorkerChartMasterSnapshot):
       seed,
       preferred_difficulty,
       preferred_level,
+      preferred_level_min,
+      preferred_level_max,
+      enforce_level_range,
     }) {
       const poolKey = `${play_style}::${level_filter}`;
       const pool = poolByFilter.get(poolKey) ?? [];
       if (pool.length === 0) {
         return null;
       }
+
+      const hasLevelRange =
+        typeof preferred_level_min === "number" &&
+        Number.isFinite(preferred_level_min) &&
+        typeof preferred_level_max === "number" &&
+        Number.isFinite(preferred_level_max);
+      const levelRange = hasLevelRange
+        ? {
+            min: Math.min(preferred_level_min, preferred_level_max),
+            max: Math.max(preferred_level_min, preferred_level_max),
+          }
+        : null;
 
       const candidateGroups: ResolvedMasterChart[][] = [];
       if (preferred_difficulty && typeof preferred_level === "number") {
@@ -430,13 +448,38 @@ export function createRoomChartMaster(snapshotInput: WorkerChartMasterSnapshot):
         );
       }
 
-      if (preferred_difficulty) {
+      if (preferred_difficulty && hasLevelRange) {
+        candidateGroups.push(
+          pool.filter(
+            (chart) =>
+              chart.expected_key.difficulty === preferred_difficulty &&
+              typeof chart.display.level === "number" &&
+              chart.display.level >= (levelRange?.min ?? Number.NEGATIVE_INFINITY) &&
+              chart.display.level <= (levelRange?.max ?? Number.POSITIVE_INFINITY),
+          ),
+        );
+      }
+
+      if (hasLevelRange) {
+        candidateGroups.push(
+          pool.filter(
+            (chart) =>
+              typeof chart.display.level === "number" &&
+              chart.display.level >= (levelRange?.min ?? Number.NEGATIVE_INFINITY) &&
+              chart.display.level <= (levelRange?.max ?? Number.POSITIVE_INFINITY),
+          ),
+        );
+      }
+
+      if (preferred_difficulty && !(enforce_level_range && hasLevelRange)) {
         candidateGroups.push(
           pool.filter((chart) => chart.expected_key.difficulty === preferred_difficulty),
         );
       }
 
-      candidateGroups.push(pool);
+      if (!(enforce_level_range && hasLevelRange)) {
+        candidateGroups.push(pool);
+      }
 
       for (const candidates of candidateGroups) {
         const unusedCandidates = candidates.filter((chart) => !used_chart_keys.has(chart.chart_key));

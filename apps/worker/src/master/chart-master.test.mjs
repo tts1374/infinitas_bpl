@@ -137,6 +137,38 @@ test("pickRandomUnusedChart respects preferred options and used chart keys", () 
   assert.ok(fallback);
   assert.equal(fallback?.chart_key, "SP::NORMAL::night sky");
 
+  const ranged = master.pickRandomUnusedChart({
+    play_style: "SP",
+    level_filter: "ANY",
+    used_chart_keys: new Set(["SP::NORMAL::night sky"]),
+    seed: "seed-ranged",
+    preferred_level_min: 8,
+    preferred_level_max: 10,
+    enforce_level_range: true,
+  });
+  assert.equal(ranged?.chart_key, "SP::HYPER::blue fire");
+
+  const rangedExhausted = master.pickRandomUnusedChart({
+    play_style: "SP",
+    level_filter: "ANY",
+    used_chart_keys: new Set(["SP::HYPER::blue fire", "SP::NORMAL::night sky"]),
+    seed: "seed-ranged-exhausted",
+    preferred_level_min: 8,
+    preferred_level_max: 10,
+    enforce_level_range: true,
+  });
+  assert.equal(rangedExhausted, null);
+
+  const rangedFallback = master.pickRandomUnusedChart({
+    play_style: "SP",
+    level_filter: "ANY",
+    used_chart_keys: new Set(["SP::HYPER::blue fire", "SP::NORMAL::night sky"]),
+    seed: "seed-ranged-fallback",
+    preferred_level_min: 8,
+    preferred_level_max: 10,
+  });
+  assert.equal(rangedFallback?.chart_key, "SP::ANOTHER::blue fire");
+
   const exhausted = master.pickRandomUnusedChart({
     play_style: "SP",
     level_filter: "LV8_10",

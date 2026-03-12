@@ -1586,10 +1586,21 @@ export class RoomLobbyState {
 
   private buildMasterRandomRound(roundIndex: number, existingRounds: FrozenRound[]): FrozenRound | null {
     const usedKeys = new Set(existingRounds.map((round) => expectedKeyId(round.expected_key)));
+    const pickedLevels = existingRounds
+      .map((round) => round.display.level)
+      .filter((level): level is number => typeof level === "number");
+    if (pickedLevels.length === 0) {
+      return null;
+    }
+    const levelMin = Math.min(...pickedLevels);
+    const levelMax = Math.max(...pickedLevels);
     const randomChart = this.chartMaster.pickRandomUnusedChart({
       play_style: this.settings.play_style,
       level_filter: this.settings.level_filter,
       used_chart_keys: usedKeys,
+      preferred_level_min: levelMin,
+      preferred_level_max: levelMax,
+      enforce_level_range: true,
       seed: `${this.roomId}:random:${roundIndex}:${Array.from(usedKeys).sort().join("|")}`,
     });
     if (randomChart === null) {

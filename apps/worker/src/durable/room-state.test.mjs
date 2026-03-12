@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { RoomLobbyState } from "./room-state.ts";
 
-function buildChart(chartKey, titleSearchKey, title) {
+function buildChart(chartKey, titleSearchKey, title, level) {
   return {
     chart_key: chartKey,
     expected_key: {
@@ -12,16 +12,16 @@ function buildChart(chartKey, titleSearchKey, title) {
     },
     display: {
       title,
-      level: 12,
+      level,
     },
   };
 }
 
 function createChartMaster() {
   const charts = [
-    buildChart("chart-1", "chart-one", "Chart One"),
-    buildChart("chart-2", "chart-two", "Chart Two"),
-    buildChart("chart-3", "chart-three", "Chart Three"),
+    buildChart("chart-1", "chart-one", "Chart One", 11),
+    buildChart("chart-2", "chart-two", "Chart Two", 8),
+    buildChart("chart-3", "chart-three", "Chart Three", 10),
   ];
   const chartsByKey = new Map(charts.map((chart) => [chart.chart_key, chart]));
 
@@ -29,8 +29,33 @@ function createChartMaster() {
     resolvePickChartKey(pickChartKey) {
       return chartsByKey.get(pickChartKey) ?? null;
     },
-    pickRandomUnusedChart({ used_chart_keys }) {
-      return charts.find((chart) => !used_chart_keys.has(chart.chart_key)) ?? null;
+    pickRandomUnusedChart({
+      used_chart_keys,
+      preferred_level_min,
+      preferred_level_max,
+      enforce_level_range,
+    }) {
+      const unusedCharts = charts.filter((chart) => !used_chart_keys.has(chart.chart_key));
+      const hasLevelRange =
+        typeof preferred_level_min === "number" && typeof preferred_level_max === "number";
+      if (!hasLevelRange) {
+        return unusedCharts[0] ?? null;
+      }
+
+      const levelMin = Math.min(preferred_level_min, preferred_level_max);
+      const levelMax = Math.max(preferred_level_min, preferred_level_max);
+      const rangedUnusedCharts = unusedCharts.filter(
+        (chart) => chart.display.level >= levelMin && chart.display.level <= levelMax,
+      );
+      if (rangedUnusedCharts.length > 0) {
+        return rangedUnusedCharts[0] ?? null;
+      }
+
+      if (enforce_level_range) {
+        return null;
+      }
+
+      return unusedCharts[0] ?? null;
     },
     searchCharts() {
       return { entries: [], next_cursor: null, previous_cursor: null };
@@ -401,6 +426,26 @@ test("BPL always plays 3 stages before entering RESULT", () => {
   assert.equal(summary.is_rated, true);
   assert.equal(summary.rated_block_reason, null);
   assert.deepEqual(summary.winner_player_ids, ["host"]);
+});
+
+test("BPL random third stage level stays within first two picks range", () => {
+  const state = createState({ mode: "BPL", max_players: 2 });
+  prepareMatch(state, { hostPick: "chart-1", guestPick: "chart-2" });
+
+  const snapshot = state.toSnapshot();
+  assert.equal(snapshot.frozen_rounds.length, 3);
+
+  const firstLevel = snapshot.frozen_rounds[0]?.display.level;
+  const secondLevel = snapshot.frozen_rounds[1]?.display.level;
+  const randomLevel = snapshot.frozen_rounds[2]?.display.level;
+
+  assert.equal(typeof firstLevel, "number");
+  assert.equal(typeof secondLevel, "number");
+  assert.equal(typeof randomLevel, "number");
+
+  const minLevel = Math.min(firstLevel, secondLevel);
+  const maxLevel = Math.max(firstLevel, secondLevel);
+  assert.ok(randomLevel >= minLevel && randomLevel <= maxLevel);
 });
 
 test("conflicting final result blocks rating", () => {
