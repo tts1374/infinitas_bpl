@@ -81,12 +81,34 @@ pub struct ParsedSourceObservation {
 }
 
 #[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ParsedSourceUnresolvedCaseKind {
+    ResolvedPartial,
+    AmbiguousRecent,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ParsedSourceUnresolvedCase {
+    pub kind: ParsedSourceUnresolvedCaseKind,
+    pub timestamp: String,
+    pub play_style: String,
+    pub difficulty: String,
+    pub title: String,
+    pub title_search_key: Option<String>,
+    pub score: Option<u32>,
+    pub misscount: Option<u32>,
+    pub recent_candidate_count: Option<u32>,
+}
+
+#[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ParsedSourceChange {
     pub source: SourceType,
     pub file_path: String,
     pub file_size_bytes: u64,
     pub observations: Vec<ParsedSourceObservation>,
+    pub unresolved_cases: Vec<ParsedSourceUnresolvedCase>,
 }
 
 #[derive(Clone, Debug, Serialize)]

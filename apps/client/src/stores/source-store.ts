@@ -4,6 +4,7 @@ import {
   isTauriRuntime,
   listenToSourceWatcherEvents,
   type ParsedSourceChangePayload,
+  type ParsedSourceUnresolvedCasePayload,
   startSourceWatcher,
   stopSourceWatcher,
   type SourceWatcherEventKind,
@@ -11,7 +12,12 @@ import {
   type SourceWatcherStatePayload,
   type SourceWatcherStatus,
 } from "../services/tauri-bridge";
-import { submitParsedSourceChange } from "../services/source-submission";
+import {
+  submitNotebookForcedRegistration,
+  submitParsedSourceChange,
+  type NotebookDialogChartInfo,
+  type NotebookForcedRegistrationPayload,
+} from "../services/source-submission";
 import { roomStore } from "./room-store";
 import { createExternalStore, useExternalStore } from "./create-store";
 import { type ClientSettings, type SourcePaths } from "./settings-store";
@@ -35,8 +41,52 @@ export interface SourceWatcherEventLogEntry {
 export interface SourceStoreState {
   watcherState: SourceWatcherState;
   lastEvent: SourceWatcherEventLogEntry | null;
+  activeUnresolvedDialog: SourceUnresolvedDialog | null;
+  unresolvedDialogQueue: SourceUnresolvedDialog[];
   runtimeReady: boolean;
 }
+
+type DialogAction = "accept" | "skip" | "close";
+
+interface SourceDialogChartInfo {
+  title: string;
+  titleSearchKey: string | null;
+  playStyle: "SP" | "DP";
+  difficulty: string;
+  metricLabel: "EXSCORE" | "MISSCOUNT";
+  metricValue: number | null;
+}
+
+interface SourceUnresolvedDialogBase {
+  id: string;
+  source: SourceType;
+  originLabel: string;
+}
+
+export interface SourceUnresolvedAliasDialog extends SourceUnresolvedDialogBase {
+  kind: "unresolved_alias";
+  expectedTarget: SourceDialogChartInfo;
+  parsedResult: SourceDialogChartInfo;
+  mismatchReason: string;
+  forcePayload: NotebookForcedRegistrationPayload;
+}
+
+export interface SourceResolvedPartialDialog extends SourceUnresolvedDialogBase {
+  kind: "resolved_partial";
+  chart: SourceDialogChartInfo;
+}
+
+export interface SourceAmbiguousRecentDialog extends SourceUnresolvedDialogBase {
+  kind: "ambiguous_recent";
+  chart: SourceDialogChartInfo;
+  candidateCount: number;
+  errorCode: "NB-AMBIGUOUS-RECENT";
+}
+
+export type SourceUnresolvedDialog =
+  | SourceUnresolvedAliasDialog
+  | SourceResolvedPartialDialog
+  | SourceAmbiguousRecentDialog;
 
 interface StartOptions {
   force?: boolean;
@@ -45,6 +95,7 @@ interface StartOptions {
 let attachedListener: (() => void) | null = null;
 let attachPromise: Promise<void> | null = null;
 let appliedConfigKey: string | null = null;
+let unresolvedDialogSequence = 0;
 
 const initialState: SourceStoreState = {
   watcherState: {
@@ -55,6 +106,8 @@ const initialState: SourceStoreState = {
     lastEventAt: null,
   },
   lastEvent: null,
+  activeUnresolvedDialog: null,
+  unresolvedDialogQueue: [],
   runtimeReady: false,
 };
 
@@ -95,6 +148,148 @@ function mapWatcherEvent(payload: SourceWatcherEventPayload): SourceWatcherEvent
   };
 }
 
+function nextUnresolvedDialogId(): string {
+  unresolvedDialogSequence += 1;
+  return `source-unresolved-${Date.now()}-${unresolvedDialogSequence}`;
+}
+
+function getActiveRoundMetricContext():
+  | { winMetric: "SCORE" | "MISSCOUNT"; metricLabel: "EXSCORE" | "MISSCOUNT" }
+  | null {
+  const snapshot = roomStore.getState().snapshot;
+  if (snapshot === null || snapshot.room_state !== "PLAYING" || snapshot.current_round === null) {
+    return null;
+  }
+
+  return {
+    winMetric: snapshot.settings.win_metric,
+    metricLabel: snapshot.settings.win_metric === "SCORE" ? "EXSCORE" : "MISSCOUNT",
+  };
+}
+
+function normalizePlayStyle(value: string): "SP" | "DP" {
+  return value === "DP" ? "DP" : "SP";
+}
+
+function buildDialogChartInfo(
+  unresolvedCase: ParsedSourceUnresolvedCasePayload,
+  metricContext: { winMetric: "SCORE" | "MISSCOUNT"; metricLabel: "EXSCORE" | "MISSCOUNT" },
+): SourceDialogChartInfo {
+  const metricValue =
+    metricContext.winMetric === "SCORE" ? unresolvedCase.score : unresolvedCase.misscount;
+  return {
+    title:
+      unresolvedCase.title.trim().length > 0
+        ? unresolvedCase.title
+        : (unresolvedCase.titleSearchKey ?? "(unknown)"),
+    titleSearchKey: unresolvedCase.titleSearchKey,
+    playStyle: normalizePlayStyle(unresolvedCase.playStyle),
+    difficulty: unresolvedCase.difficulty,
+    metricLabel: metricContext.metricLabel,
+    metricValue,
+  };
+}
+
+function buildUnresolvedDialogsFromParserOutput(
+  parserOutput: ParsedSourceChangePayload,
+): SourceUnresolvedDialog[] {
+  const metricContext = getActiveRoundMetricContext();
+  if (metricContext === null) {
+    return [];
+  }
+
+  const unresolvedCases = parserOutput.unresolvedCases ?? [];
+  const dialogs: SourceUnresolvedDialog[] = [];
+  for (const unresolvedCase of unresolvedCases) {
+    if (unresolvedCase.kind === "resolved_partial") {
+      dialogs.push({
+        id: nextUnresolvedDialogId(),
+        kind: "resolved_partial",
+        source: parserOutput.source,
+        originLabel: parserOutput.source,
+        chart: buildDialogChartInfo(unresolvedCase, metricContext),
+      });
+      continue;
+    }
+
+    if (unresolvedCase.kind === "ambiguous_recent") {
+      dialogs.push({
+        id: nextUnresolvedDialogId(),
+        kind: "ambiguous_recent",
+        source: parserOutput.source,
+        originLabel: parserOutput.source,
+        chart: buildDialogChartInfo(unresolvedCase, metricContext),
+        candidateCount: Math.max(2, unresolvedCase.recentCandidateCount ?? 2),
+        errorCode: "NB-AMBIGUOUS-RECENT",
+      });
+    }
+  }
+
+  return dialogs;
+}
+
+function buildUnresolvedAliasDialog(
+  source: SourceType,
+  pending: {
+    expectedTarget: NotebookDialogChartInfo;
+    parsedResult: NotebookDialogChartInfo;
+    mismatchReason: string;
+    forcePayload: NotebookForcedRegistrationPayload;
+  },
+): SourceUnresolvedAliasDialog {
+  return {
+    id: nextUnresolvedDialogId(),
+    kind: "unresolved_alias",
+    source,
+    originLabel: source,
+    expectedTarget: pending.expectedTarget,
+    parsedResult: pending.parsedResult,
+    mismatchReason: pending.mismatchReason,
+    forcePayload: pending.forcePayload,
+  };
+}
+
+function enqueueUnresolvedDialogs(newDialogs: SourceUnresolvedDialog[]): void {
+  if (newDialogs.length === 0) {
+    return;
+  }
+
+  internalStore.setState((state) => {
+    const queue = [...state.unresolvedDialogQueue, ...newDialogs];
+    if (state.activeUnresolvedDialog !== null) {
+      return {
+        ...state,
+        unresolvedDialogQueue: queue,
+      };
+    }
+
+    const [nextDialog, ...remainingQueue] = queue;
+    return {
+      ...state,
+      activeUnresolvedDialog: nextDialog ?? null,
+      unresolvedDialogQueue: remainingQueue,
+    };
+  });
+}
+
+function advanceUnresolvedDialogQueue(): void {
+  internalStore.setState((state) => {
+    if (state.unresolvedDialogQueue.length === 0) {
+      return {
+        ...state,
+        activeUnresolvedDialog: null,
+      };
+    }
+
+    const [nextDialog, ...remainingQueue] = state.unresolvedDialogQueue;
+    return {
+      ...state,
+      activeUnresolvedDialog: nextDialog ?? null,
+      unresolvedDialogQueue: remainingQueue,
+    };
+  });
+}
+
 function handleWatcherError(payload: SourceWatcherEventPayload): void {
   if (payload.kind !== "ERROR") {
     return;
@@ -117,8 +312,17 @@ function handleWatcherEvent(payload: SourceWatcherEventPayload): void {
     return;
   }
 
+  const unresolvedDialogs = buildUnresolvedDialogsFromParserOutput(payload.parserOutput);
   const outcome = submitParsedSourceChange(payload.parserOutput, payload.parserOutput.source);
-  if (!outcome.ok) {
+  if (outcome.pendingUnresolvedAlias) {
+    unresolvedDialogs.push(
+      buildUnresolvedAliasDialog(payload.parserOutput.source, outcome.pendingUnresolvedAlias),
+    );
+  }
+
+  enqueueUnresolvedDialogs(unresolvedDialogs);
+
+  if (!outcome.ok && outcome.pendingUnresolvedAlias === undefined && unresolvedDialogs.length === 0) {
     roomStore.noteLocalEvent(`Source auto-submit skipped: ${outcome.message}`);
   }
 }
@@ -180,10 +384,64 @@ async function ensureAttached(): Promise<void> {
   await attachPromise;
 }
 
+function logUnresolvedAliasDecision(
+  dialog: SourceUnresolvedAliasDialog,
+  userAccepted: boolean,
+): void {
+  const logPayload: {
+    expected_target: SourceUnresolvedAliasDialog["expectedTarget"];
+    parsed_result: SourceUnresolvedAliasDialog["parsedResult"];
+    mismatch_reason: string;
+    user_accepted: boolean;
+    user_skipped?: boolean;
+  } = {
+    expected_target: dialog.expectedTarget,
+    parsed_result: dialog.parsedResult,
+    mismatch_reason: dialog.mismatchReason,
+    user_accepted: userAccepted,
+  };
+  if (!userAccepted) {
+    logPayload.user_skipped = true;
+  }
+  console.info("inf-notebook unresolved_alias decision", logPayload);
+}
+
 export const sourceStore = {
   ...internalStore,
   async attach(): Promise<void> {
     await ensureAttached();
+  },
+  resolveActiveUnresolvedDialog(action: DialogAction): void {
+    const activeDialog = internalStore.getState().activeUnresolvedDialog;
+    if (activeDialog === null) {
+      return;
+    }
+
+    if (activeDialog.kind === "unresolved_alias") {
+      const userAccepted = action === "accept";
+      logUnresolvedAliasDecision(activeDialog, userAccepted);
+      if (userAccepted) {
+        const outcome = submitNotebookForcedRegistration(
+          activeDialog.forcePayload,
+          activeDialog.originLabel,
+        );
+        if (!outcome.ok) {
+          roomStore.noteLocalEvent(`Source auto-submit skipped: ${outcome.message}`);
+        }
+      } else {
+        roomStore.noteLocalEvent("Source auto-submit skipped: unresolved_alias was not approved.");
+      }
+    } else if (activeDialog.kind === "resolved_partial") {
+      roomStore.noteLocalEvent(
+        "Source auto-submit skipped: inf-notebook resolved_partial requires re-registration.",
+      );
+    } else {
+      roomStore.noteLocalEvent(
+        `Source auto-submit skipped: ${activeDialog.errorCode} (candidates=${activeDialog.candidateCount}).`,
+      );
+    }
+
+    advanceUnresolvedDialogQueue();
   },
   detach(): void {
     attachedListener?.();
@@ -192,6 +450,8 @@ export const sourceStore = {
     internalStore.setState((state) => ({
       ...state,
       runtimeReady: false,
+      activeUnresolvedDialog: null,
+      unresolvedDialogQueue: [],
     }));
   },
   async start(

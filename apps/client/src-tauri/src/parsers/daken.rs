@@ -54,6 +54,7 @@ impl SourceParser for DakenParser {
                 file_path: input.changed_path.to_string_lossy().into_owned(),
                 file_size_bytes: metadata.len(),
                 observations: Vec::new(),
+                unresolved_cases: Vec::new(),
             }));
         }
 
@@ -76,6 +77,7 @@ impl SourceParser for DakenParser {
             file_path: self.xml_path.to_string_lossy().into_owned(),
             file_size_bytes: metadata.len(),
             observations,
+            unresolved_cases: Vec::new(),
         }))
     }
 }

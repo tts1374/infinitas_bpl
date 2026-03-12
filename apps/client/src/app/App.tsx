@@ -4,6 +4,7 @@ import { AppSidebar, type AppView } from "../components/AppSidebar";
 import { captureElementAsPng } from "../dev/visual-capture";
 import { getVisualScenario } from "../dev/visual-scenarios";
 import { ErrorDialog } from "../components/ErrorDialog";
+import { SourceUnresolvedDialog } from "../components/SourceUnresolvedDialog";
 import { LobbyPage } from "../pages/LobbyPage";
 import { RoomPage } from "../pages/RoomPage";
 import { SettingsPage } from "../pages/SettingsPage";
@@ -14,7 +15,7 @@ import { statsArchiveService } from "../services/stats-archive";
 import { voiceAnnouncerService } from "../services/voice-announcer";
 import { lobbyStore } from "../stores/lobby-store";
 import { roomStore, useRoomStore } from "../stores/room-store";
-import { sourceStore } from "../stores/source-store";
+import { sourceStore, useSourceStore } from "../stores/source-store";
 import { isRoomEntryReady, settingsStore, useSettingsStore } from "../stores/settings-store";
 
 export function App() {
@@ -22,6 +23,7 @@ export function App() {
   const roomSnapshot = useRoomStore((state) => state.snapshot);
   const roomConnectionStatus = useRoomStore((state) => state.connectionStatus);
   const dialog = useRoomStore((state) => state.errorDialog);
+  const sourceUnresolvedDialog = useSourceStore((state) => state.activeUnresolvedDialog);
   const [activeView, setActiveView] = useState<AppView>("lobby");
   const [mockScenario] = useState(() =>
     runtimeConfig.mockScenarioId ? getVisualScenario(runtimeConfig.mockScenarioId) : null,
@@ -124,6 +126,10 @@ export function App() {
     roomStore.clearError();
   }
 
+  function resolveSourceUnresolvedDialog(action: "accept" | "skip" | "close"): void {
+    sourceStore.resolveActiveUnresolvedDialog(action);
+  }
+
   async function handleCapture(): Promise<void> {
     const captureRoot = document.getElementById("visual-capture-root");
     if (!(captureRoot instanceof HTMLElement)) {
@@ -181,6 +187,12 @@ export function App() {
         ) : null}
       </section>
 
+      {sourceUnresolvedDialog ? (
+        <SourceUnresolvedDialog
+          dialog={sourceUnresolvedDialog}
+          onAction={resolveSourceUnresolvedDialog}
+        />
+      ) : null}
       {dialog ? <ErrorDialog dialog={dialog} onClose={dismissDialog} /> : null}
       {shouldShowSetupDialog ? (
         <div className="fixed inset-0 z-[2800] flex items-center justify-center bg-black/85 p-4 backdrop-blur-md">

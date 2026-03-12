@@ -10,7 +10,10 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use crate::{
-    models::{ParsedSourceChange, ParsedSourceObservation, SourcePathsConfig, SourceType},
+    models::{
+        ParsedSourceChange, ParsedSourceObservation, ParsedSourceUnresolvedCase,
+        ParsedSourceUnresolvedCaseKind, SourcePathsConfig, SourceType,
+    },
     parsers::{ParserInput, SourceParser},
 };
 
@@ -66,11 +69,20 @@ struct SummaryLatestRecord {
     play_style: String,
     difficulty: String,
     latest_timestamp: String,
+    score: Option<u32>,
+    misscount: Option<u32>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct SummaryLatestValue {
+    latest_timestamp: String,
+    score: Option<u32>,
+    misscount: Option<u32>,
 }
 
 #[derive(Clone, Debug, Default)]
 struct SummarySnapshot {
-    latest_by_chart: HashMap<SummaryChartKey, String>,
+    latest_by_chart: HashMap<SummaryChartKey, SummaryLatestValue>,
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -128,6 +140,7 @@ struct NotebookResolutionResult {
     summary: SummaryLatestRecord,
     title_search_key: Option<String>,
     recent: Option<RecentIndexedRecord>,
+    recent_candidate_count: Option<u32>,
     warnings: Vec<String>,
 }
 
@@ -175,6 +188,7 @@ impl SourceParser for NotebookParser {
                 file_path: input.changed_path.to_string_lossy().into_owned(),
                 file_size_bytes: metadata.len(),
                 observations: Vec::new(),
+                unresolved_cases: Vec::new(),
             }));
         }
 
@@ -193,6 +207,7 @@ impl SourceParser for NotebookParser {
                 file_path: self.summary_path.to_string_lossy().into_owned(),
                 file_size_bytes: metadata.len(),
                 observations: Vec::new(),
+                unresolved_cases: Vec::new(),
             }));
         }
 
@@ -209,12 +224,17 @@ impl SourceParser for NotebookParser {
             .iter()
             .filter_map(resolution_result_to_observation)
             .collect::<Vec<_>>();
+        let unresolved_cases = resolution_results
+            .iter()
+            .filter_map(resolution_result_to_unresolved_case)
+            .collect::<Vec<_>>();
 
         Ok(Some(ParsedSourceChange {
             source: SourceType::InfNotebook,
             file_path: self.summary_path.to_string_lossy().into_owned(),
             file_size_bytes: metadata.len(),
             observations,
+            unresolved_cases,
         }))
     }
 }
@@ -283,11 +303,7 @@ fn parse_summary_snapshot(raw_json: &str) -> Result<SummarySnapshot, String> {
                 let Some(difficulty) = normalize_chart_difficulty(difficulty_raw) else {
                     continue;
                 };
-                let Some(latest_timestamp_raw) = extract_latest_timestamp(chart_record_value)
-                else {
-                    continue;
-                };
-                let Ok(latest_timestamp) = parse_timestamp(latest_timestamp_raw) else {
+                let Some(latest_value) = extract_latest_value(chart_record_value) else {
                     continue;
                 };
                 latest_by_chart.insert(
@@ -296,7 +312,7 @@ fn parse_summary_snapshot(raw_json: &str) -> Result<SummarySnapshot, String> {
                         play_style: play_style.clone(),
                         difficulty,
                     },
-                    latest_timestamp,
+                    latest_value,
                 );
             }
         }
@@ -304,12 +320,51 @@ fn parse_summary_snapshot(raw_json: &str) -> Result<SummarySnapshot, String> {
     Ok(SummarySnapshot { latest_by_chart })
 }
 
-fn extract_latest_timestamp(chart_record: &Value) -> Option<&str> {
-    let latest_node = chart_record.get("latest")?;
-    latest_node
-        .as_str()
-        .or_else(|| latest_node.get("timestamp").and_then(Value::as_str))
-        .or_else(|| chart_record.get("latest_timestamp").and_then(Value::as_str))
+fn extract_latest_value(chart_record: &Value) -> Option<SummaryLatestValue> {
+    let latest_node = chart_record.get("latest");
+    let latest_timestamp_raw = latest_node
+        .and_then(|node| {
+            node.as_str()
+                .or_else(|| node.get("timestamp").and_then(Value::as_str))
+        })
+        .or_else(|| chart_record.get("latest_timestamp").and_then(Value::as_str))?;
+    let latest_timestamp = parse_timestamp(latest_timestamp_raw).ok()?;
+
+    let score = parse_optional_summary_metric(
+        latest_node.and_then(|node| node.get("score")),
+        "score",
+        &latest_timestamp,
+    );
+    let misscount = parse_optional_summary_metric(
+        latest_node.and_then(|node| node.get("misscount")),
+        "misscount",
+        &latest_timestamp,
+    );
+
+    Some(SummaryLatestValue {
+        latest_timestamp,
+        score,
+        misscount,
+    })
+}
+
+fn parse_optional_summary_metric(
+    raw_value: Option<&Value>,
+    field_name: &str,
+    timestamp: &str,
+) -> Option<u32> {
+    let value = raw_value?;
+    let Some(raw_metric_value) = value.as_i64() else {
+        return None;
+    };
+
+    match parse_metric_value(raw_metric_value, field_name, timestamp) {
+        Ok(metric_value) => Some(metric_value),
+        Err(error) => {
+            eprintln!("inf-notebook: ignored latest.{field_name} at {timestamp}: {error}");
+            None
+        }
+    }
 }
 
 fn extract_changed_latest_entries(
@@ -319,16 +374,21 @@ fn extract_changed_latest_entries(
     let mut changed_entries = current_snapshot
         .latest_by_chart
         .iter()
-        .filter_map(|(key, latest_timestamp)| {
-            let previous = previous_snapshot.latest_by_chart.get(key);
-            if previous == Some(latest_timestamp) {
+        .filter_map(|(key, latest_value)| {
+            let previous_timestamp = previous_snapshot
+                .latest_by_chart
+                .get(key)
+                .map(|value| value.latest_timestamp.as_str());
+            if previous_timestamp == Some(latest_value.latest_timestamp.as_str()) {
                 return None;
             }
             Some(SummaryLatestRecord {
                 musicname: key.musicname.clone(),
                 play_style: key.play_style.clone(),
                 difficulty: key.difficulty.clone(),
-                latest_timestamp: latest_timestamp.clone(),
+                latest_timestamp: latest_value.latest_timestamp.clone(),
+                score: latest_value.score,
+                misscount: latest_value.misscount,
             })
         })
         .collect::<Vec<_>>();
@@ -472,6 +532,7 @@ fn resolve_entry_with_candidates(
             summary: entry.clone(),
             title_search_key: None,
             recent: None,
+            recent_candidate_count: Some(recent_candidates.len() as u32),
             warnings: Vec::new(),
         };
     };
@@ -486,6 +547,7 @@ fn resolve_entry_with_candidates(
             summary: entry.clone(),
             title_search_key: None,
             recent: None,
+            recent_candidate_count: Some(recent_candidates.len() as u32),
             warnings: Vec::new(),
         };
     }
@@ -496,6 +558,7 @@ fn resolve_entry_with_candidates(
             summary: entry.clone(),
             title_search_key: Some(title_search_key),
             recent: None,
+            recent_candidate_count: Some(0),
             warnings: Vec::new(),
         },
         [candidate] => NotebookResolutionResult {
@@ -503,6 +566,7 @@ fn resolve_entry_with_candidates(
             summary: entry.clone(),
             title_search_key: Some(title_search_key),
             recent: Some(candidate.clone()),
+            recent_candidate_count: Some(1),
             warnings: collect_recent_mismatch_warnings(entry, candidate),
         },
         _ => NotebookResolutionResult {
@@ -510,6 +574,7 @@ fn resolve_entry_with_candidates(
             summary: entry.clone(),
             title_search_key: Some(title_search_key),
             recent: None,
+            recent_candidate_count: Some(recent_candidates.len() as u32),
             warnings: Vec::new(),
         },
     }
@@ -556,6 +621,36 @@ fn resolution_result_to_observation(
         title_search_key: title_search_key.clone(),
         score: recent.score,
         misscount: recent.misscount,
+    })
+}
+
+fn resolution_result_to_unresolved_case(
+    resolution_result: &NotebookResolutionResult,
+) -> Option<ParsedSourceUnresolvedCase> {
+    let kind = match resolution_result.status {
+        NotebookResolutionStatus::ResolvedPartial => ParsedSourceUnresolvedCaseKind::ResolvedPartial,
+        NotebookResolutionStatus::AmbiguousRecent => {
+            ParsedSourceUnresolvedCaseKind::AmbiguousRecent
+        }
+        _ => return None,
+    };
+
+    Some(ParsedSourceUnresolvedCase {
+        kind,
+        timestamp: resolution_result.summary.latest_timestamp.clone(),
+        play_style: resolution_result.summary.play_style.clone(),
+        difficulty: resolution_result.summary.difficulty.clone(),
+        title: resolution_result.summary.musicname.clone(),
+        title_search_key: resolution_result.title_search_key.clone(),
+        score: resolution_result
+            .summary
+            .score
+            .or_else(|| resolution_result.recent.as_ref().map(|recent| recent.score)),
+        misscount: resolution_result
+            .summary
+            .misscount
+            .or_else(|| resolution_result.recent.as_ref().map(|recent| recent.misscount)),
+        recent_candidate_count: resolution_result.recent_candidate_count,
     })
 }
 
@@ -807,6 +902,8 @@ mod tests {
             play_style: "SP".to_string(),
             difficulty: "ANOTHER".to_string(),
             latest_timestamp: "20260101-130000".to_string(),
+            score: None,
+            misscount: None,
         };
 
         let partial = resolve_entry_with_candidates(&summary, &catalog, &[]);
@@ -850,6 +947,8 @@ mod tests {
             play_style: "SP".to_string(),
             difficulty: "ANOTHER".to_string(),
             latest_timestamp: "20260101-130500".to_string(),
+            score: None,
+            misscount: None,
         };
         let unresolved_alias = resolve_entry_with_candidates(&unresolved, &catalog, &[]);
         assert_eq!(
@@ -946,6 +1045,7 @@ mod tests {
             .expect("parser should emit payload");
 
         assert_eq!(parsed_change.observations.len(), 1);
+        assert!(parsed_change.unresolved_cases.is_empty());
         assert_eq!(parsed_change.observations[0].score, 2450);
         assert_eq!(parsed_change.observations[0].misscount, 18);
         assert_eq!(
