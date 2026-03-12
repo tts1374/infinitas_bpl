@@ -41,13 +41,14 @@ struct NotebookRecentEntry {
 struct WorkerChartMasterSnapshot {
     #[serde(default)]
     charts: Vec<WorkerChartMasterChart>,
+    #[serde(default)]
+    aliases: HashMap<String, String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 struct WorkerChartMasterChart {
     play_style: String,
     difficulty: String,
-    title: String,
     title_search_key: String,
 }
 
@@ -640,11 +641,10 @@ fn load_alias_catalog() -> AliasCatalog {
             difficulty,
             title_search_key: title_search_key.to_string(),
         });
-        insert_alias_exact(
-            &mut alias_to_title_search_key,
-            chart.title.as_str(),
-            title_search_key,
-        );
+    }
+
+    for (alias, title_search_key) in &snapshot.aliases {
+        insert_alias_exact(&mut alias_to_title_search_key, alias, title_search_key);
     }
 
     AliasCatalog {
