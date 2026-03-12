@@ -1,0 +1,23 @@
+{
+  "musics": {
+    "Thunderbolt": {
+      "SP": {
+        "ANOTHER": {
+          "latest": {
+            "timestamp": "20260313-010000",
+            "score": 3000,
+            "misscount": 10
+          }
+        }
+      }
+    },
+    "22DUNK": {
+      "SP": {
+        "HYPER": {
+          "latest": null
+        }
+      }
+    }
+  },
+  "last_allimported": "0.20.0"
+}

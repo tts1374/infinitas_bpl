@@ -1,0 +1,33 @@
+{
+  "version": "0.19.0.0",
+  "count": 2,
+  "score": 5560,
+  "misscount": 28,
+  "updated_score": 0,
+  "updated_misscount": 0,
+  "clear": 2,
+  "list": [
+    {
+      "timestamp": "20260313-010100",
+      "difficulty": "HYPER",
+      "music": "22DUNK",
+      "new": true,
+      "score": 2560,
+      "misscount": 18,
+      "updated_score": 0,
+      "updated_misscount": 0,
+      "clear": true
+    },
+    {
+      "timestamp": "20260313-010000",
+      "difficulty": "ANOTHER",
+      "music": "Thunderbolt",
+      "new": false,
+      "score": 3000,
+      "misscount": 10,
+      "updated_score": 0,
+      "updated_misscount": 0,
+      "clear": true
+    }
+  ]
+}
