@@ -1,0 +1,33 @@
+{
+  "version": "0.19.0.0",
+  "count": 2,
+  "score": 6410,
+  "misscount": 31,
+  "updated_score": 0,
+  "updated_misscount": 0,
+  "clear": 2,
+  "list": [
+    {
+      "timestamp": "20260313-010300",
+      "difficulty": "ANOTHER",
+      "music": "Thunderbolt",
+      "new": true,
+      "score": 3200,
+      "misscount": 11,
+      "updated_score": 0,
+      "updated_misscount": 0,
+      "clear": true
+    },
+    {
+      "timestamp": "20260313-010300",
+      "difficulty": "ANOTHER",
+      "music": "Thunderbolt",
+      "new": true,
+      "score": 3210,
+      "misscount": 20,
+      "updated_score": 0,
+      "updated_misscount": 0,
+      "clear": true
+    }
+  ]
+}

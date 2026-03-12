@@ -24,11 +24,29 @@ export interface ParsedSourceObservationPayload {
   misscount: number;
 }
 
+export type ParsedSourceUnresolvedCaseKind =
+  | "unresolved_alias"
+  | "resolved_partial"
+  | "ambiguous_recent";
+
+export interface ParsedSourceUnresolvedCasePayload {
+  kind: ParsedSourceUnresolvedCaseKind;
+  timestamp: string;
+  playStyle: PlayStyle;
+  difficulty: string;
+  title: string;
+  titleSearchKey: string | null;
+  score: number | null;
+  misscount: number | null;
+  recentCandidateCount: number | null;
+}
+
 export interface ParsedSourceChangePayload {
   source: SourceType;
   filePath: string;
   fileSizeBytes: number;
   observations: ParsedSourceObservationPayload[];
+  unresolvedCases?: ParsedSourceUnresolvedCasePayload[];
 }
 
 export interface SourceWatcherEventPayload {

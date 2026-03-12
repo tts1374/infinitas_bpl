@@ -7,6 +7,7 @@ import { settingsStore } from "../stores/settings-store";
 export interface SourceSubmitOutcome {
   ok: boolean;
   message: string;
+  pendingUnresolvedAlias?: NotebookUnresolvedAliasDialogRequest;
 }
 
 interface InactiveRoundResult {
@@ -25,6 +26,43 @@ interface ActiveRoundContext {
   savedSettings: ReturnType<typeof settingsStore.getState>["saved"];
 }
 
+export type MetricLabel = "EXSCORE" | "MISSCOUNT";
+
+export interface NotebookDialogChartInfo {
+  title: string;
+  titleSearchKey: string;
+  playStyle: "SP" | "DP";
+  difficulty: string;
+  metricLabel: MetricLabel;
+  metricValue: number;
+}
+
+export interface NotebookForcedRegistrationPayload {
+  roundIndex: number;
+  expectedKey: ExpectedKey;
+  expectedTarget: NotebookDialogChartInfo;
+  parsedResult: NotebookDialogChartInfo;
+  mismatchReason: string;
+  source: ParsedSourceChangePayload["source"];
+  sourceMeta: {
+    timestamp: string;
+    difficulty: string;
+    title: string;
+    titleSearchKey: string;
+    score: number;
+    misscount: number;
+    filePath: string;
+  };
+}
+
+export interface NotebookUnresolvedAliasDialogRequest {
+  kind: "unresolved_alias";
+  expectedTarget: NotebookDialogChartInfo;
+  parsedResult: NotebookDialogChartInfo;
+  mismatchReason: string;
+  forcePayload: NotebookForcedRegistrationPayload;
+}
+
 function observationMatchesExpected(
   observation: ParsedSourceObservationPayload,
   expectedKey: ExpectedKey,
@@ -37,65 +75,96 @@ function observationMatchesExpected(
   );
 }
 
-function observationMatchesRoundWithoutTitleKey(
-  observation: ParsedSourceObservationPayload,
-  expectedKey: ExpectedKey,
-): boolean {
-  const observedPlayStyle = observation.playStyle ?? expectedKey.play_style;
-  return observedPlayStyle === expectedKey.play_style && observation.difficulty === expectedKey.difficulty;
+function metricLabelFromWinMetric(winMetric: "SCORE" | "MISSCOUNT"): MetricLabel {
+  return winMetric === "SCORE" ? "EXSCORE" : "MISSCOUNT";
 }
 
-function findObservationForCurrentRound(
-  parsedChange: ParsedSourceChangePayload,
-  expectedKey: ExpectedKey,
-): { observation: ParsedSourceObservationPayload; fallbackUsed: boolean } | null {
-  const strictMatch = parsedChange.observations.find((observation) =>
-    observationMatchesExpected(observation, expectedKey),
+function getExpectedRoundTitle(context: ActiveRoundContext): string {
+  const expectedRound = context.snapshot.frozen_rounds.find(
+    (round) => round.round_index === context.currentRound.round_index,
   );
-  if (strictMatch) {
-    return {
-      observation: strictMatch,
-      fallbackUsed: false,
-    };
+  return expectedRound?.display.title ?? context.currentRound.expected_key.title_search_key;
+}
+
+function buildMismatchReason(
+  expectedKey: ExpectedKey,
+  observation: ParsedSourceObservationPayload,
+): string | null {
+  const observedPlayStyle = observation.playStyle ?? expectedKey.play_style;
+  const observedTitleSearchKey = observation.titleSearchKey.trim();
+  const mismatchedItems: string[] = [];
+  if (observedTitleSearchKey !== expectedKey.title_search_key) {
+    mismatchedItems.push("曲名");
+  }
+  if (observedPlayStyle !== expectedKey.play_style) {
+    mismatchedItems.push("プレイスタイル");
+  }
+  if (observation.difficulty !== expectedKey.difficulty) {
+    mismatchedItems.push("難易度");
   }
 
+  return mismatchedItems.length > 0 ? `不一致: ${mismatchedItems.join(" / ")}` : null;
+}
+
+function buildNotebookUnresolvedAliasDialogRequest(
+  parsedChange: ParsedSourceChangePayload,
+  context: ActiveRoundContext,
+): NotebookUnresolvedAliasDialogRequest | null {
   if (parsedChange.source !== "inf-notebook" || parsedChange.observations.length !== 1) {
     return null;
   }
 
   const candidate = parsedChange.observations[0]!;
-  if (!observationMatchesRoundWithoutTitleKey(candidate, expectedKey)) {
+  const expectedKey = context.currentRound.expected_key;
+  const mismatchReason = buildMismatchReason(expectedKey, candidate);
+  if (mismatchReason === null) {
     return null;
   }
-  const observedTitleSearchKey = candidate.titleSearchKey.trim();
-  if (
-    observedTitleSearchKey.length > 0 &&
-    observedTitleSearchKey !== expectedKey.title_search_key
-  ) {
-    return null;
-  }
+
+  const metricLabel = metricLabelFromWinMetric(context.snapshot.settings.win_metric);
+  const metricValue =
+    context.snapshot.settings.win_metric === "SCORE" ? candidate.score : candidate.misscount;
+
+  const expectedTarget: NotebookDialogChartInfo = {
+    title: getExpectedRoundTitle(context),
+    titleSearchKey: expectedKey.title_search_key,
+    playStyle: expectedKey.play_style,
+    difficulty: expectedKey.difficulty,
+    metricLabel,
+    metricValue,
+  };
+  const parsedResult: NotebookDialogChartInfo = {
+    title: candidate.title.trim().length > 0 ? candidate.title : candidate.titleSearchKey,
+    titleSearchKey: candidate.titleSearchKey,
+    playStyle: candidate.playStyle ?? expectedKey.play_style,
+    difficulty: candidate.difficulty,
+    metricLabel,
+    metricValue,
+  };
 
   return {
-    observation: candidate,
-    fallbackUsed: true,
+    kind: "unresolved_alias",
+    expectedTarget,
+    parsedResult,
+    mismatchReason,
+    forcePayload: {
+      roundIndex: context.currentRound.round_index,
+      expectedKey,
+      expectedTarget,
+      parsedResult,
+      mismatchReason,
+      source: parsedChange.source,
+      sourceMeta: {
+        timestamp: candidate.timestamp,
+        difficulty: candidate.difficulty,
+        title: candidate.title,
+        titleSearchKey: candidate.titleSearchKey,
+        score: candidate.score,
+        misscount: candidate.misscount,
+        filePath: parsedChange.filePath,
+      },
+    },
   };
-}
-
-function isNotebookChartMismatch(
-  parsedChange: ParsedSourceChangePayload,
-  expectedKey: ExpectedKey,
-): boolean {
-  if (parsedChange.source !== "inf-notebook" || parsedChange.observations.length !== 1) {
-    return false;
-  }
-
-  const candidate = parsedChange.observations[0]!;
-  if (!observationMatchesRoundWithoutTitleKey(candidate, expectedKey)) {
-    return false;
-  }
-
-  const observedTitleSearchKey = candidate.titleSearchKey.trim();
-  return observedTitleSearchKey.length > 0 && observedTitleSearchKey !== expectedKey.title_search_key;
 }
 
 function getActiveRoundContext(): ActiveRoundContextResult | InactiveRoundResult {
@@ -203,6 +272,7 @@ function buildDebugParsedChange(
     filePath: `debug://${template.case_name}.json`,
     fileSizeBytes: 0,
     observations: [observation],
+    unresolvedCases: [],
   };
 }
 
@@ -234,24 +304,28 @@ export function submitParsedSourceChange(
     };
   }
 
-  const matchedObservationResult = findObservationForCurrentRound(
-    parsedChange,
-    context.currentRound.expected_key,
+  const matchedObservation = parsedChange.observations.find((observation) =>
+    observationMatchesExpected(observation, context.currentRound.expected_key),
   );
-  if (!matchedObservationResult) {
-    if (isNotebookChartMismatch(parsedChange, context.currentRound.expected_key)) {
+  if (!matchedObservation) {
+    const unresolvedAliasDialog = buildNotebookUnresolvedAliasDialogRequest(
+      parsedChange,
+      context,
+    );
+    if (unresolvedAliasDialog !== null) {
       return {
         ok: false,
         message:
-          "inf-notebook observation was skipped because title_search_key does not match the current round.",
+          "inf-notebook observation is pending because the parsed chart does not match the current round.",
+        pendingUnresolvedAlias: unresolvedAliasDialog,
       };
     }
+
     return {
       ok: false,
       message: "No observation matched the current round expected key.",
     };
   }
-  const matchedObservation = matchedObservationResult.observation;
 
   const metricValue =
     context.snapshot.settings.win_metric === "SCORE"
@@ -264,15 +338,12 @@ export function submitParsedSourceChange(
 
   const observedPlayStyle =
     matchedObservation.playStyle ?? context.currentRound.expected_key.play_style;
-  const observedTitleSearchKey = matchedObservationResult.fallbackUsed
-    ? context.currentRound.expected_key.title_search_key
-    : matchedObservation.titleSearchKey;
   const sent = roomStore.submitResult({
     round_index: context.currentRound.round_index,
     observed_key: {
       play_style: observedPlayStyle,
       difficulty: matchedObservation.difficulty,
-      title_search_key: observedTitleSearchKey,
+      title_search_key: matchedObservation.titleSearchKey,
     },
     metric_value: metricValue,
     source_meta: {
@@ -295,15 +366,86 @@ export function submitParsedSourceChange(
 
   const timestampLabel =
     matchedObservation.timestamp.trim().length > 0 ? ` (${matchedObservation.timestamp})` : "";
-  if (matchedObservationResult.fallbackUsed) {
-    roomStore.noteLocalEvent(
-      "inf-notebook fallback matched by playStyle/difficulty; expected title_search_key applied.",
-    );
-  }
   const message =
     `Auto-submitted ${context.snapshot.settings.win_metric} from ${originLabel}${timestampLabel}.`;
   roomStore.noteLocalEvent(message);
 
+  return {
+    ok: true,
+    message,
+  };
+}
+
+function expectedKeyMatches(left: ExpectedKey, right: ExpectedKey): boolean {
+  return (
+    left.play_style === right.play_style &&
+    left.difficulty === right.difficulty &&
+    left.title_search_key === right.title_search_key
+  );
+}
+
+export function submitNotebookForcedRegistration(
+  payload: NotebookForcedRegistrationPayload,
+  originLabel: string,
+): SourceSubmitOutcome {
+  const activeRoundContext = getActiveRoundContext();
+  if (!activeRoundContext.ok) {
+    return activeRoundContext;
+  }
+
+  const { context } = activeRoundContext;
+  if (
+    context.currentRound.round_index !== payload.roundIndex ||
+    !expectedKeyMatches(context.currentRound.expected_key, payload.expectedKey)
+  ) {
+    return {
+      ok: false,
+      message: "The current round changed before confirmation. Registration was cancelled.",
+    };
+  }
+
+  if (
+    context.currentRound.confirmed.some(
+      (entry) => entry.player_id === context.savedSettings.playerId,
+    )
+  ) {
+    return {
+      ok: false,
+      message: "This player has already been confirmed for the current round.",
+    };
+  }
+
+  const metricValidation = ensureMetricValue(payload.expectedTarget.metricValue, "Forced metric");
+  if (metricValidation !== null) {
+    return metricValidation;
+  }
+
+  const sent = roomStore.submitResult({
+    round_index: payload.roundIndex,
+    observed_key: payload.expectedKey,
+    metric_value: payload.expectedTarget.metricValue,
+    source_meta: {
+      source: payload.source,
+      timestamp: payload.sourceMeta.timestamp,
+      difficulty: payload.sourceMeta.difficulty,
+      title: payload.sourceMeta.title,
+      title_search_key: payload.sourceMeta.titleSearchKey,
+      score: payload.sourceMeta.score,
+      misscount: payload.sourceMeta.misscount,
+      file_path: payload.sourceMeta.filePath,
+    },
+  });
+  if (!sent) {
+    return {
+      ok: false,
+      message: "Failed to send RESULT_SUBMIT for the unresolved_alias confirmation.",
+    };
+  }
+
+  const timestampLabel =
+    payload.sourceMeta.timestamp.trim().length > 0 ? ` (${payload.sourceMeta.timestamp})` : "";
+  const message = `Auto-submitted ${payload.expectedTarget.metricLabel} from ${originLabel}${timestampLabel}.`;
+  roomStore.noteLocalEvent(message);
   return {
     ok: true,
     message,

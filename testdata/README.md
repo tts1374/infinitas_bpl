@@ -7,6 +7,9 @@
 - `debug-input/`
   ローカル debug UI から直接注入するための正規化済みテンプレート JSON。
   現在ラウンドの expected key に合わせて展開されるため、毎回ファイル監視入力を作り直さずに再利用できます。
+- `notebook-unresolved-dialogs/`
+  `inf-notebook` watcher の未解決ケース（`unresolved_alias` / `resolved_partial` / `ambiguous_recent`）を
+  手動 E2E で再現するための `records/summary.json` / `export/recent.json` 固定 fixture。
 - `runtime/`
   `scripts/start-local-two-clients.ps1` が生成する一時設定、ログ、インスタンス別 watcher ディレクトリ。
   Git 管理対象外です。
@@ -21,6 +24,11 @@
   `SKIP_SELF` 相当を送る
 
 必要になれば、将来的に raw watcher 入力 (`today_update.xml`, `recent.json`) を別ディレクトリで追加できます。
+
+`notebook-unresolved-dialogs/` については以下を利用できます。
+
+- `scripts/apply-notebook-unresolved-fixture.ps1`
+- `scripts/verify-notebook-unresolved-dialogs.ps1`
 
 ## 代表ケース
 
