@@ -49,6 +49,7 @@ struct WorkerChartMasterSnapshot {
 struct WorkerChartMasterChart {
     play_style: String,
     difficulty: String,
+    title: String,
     title_search_key: String,
 }
 
@@ -87,7 +88,7 @@ struct AliasCatalog {
 
 impl AliasCatalog {
     fn resolve_alias_exact(&self, musicname: &str) -> Option<&String> {
-        self.alias_to_title_search_key.get(musicname)
+        self.alias_to_title_search_key.get(musicname.trim())
     }
 
     fn has_chart(&self, play_style: &str, difficulty: &str, title_search_key: &str) -> bool {
@@ -641,6 +642,11 @@ fn load_alias_catalog() -> AliasCatalog {
             difficulty,
             title_search_key: title_search_key.to_string(),
         });
+        insert_alias_exact(
+            &mut alias_to_title_search_key,
+            chart.title.as_str(),
+            title_search_key,
+        );
     }
 
     for (alias, title_search_key) in &snapshot.aliases {
@@ -850,6 +856,31 @@ mod tests {
             unresolved_alias.status,
             NotebookResolutionStatus::UnresolvedAlias
         );
+    }
+
+    #[test]
+    fn resolve_alias_exact_keeps_case_sensitive_distinction() {
+        let mut alias_to_title_search_key = HashMap::new();
+        alias_to_title_search_key.insert("SHOOTING STAR".to_string(), "shooting-star-upper".to_string());
+        alias_to_title_search_key.insert("Shooting Star".to_string(), "shooting-star-mixed".to_string());
+        let catalog = AliasCatalog {
+            alias_to_title_search_key,
+            chart_index: HashSet::new(),
+        };
+
+        assert_eq!(
+            catalog
+                .resolve_alias_exact("SHOOTING STAR")
+                .map(String::as_str),
+            Some("shooting-star-upper")
+        );
+        assert_eq!(
+            catalog
+                .resolve_alias_exact("Shooting Star")
+                .map(String::as_str),
+            Some("shooting-star-mixed")
+        );
+        assert_eq!(catalog.resolve_alias_exact("shooting star"), None);
     }
 
     #[test]
