@@ -279,6 +279,48 @@ test("HOST_DISCONNECTED does not close immediately and can recover within cooldo
   assert.equal(state.getRoomState(), "LOBBY");
 });
 
+test("reconnect is rejected after rejoin window expires", () => {
+  const state = createState();
+  state.leavePlayer("host", new Date("2026-03-08T00:05:00.000Z"), "HOST_DISCONNECTED");
+
+  const joinResult = state.joinPlayer({
+    player_id: "host",
+    display_name: "Host",
+    source: "inf-notebook",
+    now: new Date("2026-03-08T00:05:11.000Z"),
+  });
+
+  assert.deepEqual(joinResult, { ok: false, reason: "REJOIN_WINDOW_EXPIRED" });
+});
+
+test("markPlayerDisconnected keeps slot and allows reconnect within grace", () => {
+  const state = createState();
+  const disconnectedAt = new Date("2026-03-08T00:05:00.000Z");
+  const disconnectResult = state.markPlayerDisconnected("guest", disconnectedAt);
+
+  assert.deepEqual(disconnectResult, { changed: true, was_host: false, room_was_closed: false });
+
+  const disconnectedGuest = state.toSnapshot().players.find((player) => player.player_id === "guest");
+  assert.ok(disconnectedGuest);
+  assert.equal(disconnectedGuest.connected, false);
+  assert.notEqual(disconnectedGuest.left_at, null);
+  assert.notEqual(disconnectedGuest.rejoin_until, null);
+
+  const reconnectResult = state.joinPlayer({
+    player_id: "guest",
+    display_name: "Guest",
+    source: "inf_daken_counter",
+    now: new Date("2026-03-08T00:05:05.000Z"),
+  });
+  assert.deepEqual(reconnectResult, { ok: true, join_type: "RECONNECT" });
+
+  const reconnectedGuest = state.toSnapshot().players.find((player) => player.player_id === "guest");
+  assert.ok(reconnectedGuest);
+  assert.equal(reconnectedGuest.connected, true);
+  assert.equal(reconnectedGuest.left_at, null);
+  assert.equal(reconnectedGuest.rejoin_until, null);
+});
+
 test("HOST_DISCONNECTED closes room when cooldown expires", () => {
   const state = createState();
   const disconnectedAt = new Date("2026-03-08T00:05:00.000Z");
