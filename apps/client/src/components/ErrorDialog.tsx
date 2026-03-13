@@ -33,7 +33,7 @@ export function ErrorDialog({ dialog, onClose }: ErrorDialogProps) {
             iconClass: "border-red-500/20 bg-red-500/10 text-red-500",
             cardClass: "border-red-500/20 shadow-[0_30px_90px_rgba(239,68,68,0.2)]",
             buttonClass: "bg-red-500 text-black hover:bg-red-400 shadow-[0_10px_30px_rgba(239,68,68,0.3)]",
-            footerLabel: "Room Closed",
+            footerLabel: "ルーム終了",
           }
         : dialog.code === "ROOM_STATE_LOST"
           ? {
@@ -52,6 +52,8 @@ export function ErrorDialog({ dialog, onClose }: ErrorDialogProps) {
               buttonClass: "bg-red-500 text-black hover:bg-red-400 shadow-[0_10px_30px_rgba(239,68,68,0.3)]",
               footerLabel: dialog.blocking ? "Blocking Error" : "Connection Issue",
             };
+  const headingLabel =
+    dialog.code === "ROOM_CLOSED" ? "ルーム通知" : dialog.blocking ? "Blocking Event" : "Room Error";
 
   return (
     <div
@@ -69,7 +71,7 @@ export function ErrorDialog({ dialog, onClose }: ErrorDialogProps) {
             <variant.Icon size={40} strokeWidth={2.5} />
           </div>
           <p className={`mb-3 text-[10px] font-black uppercase tracking-[0.45em] ${variant.accentClass}`}>
-            {dialog.blocking ? "Blocking Event" : "Room Error"}
+            {headingLabel}
           </p>
           <h2 id="error-dialog-title" className="text-2xl font-black tracking-tight text-white">
             {dialog.title}

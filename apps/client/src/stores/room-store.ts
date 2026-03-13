@@ -268,6 +268,54 @@ function startMatchRejectMessage(reason: string): string {
   }
 }
 
+function roomClosedDialog(reason: CloseReason): {
+  title: string;
+  description: string;
+} {
+  switch (reason) {
+    case "ALL_ROUNDS_COMPLETED":
+      return {
+        title: "対戦が終了しました",
+        description: "全ラウンドが完了したため、ルームを終了しました。",
+      };
+    case "MATCH_TTL_EXPIRED":
+      return {
+        title: "ルームが終了しました",
+        description: "対戦時間の上限に達したため、ルームを終了しました。",
+      };
+    case "READY_CHECK_TTL_EXPIRED":
+      return {
+        title: "ルームが終了しました",
+        description: "待機時間を超過したため、ルームを終了しました。",
+      };
+    case "HOST_DISCONNECTED":
+      return {
+        title: "ルームが終了しました",
+        description: "ホストとの接続が切れたため、ルームを終了しました。",
+      };
+    case "HOST_ABORTED":
+      return {
+        title: "ルームが終了しました",
+        description: "ホストが対戦を中断したため、ルームを終了しました。",
+      };
+    case "PICKING_ABORTED":
+      return {
+        title: "ルームが終了しました",
+        description: "選曲フェーズが中断されたため、ルームを終了しました。",
+      };
+    case "FORCE_CLOSED":
+      return {
+        title: "ルームが終了しました",
+        description: "ルームが強制的に終了されました。",
+      };
+    default:
+      return {
+        title: "ルームが終了しました",
+        description: "ルームが終了しました。",
+      };
+  }
+}
+
 function joinRejectDialog(reason: string, hasSnapshot: boolean): {
   title: string;
   description: string;
@@ -674,6 +722,7 @@ function handleServerMessage(client: RoomSocketClient, message: ServerMessage): 
     }
     case "ROOM_CLOSED": {
       const payload = message.payload as ServerMessagePayloadMap["ROOM_CLOSED"];
+      const closedDialog = roomClosedDialog(payload.close_reason);
       clearReconnectContext();
       clearRequestIds();
       updateClosedSnapshot(payload.close_reason, payload.closed_at, payload.result_ready);
@@ -686,10 +735,10 @@ function handleServerMessage(client: RoomSocketClient, message: ServerMessage): 
       internalStore.setState((state) => ({
         ...state,
         connectionStatus: "CLOSED",
-        connectionDetail: `Room closed: ${payload.close_reason}.`,
+        connectionDetail: closedDialog.description,
       }));
       if (payload.close_reason !== "ALL_ROUNDS_COMPLETED") {
-        setErrorDialog("Room closed", payload.close_reason, undefined, true);
+        setErrorDialog(closedDialog.title, closedDialog.description, "ROOM_CLOSED", true);
       }
       return;
     }
