@@ -67,7 +67,13 @@ export interface JoinPlayerInput {
 
 export interface JoinPlayerResult {
   ok: boolean;
-  reason?: "ROOM_CLOSED" | "ROOM_FULL" | "ROOM_JOIN_LOCKED";
+  reason?:
+    | "ROOM_CLOSED"
+    | "ROOM_FULL"
+    | "ROOM_JOIN_LOCKED"
+    | "PLAYER_ALREADY_CONNECTED"
+    | "REJOIN_WINDOW_EXPIRED";
+  join_type?: "NEW" | "RECONNECT";
 }
 
 export interface LeavePlayerResult {
@@ -495,12 +501,24 @@ export class RoomLobbyState {
     }
 
     if (existing) {
+      if (existing.connected) {
+        return { ok: false, reason: "PLAYER_ALREADY_CONNECTED" };
+      }
+
+      if (existing.rejoin_until === null) {
+        return { ok: false, reason: "ROOM_JOIN_LOCKED" };
+      }
+
+      if (input.now.getTime() > existing.rejoin_until.getTime()) {
+        return { ok: false, reason: "REJOIN_WINDOW_EXPIRED" };
+      }
+
       existing.display_name = input.display_name;
       existing.source = input.source;
       existing.connected = true;
       existing.left_at = null;
       existing.rejoin_until = null;
-      return { ok: true };
+      return { ok: true, join_type: "RECONNECT" };
     }
 
     let role: PlayerRole = "GUEST";
@@ -521,7 +539,22 @@ export class RoomLobbyState {
       rejoin_until: null,
     });
 
-    return { ok: true };
+    return { ok: true, join_type: "NEW" };
+  }
+
+  markPlayerDisconnected(playerId: string, now: Date): LeavePlayerResult {
+    const player = this.players.get(playerId);
+    if (!player) {
+      return { changed: false, was_host: false, room_was_closed: this.roomState === "CLOSED" };
+    }
+
+    const wasHost = this.hostPlayerId === playerId;
+    const roomWasClosed = this.roomState === "CLOSED";
+    player.connected = false;
+    player.left_at = now;
+    player.rejoin_until = computeRejoinUntil(now);
+
+    return { changed: true, was_host: wasHost, room_was_closed: roomWasClosed };
   }
 
   leavePlayer(
