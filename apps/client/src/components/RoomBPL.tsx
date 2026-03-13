@@ -96,6 +96,14 @@ export function RoomBPLPresentational(props: RoomBPLControlledState) {
     return <RoomBPL controlled={props} />;
 }
 
+const BPL_MUSIC_SELECT_SECONDS = 45;
+const BPL_PLAY_START_SECONDS = 10;
+const BPL_PLAY_BEGIN_SECONDS = BPL_MUSIC_SELECT_SECONDS + BPL_PLAY_START_SECONDS;
+
+function maskJoinCode(joinCode: string): string {
+    return '*'.repeat(joinCode.length);
+}
+
 function getDifficultyBadgeClass(difficulty: string | undefined): string {
     switch (difficulty) {
         case 'B':
@@ -150,6 +158,7 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
     const joinCode = controlled?.joinCode ?? "";
     const battleModeLabel = controlled?.battleModeLabel ?? "";
     const hasJoinCode = joinCode.trim().length > 0;
+    const maskedJoinCode = hasJoinCode ? maskJoinCode(joinCode) : '';
 
     const handleCopy = (text: string, setCopied: (v: boolean) => void) => {
         navigator.clipboard.writeText(text);
@@ -215,9 +224,9 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
     const playTime = controlled?.playTime ?? playTimeState;
     const playingPhase = controlled?.playingPhase ?? playingPhaseState;
     const playingCountdownSeconds = controlled?.playingCountdownSeconds ?? (
-        playingPhase === 'MUSIC_SELECT' ? (60 - playTime) :
-            playingPhase === 'PLAY_START' ? (75 - playTime) :
-                (playTime - 75)
+        playingPhase === 'MUSIC_SELECT' ? Math.max(0, BPL_MUSIC_SELECT_SECONDS - playTime) :
+            playingPhase === 'PLAY_START' ? Math.max(0, BPL_PLAY_BEGIN_SECONDS - playTime) :
+                Math.max(0, playTime - BPL_PLAY_BEGIN_SECONDS)
     );
     const playerStatus = controlled?.playerStatus ?? playerStatusState;
     const playerMetrics = controlled?.playerMetrics ?? {};
@@ -330,8 +339,8 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
                 const next = prev + 1;
 
                 // フェーズ遷移
-                if (next < 60) setPlayingPhase('MUSIC_SELECT');
-                else if (next < 75) setPlayingPhase('PLAY_START');
+                if (next < BPL_MUSIC_SELECT_SECONDS) setPlayingPhase('MUSIC_SELECT');
+                else if (next < BPL_PLAY_BEGIN_SECONDS) setPlayingPhase('PLAY_START');
                 else setPlayingPhase('IN_PLAY');
 
                 return next;
@@ -466,7 +475,7 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
                         <div className="bg-black/60 border border-white/10 backdrop-blur-md rounded-lg px-3 py-2 flex flex-col min-w-[200px]">
                             <span className="text-[9px] font-black text-gray-500 uppercase tracking-tighter mb-0.5">Join Code</span>
                             <div className="flex items-center justify-between gap-3">
-                                <span className="font-mono font-bold text-amber-500/50 text-sm tracking-[0.2em] truncate">{joinCode}</span>
+                                <span className="font-mono font-bold text-amber-500/50 text-sm tracking-[0.2em] truncate">{maskedJoinCode}</span>
                                 <button
                                     onClick={handleCopyJoinCode}
                                     className="text-gray-500 hover:text-amber-400 transition-colors flex-shrink-0"
@@ -679,7 +688,7 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
                                     </div>
                                 </div>
                                 <div className="mt-8">
-                                    <h2 className="text-5xl font-black italic tracking-tighter text-white drop-shadow-[0_0_20px_rgba(255,255,255,0.2)] line-clamp-2 leading-tight">
+                                    <h2 className="text-5xl font-black italic tracking-tighter text-white drop-shadow-[0_0_20px_rgba(255,255,255,0.2)] line-clamp-2 leading-tight break-all">
                                         {currentPlayingSong?.title || (roundCount === 3 ? "SYSTEM RANDOM (MAX 300)" : "Unknown Track")}
                                     </h2>
                                     <div className="flex flex-wrap items-center gap-4 mt-1">
@@ -714,7 +723,7 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
 
                                     {/* Notifications Mock */}
                                     <div className="mt-4 flex flex-col items-center min-h-[2.5rem] justify-center">
-                                        {playTime >= 50 && playTime < 60 && (
+                                        {playTime >= BPL_MUSIC_SELECT_SECONDS - 10 && playTime < BPL_MUSIC_SELECT_SECONDS && (
                                             <div className="flex gap-1 animate-pulse">
                                                 {[...Array(5)].map((_, i) => (
                                                     <div key={i} className="w-2 h-2 rounded-full bg-cyan-500 shadow-[0_0_10px_rgba(6,182,212,0.8)]" />
@@ -722,7 +731,7 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
                                                 <span className="text-[10px] font-black text-cyan-400 ml-2">TIME SYNC BEEP</span>
                                             </div>
                                         )}
-                                        {playTime >= 72 && playTime < 75 && (
+                                        {playTime >= BPL_PLAY_BEGIN_SECONDS - 3 && playTime < BPL_PLAY_BEGIN_SECONDS && (
                                             <div className="flex gap-1 animate-pulse">
                                                 {[...Array(3)].map((_, i) => (
                                                     <div key={i} className="w-3 h-3 rounded-full bg-red-600 shadow-[0_0_10px_rgba(220,38,38,0.8)]" />
@@ -749,7 +758,7 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
                                                 <User size={32} />
                                             </div>
                                             <div>
-                                                <h3 className="text-3xl font-black italic tracking-tighter truncate max-w-[150px]">{p.name}</h3>
+                                                <h3 className="text-3xl font-black italic tracking-tighter">{p.name}</h3>
                                             </div>
                                         </div>
 
@@ -796,7 +805,7 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
                         </div>
 
                         {/* HOST CONTROL BAR */}
-                        {isHost && playingPhase === 'IN_PLAY' && playTime >= (240 + 75) && (
+                        {isHost && playingPhase === 'IN_PLAY' && playTime >= (240 + BPL_PLAY_BEGIN_SECONDS) && (
                             <div className="mt-4 flex justify-center">
                                 <button
                                     className="bg-red-600/20 hover:bg-red-600 text-red-500 hover:text-white px-10 py-3 rounded-full border-2 border-red-500/30 text-xs font-black italic tracking-[0.3em] transition-all uppercase shadow-lg shadow-red-600/20"
@@ -970,19 +979,21 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
                                 >
                                     Leave Arena
                                 </button>
-                                <button
-                                    onClick={() => {
-                                        if (controlled?.onRemakeStage) {
-                                            controlled.onRemakeStage();
-                                            return;
-                                        }
+                                {isHost && (
+                                    <button
+                                        onClick={() => {
+                                            if (controlled?.onRemakeStage) {
+                                                controlled.onRemakeStage();
+                                                return;
+                                            }
 
-                                        setRoomStatus('WAITING');
-                                    }}
-                                    className="px-10 py-4 bg-white/5 hover:bg-white/10 text-white font-black italic text-base rounded-2xl transition-all border-2 border-white/10 uppercase tracking-tighter backdrop-blur-xl"
-                                >
-                                    Remake Stage
-                                </button>
+                                            setRoomStatus('WAITING');
+                                        }}
+                                        className="px-10 py-4 bg-white/5 hover:bg-white/10 text-white font-black italic text-base rounded-2xl transition-all border-2 border-white/10 uppercase tracking-tighter backdrop-blur-xl"
+                                    >
+                                        Remake Stage
+                                    </button>
+                                )}
                             </footer>
                         </div>
                     )
