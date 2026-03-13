@@ -841,7 +841,8 @@ export class RoomDurableObject {
           this.sendStateSnapshot(socket);
           return;
         case "PING":
-          this.send(socket, "PONG", {});
+          // Keepalive heartbeat is intentionally disabled to avoid periodic wake-ups.
+          // PING remains a tolerated message type for compatibility only.
           return;
         default:
           this.sendError(
@@ -1527,6 +1528,7 @@ export class RoomDurableObject {
   }
 
   private async syncAlarm(): Promise<void> {
+    // Keep a single state-derived alarm only for required deadlines/cleanup.
     const nextAlarmAt = this.roomState.getNextAlarmAt();
     if (nextAlarmAt === null) {
       await this.clearAlarm();
