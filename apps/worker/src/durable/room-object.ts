@@ -35,9 +35,24 @@ import {
 } from "./room-state";
 import { workerChartMaster } from "../master/chart-master";
 
+type RoomSocketRole = "HOST" | "PLAYER" | "SPECTATOR";
+
+type RoomSocketAttachment = {
+  playerId: string | null;
+  joinedAt: string | null;
+  role: RoomSocketRole | null;
+};
+
 interface RoomSocketSession {
   socket: WebSocket;
   playerId: string | null;
+  joinedAt: string | null;
+  role: RoomSocketRole | null;
+}
+
+interface HibernationWebSocketLike extends WebSocket {
+  serializeAttachment(attachment: RoomSocketAttachment): void;
+  deserializeAttachment(): unknown;
 }
 
 interface SocketCloseContext {
@@ -57,6 +72,8 @@ interface DurableObjectStorageLike {
 interface DurableObjectStateLike {
   storage: DurableObjectStorageLike;
   blockConcurrencyWhile<T>(callback: () => Promise<T>): Promise<T>;
+  acceptWebSocket(socket: WebSocket): void;
+  getWebSockets(): WebSocket[];
 }
 
 const IDEMPOTENCY_LOG_LIMIT = 300;
@@ -302,6 +319,46 @@ function parseSkipPayload(payload: unknown): { request_id: string; round_index: 
   };
 }
 
+function parseRoomSocketRole(value: unknown): RoomSocketRole | null {
+  if (value === "HOST" || value === "PLAYER" || value === "SPECTATOR") {
+    return value;
+  }
+
+  return null;
+}
+
+function parseRoomSocketAttachment(value: unknown): RoomSocketAttachment | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const playerId = value.playerId;
+  const joinedAt = value.joinedAt;
+  const rawRole = value.role;
+  if ((typeof playerId !== "string" && playerId !== null) || (typeof joinedAt !== "string" && joinedAt !== null)) {
+    return null;
+  }
+
+  if (rawRole === null) {
+    return {
+      playerId,
+      joinedAt,
+      role: null,
+    };
+  }
+
+  const role = parseRoomSocketRole(rawRole);
+  if (role === null) {
+    return null;
+  }
+
+  return {
+    playerId,
+    joinedAt,
+    role,
+  };
+}
+
 export class RoomDurableObject {
   private readonly roomState = new RoomLobbyState(workerChartMaster);
   private readonly sessionsBySocket = new Map<WebSocket, RoomSocketSession>();
@@ -317,16 +374,16 @@ export class RoomDurableObject {
   ) {
     this.readyPromise = this.state.blockConcurrencyWhile(async () => {
       const record = await this.state.storage.get<RoomDurableRecord>(ROOM_RECORD_STORAGE_KEY);
-      if (record === undefined) {
-        return;
+      if (record !== undefined) {
+        this.roomState.hydrate(record.room_state);
+        this.processedRequestKeys = [...record.processed_request_keys];
+        for (const key of this.processedRequestKeys) {
+          this.processedRequestKeySet.add(key);
+        }
+        this.nextEventSeq = record.next_event_seq;
       }
 
-      this.roomState.hydrate(record.room_state);
-      this.processedRequestKeys = [...record.processed_request_keys];
-      for (const key of this.processedRequestKeys) {
-        this.processedRequestKeySet.add(key);
-      }
-      this.nextEventSeq = record.next_event_seq;
+      this.rebuildSessionsFromWebSockets();
     });
   }
 
@@ -353,8 +410,10 @@ export class RoomDurableObject {
     const clientSocket = socketPair[0];
     const serverSocket = socketPair[1];
 
-    (serverSocket as unknown as { accept: () => void }).accept();
-    this.attachSocket(serverSocket);
+    this.state.acceptWebSocket(serverSocket);
+    const attachment = this.buildInitialSocketAttachment();
+    this.writeSocketAttachment(serverSocket, attachment);
+    this.registerSocketSession(serverSocket, attachment);
 
     return new Response(null, {
       status: SWITCHING_PROTOCOLS_STATUS,
@@ -397,47 +456,148 @@ export class RoomDurableObject {
     });
   }
 
-  private attachSocket(socket: WebSocket): void {
-    const session: RoomSocketSession = {
-      socket,
-      playerId: null,
-    };
-    this.sessionsBySocket.set(socket, session);
+  async webSocketMessage(
+    socket: WebSocket,
+    message: string | ArrayBuffer | ArrayBufferView,
+  ): Promise<void> {
+    await this.readyPromise;
+    await this.handleSocketMessage(socket, message);
+  }
 
-    socket.addEventListener("message", (event) => {
-      void this.handleSocketMessage(socket, event);
-    });
-    socket.addEventListener("close", (event: CloseEvent) => {
-      void this.handleSocketClose(socket, {
-        trigger: "close",
-        code: event.code,
-        reason: event.reason,
-        wasClean: event.wasClean,
-      });
-    });
-    socket.addEventListener("error", () => {
-      void this.handleSocketClose(socket, {
-        trigger: "error",
-        code: null,
-        reason: null,
-        wasClean: null,
-      });
+  async webSocketClose(
+    socket: WebSocket,
+    code: number,
+    reason: string,
+    wasClean: boolean,
+  ): Promise<void> {
+    await this.readyPromise;
+    await this.handleSocketClose(socket, {
+      trigger: "close",
+      code,
+      reason,
+      wasClean,
     });
   }
 
-  private async handleSocketMessage(socket: WebSocket, event: MessageEvent): Promise<void> {
-    const session = this.sessionsBySocket.get(socket);
-    if (!session) {
+  async webSocketError(socket: WebSocket, error: unknown): Promise<void> {
+    await this.readyPromise;
+    console.warn("[room-do] websocket error", {
+      roomId: this.roomState.isInitialized() ? this.roomState.getRoomId() : "(uninitialized)",
+      error,
+    });
+    await this.handleSocketClose(socket, {
+      trigger: "error",
+      code: null,
+      reason: null,
+      wasClean: null,
+    });
+  }
+
+  private buildInitialSocketAttachment(): RoomSocketAttachment {
+    return {
+      playerId: null,
+      joinedAt: null,
+      role: null,
+    };
+  }
+
+  private asHibernationSocket(socket: WebSocket): HibernationWebSocketLike | null {
+    const maybeSocket = socket as Partial<HibernationWebSocketLike>;
+    if (
+      typeof maybeSocket.serializeAttachment !== "function" ||
+      typeof maybeSocket.deserializeAttachment !== "function"
+    ) {
+      return null;
+    }
+
+    return socket as HibernationWebSocketLike;
+  }
+
+  private readSocketAttachment(socket: WebSocket): RoomSocketAttachment {
+    const hibernationSocket = this.asHibernationSocket(socket);
+    if (hibernationSocket === null) {
+      return this.buildInitialSocketAttachment();
+    }
+
+    try {
+      const parsed = parseRoomSocketAttachment(hibernationSocket.deserializeAttachment());
+      if (parsed === null) {
+        return this.buildInitialSocketAttachment();
+      }
+
+      return parsed;
+    } catch {
+      return this.buildInitialSocketAttachment();
+    }
+  }
+
+  private writeSocketAttachment(socket: WebSocket, attachment: RoomSocketAttachment): void {
+    const hibernationSocket = this.asHibernationSocket(socket);
+    if (hibernationSocket === null) {
       return;
     }
 
     try {
-      if (typeof event.data !== "string") {
+      hibernationSocket.serializeAttachment(attachment);
+    } catch {
+      // no-op: attachment sync failure is treated as unjoined fallback on next restore.
+    }
+  }
+
+  private registerSocketSession(
+    socket: WebSocket,
+    attachment = this.readSocketAttachment(socket),
+  ): RoomSocketSession {
+    const session: RoomSocketSession = {
+      socket,
+      playerId: attachment.playerId,
+      joinedAt: attachment.joinedAt,
+      role: attachment.role,
+    };
+    this.sessionsBySocket.set(socket, session);
+    return session;
+  }
+
+  private getOrCreateSocketSession(socket: WebSocket): RoomSocketSession {
+    const existing = this.sessionsBySocket.get(socket);
+    if (existing !== undefined) {
+      return existing;
+    }
+
+    return this.registerSocketSession(socket);
+  }
+
+  private rebuildSessionsFromWebSockets(): void {
+    this.sessionsBySocket.clear();
+    for (const socket of this.state.getWebSockets()) {
+      this.registerSocketSession(socket);
+    }
+  }
+
+  private syncSocketAttachment(session: RoomSocketSession): void {
+    this.writeSocketAttachment(session.socket, {
+      playerId: session.playerId,
+      joinedAt: session.joinedAt,
+      role: session.role,
+    });
+  }
+
+  private resolveSocketRole(playerId: string): RoomSocketRole {
+    return this.roomState.getHostPlayerId() === playerId ? "HOST" : "PLAYER";
+  }
+
+  private async handleSocketMessage(
+    socket: WebSocket,
+    data: string | ArrayBuffer | ArrayBufferView,
+  ): Promise<void> {
+    const session = this.getOrCreateSocketSession(socket);
+    try {
+      if (typeof data !== "string") {
         this.sendError(socket, "INVALID_STATE", "Only text messages are supported.");
         return;
       }
 
-      const decoded = decodeClientMessage(event.data);
+      const decoded = decodeClientMessage(data);
       if (!decoded.ok) {
         this.sendError(socket, "INVALID_STATE", decoded.error);
         return;
@@ -529,10 +689,7 @@ export class RoomDurableObject {
     socket: WebSocket,
     context: SocketCloseContext,
   ): Promise<void> {
-    const session = this.sessionsBySocket.get(socket);
-    if (!session) {
-      return;
-    }
+    const session = this.getOrCreateSocketSession(socket);
 
     const roomId = this.roomState.isInitialized()
       ? this.roomState.getRoomId()
@@ -591,12 +748,19 @@ export class RoomDurableObject {
       return;
     }
 
+    const snapshot = this.roomState.toSnapshot();
+    const joinedPlayer = snapshot.players.find((player) => player.player_id === message.player_id);
     session.playerId = message.player_id;
+    session.joinedAt = typeof joinedPlayer?.joined_at === "string"
+      ? joinedPlayer.joined_at
+      : new Date().toISOString();
+    session.role = this.resolveSocketRole(message.player_id);
+    this.syncSocketAttachment(session);
     await this.persistRoomRecord();
     await this.syncLobbyDirectory();
 
     this.send(session.socket, "ROOM_JOIN_ACCEPTED", {
-      room_state_snapshot: this.roomState.toSnapshot(),
+      room_state_snapshot: snapshot,
     });
     this.sendResultReadyIfAvailable(session.socket);
     this.broadcastRoomUpdated();
@@ -605,6 +769,9 @@ export class RoomDurableObject {
   private async handleRoomLeave(session: RoomSocketSession, closeSocket: boolean): Promise<void> {
     const playerId = session.playerId;
     session.playerId = null;
+    session.joinedAt = null;
+    session.role = null;
+    this.syncSocketAttachment(session);
 
     if (playerId === null) {
       if (closeSocket) {
@@ -1139,6 +1306,9 @@ export class RoomDurableObject {
 
     for (const session of sessions) {
       session.playerId = null;
+      session.joinedAt = null;
+      session.role = null;
+      this.syncSocketAttachment(session);
       this.safeCloseSocket(session.socket, code, reason);
     }
   }
