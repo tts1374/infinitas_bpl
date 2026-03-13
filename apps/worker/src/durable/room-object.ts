@@ -1561,6 +1561,7 @@ export class RoomDurableObject {
     this.broadcastRoomUpdated();
     if (this.roomState.getRoomState() === "CLOSED") {
       this.broadcastRoomClosed();
+      this.disconnectAll(4000, "Room closed.");
     }
   }
 
