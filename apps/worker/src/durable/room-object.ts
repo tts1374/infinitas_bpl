@@ -41,6 +41,8 @@ type RoomSocketAttachment = {
   playerId: string | null;
   joinedAt: string | null;
   role: RoomSocketRole | null;
+  connectionId: string | null;
+  attachedAt: string | null;
 };
 
 interface RoomSocketSession {
@@ -48,6 +50,8 @@ interface RoomSocketSession {
   playerId: string | null;
   joinedAt: string | null;
   role: RoomSocketRole | null;
+  connectionId: string | null;
+  attachedAt: string | null;
 }
 
 interface HibernationWebSocketLike extends WebSocket {
@@ -403,7 +407,15 @@ function parseRoomSocketAttachment(value: unknown): RoomSocketAttachment | null 
   const playerId = value.playerId;
   const joinedAt = value.joinedAt;
   const rawRole = value.role;
+  const rawConnectionId = value.connectionId;
+  const rawAttachedAt = value.attachedAt;
   if ((typeof playerId !== "string" && playerId !== null) || (typeof joinedAt !== "string" && joinedAt !== null)) {
+    return null;
+  }
+  if (
+    (typeof rawConnectionId !== "string" && rawConnectionId !== null && rawConnectionId !== undefined) ||
+    (typeof rawAttachedAt !== "string" && rawAttachedAt !== null && rawAttachedAt !== undefined)
+  ) {
     return null;
   }
 
@@ -412,6 +424,8 @@ function parseRoomSocketAttachment(value: unknown): RoomSocketAttachment | null 
       playerId,
       joinedAt,
       role: null,
+      connectionId: typeof rawConnectionId === "string" ? rawConnectionId : null,
+      attachedAt: typeof rawAttachedAt === "string" ? rawAttachedAt : null,
     };
   }
 
@@ -424,12 +438,15 @@ function parseRoomSocketAttachment(value: unknown): RoomSocketAttachment | null 
     playerId,
     joinedAt,
     role,
+    connectionId: typeof rawConnectionId === "string" ? rawConnectionId : null,
+    attachedAt: typeof rawAttachedAt === "string" ? rawAttachedAt : null,
   };
 }
 
 export class RoomDurableObject {
   private readonly roomState = new RoomLobbyState(workerChartMaster);
   private readonly sessionsBySocket = new Map<WebSocket, RoomSocketSession>();
+  private readonly activeSocketByPlayerId = new Map<string, WebSocket>();
   private readonly seenClientMessageIds = new Map<string, Set<string>>();
   private readonly processedRequestKeySet = new Set<string>();
   private processedRequestKeys: string[] = [];
@@ -570,6 +587,8 @@ export class RoomDurableObject {
       playerId: null,
       joinedAt: null,
       role: null,
+      connectionId: null,
+      attachedAt: null,
     };
   }
 
@@ -625,6 +644,8 @@ export class RoomDurableObject {
       playerId: attachment.playerId,
       joinedAt: attachment.joinedAt,
       role: attachment.role,
+      connectionId: attachment.connectionId,
+      attachedAt: attachment.attachedAt,
     };
     this.sessionsBySocket.set(socket, session);
     return session;
@@ -641,9 +662,12 @@ export class RoomDurableObject {
 
   private rebuildSessionsFromWebSockets(): void {
     this.sessionsBySocket.clear();
+    this.activeSocketByPlayerId.clear();
     for (const socket of this.state.getWebSockets()) {
       this.registerSocketSession(socket);
     }
+
+    this.rebuildActiveSocketIndex();
   }
 
   private syncSocketAttachment(session: RoomSocketSession): void {
@@ -651,11 +675,84 @@ export class RoomDurableObject {
       playerId: session.playerId,
       joinedAt: session.joinedAt,
       role: session.role,
+      connectionId: session.connectionId,
+      attachedAt: session.attachedAt,
     });
   }
 
   private resolveSocketRole(playerId: string): RoomSocketRole {
     return this.roomState.getHostPlayerId() === playerId ? "HOST" : "PLAYER";
+  }
+
+  private parseAttachmentTimestamp(value: string | null): number {
+    if (typeof value !== "string") {
+      return Number.NEGATIVE_INFINITY;
+    }
+
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : Number.NEGATIVE_INFINITY;
+  }
+
+  private rebuildActiveSocketIndex(): void {
+    this.activeSocketByPlayerId.clear();
+    const newestAttachedAtByPlayerId = new Map<string, number>();
+
+    for (const session of this.sessionsBySocket.values()) {
+      if (session.playerId === null) {
+        continue;
+      }
+
+      const attachedAt = this.parseAttachmentTimestamp(session.attachedAt);
+      const knownAttachedAt = newestAttachedAtByPlayerId.get(session.playerId) ?? Number.NEGATIVE_INFINITY;
+      if (attachedAt >= knownAttachedAt) {
+        newestAttachedAtByPlayerId.set(session.playerId, attachedAt);
+        this.activeSocketByPlayerId.set(session.playerId, session.socket);
+      }
+    }
+  }
+
+  private isCurrentSocketForPlayer(playerId: string, socket: WebSocket): boolean {
+    return this.activeSocketByPlayerId.get(playerId) === socket;
+  }
+
+  private clearActiveSocketForPlayer(playerId: string, socket: WebSocket): void {
+    if (this.activeSocketByPlayerId.get(playerId) === socket) {
+      this.activeSocketByPlayerId.delete(playerId);
+    }
+  }
+
+  private clearSessionPlayerBinding(session: RoomSocketSession): void {
+    if (session.playerId !== null) {
+      this.clearActiveSocketForPlayer(session.playerId, session.socket);
+    }
+
+    session.playerId = null;
+    session.joinedAt = null;
+    session.role = null;
+    session.connectionId = null;
+    session.attachedAt = null;
+    this.syncSocketAttachment(session);
+  }
+
+  private assignSessionToPlayer(session: RoomSocketSession, playerId: string, joinedAt: string, attachedAt: string): void {
+    session.playerId = playerId;
+    session.joinedAt = joinedAt;
+    session.role = this.resolveSocketRole(playerId);
+    session.connectionId = crypto.randomUUID();
+    session.attachedAt = attachedAt;
+    this.syncSocketAttachment(session);
+    this.activeSocketByPlayerId.set(playerId, session.socket);
+  }
+
+  private replacePlayerSocket(playerId: string, currentSession: RoomSocketSession): void {
+    for (const session of this.sessionsBySocket.values()) {
+      if (session.socket === currentSession.socket || session.playerId !== playerId) {
+        continue;
+      }
+
+      this.clearSessionPlayerBinding(session);
+      this.safeCloseSocket(session.socket, 4002, "Replaced by a new connection.");
+    }
   }
 
   private async handleSocketMessage(
@@ -763,13 +860,15 @@ export class RoomDurableObject {
     context: SocketCloseContext,
   ): Promise<void> {
     const session = this.getOrCreateSocketSession(socket);
+    const playerId = session.playerId;
+    const isCurrentSocket = playerId !== null && this.isCurrentSocketForPlayer(playerId, socket);
 
     const roomId = this.roomState.isInitialized()
       ? this.roomState.getRoomId()
       : "(uninitialized)";
     console.info("[room-do] socket closed", {
       roomId,
-      playerId: session.playerId,
+      playerId,
       roomState: this.roomState.getRoomState(),
       trigger: context.trigger,
       code: context.code,
@@ -779,7 +878,20 @@ export class RoomDurableObject {
     });
 
     this.sessionsBySocket.delete(socket);
-    await this.handleRoomLeave(session, false);
+    if (playerId === null || !isCurrentSocket) {
+      return;
+    }
+
+    this.clearActiveSocketForPlayer(playerId, socket);
+    const leaveResult = this.roomState.markPlayerDisconnected(playerId, new Date());
+    if (!leaveResult.changed) {
+      return;
+    }
+
+    await this.persistRoomRecord();
+    await this.syncAlarm();
+    await this.syncLobbyDirectory();
+    this.broadcastRoomUpdated();
   }
 
   private async handleRoomJoin(session: RoomSocketSession, message: ClientMessage<"ROOM_JOIN">): Promise<void> {
@@ -788,15 +900,21 @@ export class RoomDurableObject {
       return;
     }
 
-    const payload = parseRoomJoinPayload(message.payload);
-    if (payload === null) {
-      this.sendJoinRejected(session.socket, "INVALID_JOIN_PAYLOAD");
+    if (
+      session.playerId === message.player_id &&
+      this.roomState.isPlayerConnected(message.player_id) &&
+      this.isCurrentSocketForPlayer(message.player_id, session.socket)
+    ) {
+      this.send(session.socket, "ROOM_JOIN_ACCEPTED", {
+        room_state_snapshot: this.roomState.toSnapshot(),
+      });
+      this.sendResultReadyIfAvailable(session.socket);
       return;
     }
 
-    const existingSession = this.findSessionByPlayerId(message.player_id);
-    if (existingSession && existingSession.socket !== session.socket) {
-      this.sendJoinRejected(session.socket, "PLAYER_ALREADY_CONNECTED");
+    const payload = parseRoomJoinPayload(message.payload);
+    if (payload === null) {
+      this.sendJoinRejected(session.socket, "INVALID_JOIN_PAYLOAD");
       return;
     }
 
@@ -810,11 +928,12 @@ export class RoomDurableObject {
       }
     }
 
+    const now = new Date();
     const joinResult = this.roomState.joinPlayer({
       player_id: message.player_id,
       display_name: payload.display_name,
       source: payload.source,
-      now: new Date(),
+      now,
     });
     if (!joinResult.ok) {
       this.sendJoinRejected(session.socket, joinResult.reason ?? "ROOM_JOIN_REJECTED");
@@ -823,12 +942,12 @@ export class RoomDurableObject {
 
     const snapshot = this.roomState.toSnapshot();
     const joinedPlayer = snapshot.players.find((player) => player.player_id === message.player_id);
-    session.playerId = message.player_id;
-    session.joinedAt = typeof joinedPlayer?.joined_at === "string"
+    const attachedAt = now.toISOString();
+    const joinedAt = typeof joinedPlayer?.joined_at === "string"
       ? joinedPlayer.joined_at
-      : new Date().toISOString();
-    session.role = this.resolveSocketRole(message.player_id);
-    this.syncSocketAttachment(session);
+      : attachedAt;
+    this.assignSessionToPlayer(session, message.player_id, joinedAt, attachedAt);
+    this.replacePlayerSocket(message.player_id, session);
     await this.persistRoomRecord();
     await this.syncLobbyDirectory();
 
@@ -841,10 +960,7 @@ export class RoomDurableObject {
 
   private async handleRoomLeave(session: RoomSocketSession, closeSocket: boolean): Promise<void> {
     const playerId = session.playerId;
-    session.playerId = null;
-    session.joinedAt = null;
-    session.role = null;
-    this.syncSocketAttachment(session);
+    this.clearSessionPlayerBinding(session);
 
     if (playerId === null) {
       if (closeSocket) {
@@ -1184,16 +1300,6 @@ export class RoomDurableObject {
     await this.publishRoundTransition(result);
   }
 
-  private findSessionByPlayerId(playerId: string): RoomSocketSession | null {
-    for (const session of this.sessionsBySocket.values()) {
-      if (session.playerId === playerId) {
-        return session;
-      }
-    }
-
-    return null;
-  }
-
   private sendStateSnapshot(socket: WebSocket): void {
     this.send(socket, "STATE_SNAPSHOT", {
       room_state_snapshot: this.roomState.toSnapshot(),
@@ -1402,12 +1508,10 @@ export class RoomDurableObject {
   private disconnectAll(code: number, reason: string): void {
     const sessions = Array.from(this.sessionsBySocket.values());
     this.sessionsBySocket.clear();
+    this.activeSocketByPlayerId.clear();
 
     for (const session of sessions) {
-      session.playerId = null;
-      session.joinedAt = null;
-      session.role = null;
-      this.syncSocketAttachment(session);
+      this.clearSessionPlayerBinding(session);
       this.safeCloseSocket(session.socket, code, reason);
     }
   }
