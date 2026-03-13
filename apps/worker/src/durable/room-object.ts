@@ -82,10 +82,78 @@ const OPEN_WEBSOCKET_STATE = 1;
 const SWITCHING_PROTOCOLS_STATUS = 101;
 const ROOM_RECORD_STORAGE_KEY = "room-record";
 
+type SeenClientMessageIdsRecord = Record<string, string[]>;
+
 interface RoomDurableRecord {
   room_state: RoomStatePersistenceRecord;
   processed_request_keys: string[];
+  seen_client_message_ids?: SeenClientMessageIdsRecord;
   next_event_seq: number;
+}
+
+function normalizeSeenClientMessageIds(rawMessageIds: unknown[]): string[] {
+  const normalized: string[] = [];
+  const seen = new Set<string>();
+  for (let index = rawMessageIds.length - 1; index >= 0; index -= 1) {
+    const rawMessageId = rawMessageIds[index];
+    if (typeof rawMessageId !== "string") {
+      continue;
+    }
+
+    if (rawMessageId.trim().length === 0 || seen.has(rawMessageId)) {
+      continue;
+    }
+
+    seen.add(rawMessageId);
+    normalized.push(rawMessageId);
+    if (normalized.length >= IDEMPOTENCY_LOG_LIMIT) {
+      break;
+    }
+  }
+
+  normalized.reverse();
+  return normalized;
+}
+
+function deserializeSeenClientMessageIds(value: unknown): Map<string, Set<string>> {
+  const seenClientMessageIds = new Map<string, Set<string>>();
+  if (!isRecord(value)) {
+    return seenClientMessageIds;
+  }
+
+  for (const [rawPlayerId, rawMessageIds] of Object.entries(value)) {
+    if (rawPlayerId.trim().length === 0 || !Array.isArray(rawMessageIds)) {
+      continue;
+    }
+
+    const normalized = normalizeSeenClientMessageIds(rawMessageIds);
+    if (normalized.length === 0) {
+      continue;
+    }
+
+    seenClientMessageIds.set(rawPlayerId, new Set(normalized));
+  }
+
+  return seenClientMessageIds;
+}
+
+function serializeSeenClientMessageIds(
+  seenClientMessageIds: Map<string, Set<string>>,
+): SeenClientMessageIdsRecord {
+  const serialized: SeenClientMessageIdsRecord = {};
+  for (const [rawPlayerId, messageIds] of seenClientMessageIds) {
+    if (rawPlayerId.trim().length === 0 || messageIds.size === 0) {
+      continue;
+    }
+
+    const normalized = normalizeSeenClientMessageIds(Array.from(messageIds));
+    if (normalized.length === 0) {
+      continue;
+    }
+
+    serialized[rawPlayerId] = normalized;
+  }
+  return serialized;
 }
 
 function isWebSocketUpgradeRequest(request: Request): boolean {
@@ -362,7 +430,7 @@ function parseRoomSocketAttachment(value: unknown): RoomSocketAttachment | null 
 export class RoomDurableObject {
   private readonly roomState = new RoomLobbyState(workerChartMaster);
   private readonly sessionsBySocket = new Map<WebSocket, RoomSocketSession>();
-  private readonly seenClientMessageIds = new Map<string, string[]>();
+  private readonly seenClientMessageIds = new Map<string, Set<string>>();
   private readonly processedRequestKeySet = new Set<string>();
   private processedRequestKeys: string[] = [];
   private nextEventSeq = 0;
@@ -379,6 +447,10 @@ export class RoomDurableObject {
         this.processedRequestKeys = [...record.processed_request_keys];
         for (const key of this.processedRequestKeys) {
           this.processedRequestKeySet.add(key);
+        }
+        const hydratedSeenClientMessageIds = deserializeSeenClientMessageIds(record.seen_client_message_ids);
+        for (const [playerId, messageIds] of hydratedSeenClientMessageIds) {
+          this.seenClientMessageIds.set(playerId, messageIds);
         }
         this.nextEventSeq = record.next_event_seq;
       }
@@ -630,6 +702,7 @@ export class RoomDurableObject {
       if (this.isDuplicateMessage(message.player_id, message.client_msg_id)) {
         return;
       }
+      await this.persistRoomRecord();
 
       if (message.type !== "ROOM_JOIN" && session.playerId === null) {
         this.sendError(socket, "INVALID_STATE", "Send ROOM_JOIN before this message.");
@@ -1258,17 +1331,43 @@ export class RoomDurableObject {
   }
 
   private isDuplicateMessage(playerId: string, clientMessageId: string): boolean {
-    const seenIds = this.seenClientMessageIds.get(playerId) ?? [];
-    if (seenIds.includes(clientMessageId)) {
+    if (this.hasSeenClientMessageId(playerId, clientMessageId)) {
       return true;
     }
 
-    seenIds.push(clientMessageId);
-    if (seenIds.length > IDEMPOTENCY_LOG_LIMIT) {
-      seenIds.shift();
-    }
-    this.seenClientMessageIds.set(playerId, seenIds);
+    this.rememberClientMessageId(playerId, clientMessageId);
     return false;
+  }
+
+  private hasSeenClientMessageId(playerId: string, clientMessageId: string): boolean {
+    const seenIds = this.seenClientMessageIds.get(playerId);
+    return seenIds?.has(clientMessageId) ?? false;
+  }
+
+  private rememberClientMessageId(playerId: string, clientMessageId: string): void {
+    let seenIds = this.seenClientMessageIds.get(playerId);
+    if (seenIds === undefined) {
+      seenIds = new Set<string>();
+      this.seenClientMessageIds.set(playerId, seenIds);
+    }
+
+    if (seenIds.has(clientMessageId)) {
+      return;
+    }
+
+    seenIds.add(clientMessageId);
+    while (seenIds.size > IDEMPOTENCY_LOG_LIMIT) {
+      const oldest = seenIds.values().next().value;
+      if (typeof oldest !== "string") {
+        break;
+      }
+
+      seenIds.delete(oldest);
+    }
+  }
+
+  private clearSeenClientMessageIds(): void {
+    this.seenClientMessageIds.clear();
   }
 
   private buildRequestKey(playerId: string, type: string, requestId: string): string {
@@ -1334,9 +1433,15 @@ export class RoomDurableObject {
   }
 
   private async persistRoomRecord(): Promise<void> {
+    if (this.roomState.getRoomState() === "CLOSED") {
+      // CLOSED means the room lifecycle ended, so message-level dedupe history is discarded.
+      this.clearSeenClientMessageIds();
+    }
+
     const record: RoomDurableRecord = {
       room_state: this.roomState.toPersistenceRecord(),
       processed_request_keys: [...this.processedRequestKeys],
+      seen_client_message_ids: serializeSeenClientMessageIds(this.seenClientMessageIds),
       next_event_seq: this.nextEventSeq,
     };
     await this.state.storage.put(ROOM_RECORD_STORAGE_KEY, record);
