@@ -702,6 +702,7 @@ export class RoomDurableObject {
       if (this.isDuplicateMessage(message.player_id, message.client_msg_id)) {
         return;
       }
+      await this.persistRoomRecord();
 
       if (message.type !== "ROOM_JOIN" && session.playerId === null) {
         this.sendError(socket, "INVALID_STATE", "Send ROOM_JOIN before this message.");
