@@ -178,3 +178,24 @@ test("reconnect replaces old socket and stale close does not mark player disconn
   assert.ok(host);
   assert.equal(host.connected, true);
 });
+
+test("MATCH_TTL_EXPIRED closes sockets and clears sessions", async () => {
+  const roomObject = await createRoomObject();
+  const hostSocket = new TestSocket();
+  const guestSocket = new TestSocket();
+
+  await joinPlayer(roomObject, hostSocket, "host", "msg-1");
+  await joinPlayer(roomObject, guestSocket, "guest", "msg-2");
+
+  roomObject.roomState.enterResult(new Date("2026-03-08T00:20:00.000Z"));
+  roomObject.roomState.matchDeadline = new Date("2026-03-08T00:19:59.000Z");
+
+  await roomObject.processDueTransitions(new Date("2026-03-08T00:20:01.000Z"));
+
+  assert.equal(roomObject.roomState.getRoomState(), "CLOSED");
+  assert.equal(roomObject.sessionsBySocket.size, 0);
+  assert.equal(hostSocket.closeCalls.length, 1);
+  assert.equal(guestSocket.closeCalls.length, 1);
+  assert.equal(hostSocket.closeCalls[0]?.code, 4000);
+  assert.equal(guestSocket.closeCalls[0]?.code, 4000);
+});

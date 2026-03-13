@@ -1,6 +1,4 @@
 import {
-  PING_INTERVAL_SECONDS,
-  PING_TIMEOUT_MISSES,
   isServerMessageType,
   type ClientMessage,
   type ClientMessagePayloadMap,
@@ -42,8 +40,6 @@ function buildWebSocketUrl(baseUrl: string, roomId: string): string {
 
 export class RoomSocketClient {
   private socket: WebSocket | null = null;
-  private pingTimer: number | null = null;
-  private missedPongs = 0;
 
   constructor(private readonly options: RoomSocketClientOptions) {}
 
@@ -67,7 +63,6 @@ export class RoomSocketClient {
           ? { join_code: this.options.joinCode.trim() }
           : {}),
       });
-      this.startHeartbeat();
     });
 
     socket.addEventListener("message", (event) => {
@@ -79,7 +74,6 @@ export class RoomSocketClient {
     });
 
     socket.addEventListener("close", (event) => {
-      this.stopHeartbeat();
       this.socket = null;
       this.options.onStateChange?.("DISCONNECTED", `Socket closed (${event.code}).`);
       this.options.onClose?.(event);
@@ -100,7 +94,6 @@ export class RoomSocketClient {
       }
     }
 
-    this.stopHeartbeat();
     socket.close(1000, "Client disconnected.");
     this.socket = null;
   }
@@ -152,48 +145,14 @@ export class RoomSocketClient {
     const message = parsed as ServerMessage;
 
     if (message.type === "PONG") {
-      this.missedPongs = 0;
+      // Keepalive heartbeat is disabled, but tolerate legacy PONG frames.
       return;
     }
-
-    // Any valid server message proves the connection is still alive.
-    this.missedPongs = 0;
 
     if (message.type === "ROOM_JOIN_ACCEPTED") {
       this.options.onStateChange?.("CONNECTED", "ROOM_JOIN_ACCEPTED received.");
     }
 
     this.options.onMessage(message);
-  }
-
-  private startHeartbeat(): void {
-    this.stopHeartbeat();
-
-    this.pingTimer = window.setInterval(() => {
-      const socket = this.socket;
-      if (socket === null || socket.readyState !== WebSocket.OPEN) {
-        return;
-      }
-
-      if (this.missedPongs >= PING_TIMEOUT_MISSES) {
-        socket.close(4003, "Ping timeout.");
-        return;
-      }
-
-      this.missedPongs += 1;
-      try {
-        this.send("PING", {});
-      } catch {
-        socket.close(4004, "Heartbeat failed.");
-      }
-    }, PING_INTERVAL_SECONDS * 1000);
-  }
-
-  private stopHeartbeat(): void {
-    if (this.pingTimer !== null) {
-      window.clearInterval(this.pingTimer);
-      this.pingTimer = null;
-    }
-    this.missedPongs = 0;
   }
 }
