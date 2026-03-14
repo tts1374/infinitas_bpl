@@ -1,8 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, Database, FolderOpen, Save, Settings as SettingsIcon, User, Volume2, VolumeX } from "lucide-react";
 import { pickDirectory, validateSourceDirectory } from "../services/tauri-bridge";
 import { sourceStore } from "../stores/source-store";
-import { getActiveSourceDirectory, settingsStore, useSettingsStore } from "../stores/settings-store";
+import {
+  getActiveSourceDirectory,
+  getVoicePlaybackVolume,
+  isVoicePlaybackEnabled,
+  settingsStore,
+  useSettingsStore,
+} from "../stores/settings-store";
 
 interface SettingsPageProps {
   roomJoined: boolean;
@@ -31,11 +37,13 @@ const SOURCE_OPTIONS = [
 
 const HIDDEN_SOURCE_IDS = new Set<(typeof SOURCE_OPTIONS)[number]["id"]>(["inf_daken_counter"]);
 const VISIBLE_SOURCE_OPTIONS = SOURCE_OPTIONS.filter((option) => !HIDDEN_SOURCE_IDS.has(option.id));
+const VOLUME_PREVIEW_SE_URL = "/se/count_beep.mp3";
 
 export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProps) {
   const draft = useSettingsStore((state) => state.draft);
   const statusMessage = useSettingsStore((state) => state.statusMessage);
   const _lastSavedAt = useSettingsStore((state) => state.lastSavedAt);
+  const previewAudioRef = useRef<HTMLAudioElement | null>(null);
   const [displayNameError, setDisplayNameError] = useState<string | null>(null);
   const [validationMessage, setValidationMessage] = useState<string | null>(null);
 
@@ -47,6 +55,51 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
     setDisplayNameError(null);
     setValidationMessage(null);
   }, []);
+
+  useEffect(() => {
+    return () => {
+      if (previewAudioRef.current !== null) {
+        previewAudioRef.current.pause();
+        previewAudioRef.current.currentTime = 0;
+        previewAudioRef.current = null;
+      }
+    };
+  }, []);
+
+  function stopVolumePreviewAudio(): void {
+    if (previewAudioRef.current === null) {
+      return;
+    }
+
+    previewAudioRef.current.pause();
+    previewAudioRef.current.currentTime = 0;
+    previewAudioRef.current = null;
+  }
+
+  function playVolumePreviewOnRelease(): void {
+    const currentDraft = settingsStore.getState().draft;
+    if (!isVoicePlaybackEnabled(currentDraft)) {
+      stopVolumePreviewAudio();
+      return;
+    }
+
+    stopVolumePreviewAudio();
+    const audio = new Audio(VOLUME_PREVIEW_SE_URL);
+    audio.volume = getVoicePlaybackVolume(currentDraft);
+    previewAudioRef.current = audio;
+
+    const cleanup = () => {
+      if (previewAudioRef.current === audio) {
+        previewAudioRef.current = null;
+      }
+    };
+
+    audio.addEventListener("ended", cleanup, { once: true });
+    audio.addEventListener("pause", cleanup, { once: true });
+    void audio.play().catch(() => {
+      cleanup();
+    });
+  }
 
   async function handleBrowseDirectory(): Promise<void> {
     try {
@@ -252,6 +305,7 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
               onChange={(event) => {
                 settingsStore.updateVoiceVolume(Number(event.currentTarget.value));
               }}
+              onPointerUp={playVolumePreviewOnRelease}
               className="h-1.5 w-full cursor-pointer appearance-none rounded-lg bg-[#1e1e1e] accent-cyan-500 disabled:cursor-not-allowed"
             />
 

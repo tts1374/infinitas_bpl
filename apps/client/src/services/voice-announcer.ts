@@ -33,6 +33,13 @@ interface ScheduledCue {
   closeReason?: CloseReason | null;
 }
 
+interface ActiveBufferSource {
+  source: AudioBufferSourceNode;
+  gainNode: GainNode;
+}
+
+type AudioContextConstructor = new () => AudioContext;
+
 export type VoicePlaybackPhase = "IDLE" | "DISABLED" | "ARMED" | "PLAYING" | "ERROR";
 
 export interface VoicePlaybackState {
@@ -62,7 +69,11 @@ let activeTimeoutIds: number[] = [];
 const playedEventIds = new Set<string>();
 const queuedEventIds = new Set<string>();
 const activeAudios = new Set<HTMLAudioElement>();
+const activeBufferSources = new Set<ActiveBufferSource>();
 const lastPlayedAtByKind = new Map<SoundEffectKey, number>();
+const decodedBuffers = new Map<SoundEffectKey, AudioBuffer>();
+const loadingBuffers = new Map<SoundEffectKey, Promise<AudioBuffer>>();
+let sharedAudioContext: AudioContext | null = null;
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -82,6 +93,141 @@ function stopAllAudio(): void {
     audio.currentTime = 0;
   }
   activeAudios.clear();
+
+  for (const activeSource of [...activeBufferSources]) {
+    activeBufferSources.delete(activeSource);
+    activeSource.source.onended = null;
+    try {
+      activeSource.source.stop();
+    } catch {
+      // no-op: source may already be stopped/ended
+    }
+    activeSource.source.disconnect();
+    activeSource.gainNode.disconnect();
+  }
+}
+
+function getAudioContextConstructor(): AudioContextConstructor | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const maybeWindow = window as Window & {
+    AudioContext?: AudioContextConstructor;
+    webkitAudioContext?: AudioContextConstructor;
+  };
+
+  return maybeWindow.AudioContext ?? maybeWindow.webkitAudioContext ?? null;
+}
+
+function getSharedAudioContext(): AudioContext | null {
+  if (sharedAudioContext?.state === "closed") {
+    sharedAudioContext = null;
+    decodedBuffers.clear();
+    loadingBuffers.clear();
+  }
+
+  if (sharedAudioContext !== null) {
+    return sharedAudioContext;
+  }
+
+  const AudioContextCtor = getAudioContextConstructor();
+  if (AudioContextCtor === null) {
+    return null;
+  }
+
+  sharedAudioContext = new AudioContextCtor();
+  return sharedAudioContext;
+}
+
+async function getDecodedBuffer(kind: SoundEffectKey): Promise<AudioBuffer> {
+  const cached = decodedBuffers.get(kind);
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  const inFlight = loadingBuffers.get(kind);
+  if (inFlight !== undefined) {
+    return inFlight;
+  }
+
+  const context = getSharedAudioContext();
+  if (context === null) {
+    throw new Error("Web Audio API is unavailable.");
+  }
+
+  const loading = fetch(SOUND_EFFECT_URLS[kind])
+    .then((response) => {
+      if (!response.ok) {
+        throw new Error(`Failed to load ${kind} (${response.status}).`);
+      }
+      return response.arrayBuffer();
+    })
+    .then((audioData) => context.decodeAudioData(audioData))
+    .then((buffer) => {
+      decodedBuffers.set(kind, buffer);
+      loadingBuffers.delete(kind);
+      return buffer;
+    })
+    .catch((error) => {
+      loadingBuffers.delete(kind);
+      throw error;
+    });
+
+  loadingBuffers.set(kind, loading);
+  return loading;
+}
+
+async function playCueWithWebAudio(cue: ScheduledCue): Promise<boolean> {
+  const context = getSharedAudioContext();
+  if (context === null) {
+    return false;
+  }
+
+  if (context.state === "suspended") {
+    try {
+      await context.resume();
+    } catch {
+      return false;
+    }
+  }
+
+  if (context.state !== "running") {
+    return false;
+  }
+
+  const buffer = await getDecodedBuffer(cue.kind);
+  const source = context.createBufferSource();
+  const gainNode = context.createGain();
+  gainNode.gain.value = getVoicePlaybackVolume(settingsStore.getState().saved);
+
+  source.buffer = buffer;
+  source.connect(gainNode);
+  gainNode.connect(context.destination);
+
+  const activeSource: ActiveBufferSource = { source, gainNode };
+  activeBufferSources.add(activeSource);
+  source.onended = () => {
+    activeBufferSources.delete(activeSource);
+    source.disconnect();
+    gainNode.disconnect();
+  };
+
+  source.start();
+  return true;
+}
+
+async function playCueWithHtmlAudio(cue: ScheduledCue): Promise<void> {
+  const audio = new Audio(SOUND_EFFECT_URLS[cue.kind]);
+  audio.volume = getVoicePlaybackVolume(settingsStore.getState().saved);
+  activeAudios.add(audio);
+  const cleanup = () => {
+    activeAudios.delete(audio);
+  };
+  audio.addEventListener("ended", cleanup, { once: true });
+  audio.addEventListener("pause", cleanup, { once: true });
+
+  await audio.play();
 }
 
 function clearPlayback(nextPhase: VoicePlaybackPhase, detail: string, enabled: boolean): void {
@@ -208,15 +354,6 @@ async function playCue(cue: ScheduledCue): Promise<void> {
   playedEventIds.add(cue.eventId);
   lastPlayedAtByKind.set(cue.kind, Date.now());
 
-  const audio = new Audio(SOUND_EFFECT_URLS[cue.kind]);
-  audio.volume = getVoicePlaybackVolume(settingsStore.getState().saved);
-  activeAudios.add(audio);
-  const cleanup = () => {
-    activeAudios.delete(audio);
-  };
-  audio.addEventListener("ended", cleanup, { once: true });
-  audio.addEventListener("pause", cleanup, { once: true });
-
   setVoiceState({
     phase: "PLAYING",
     enabled: true,
@@ -226,16 +363,25 @@ async function playCue(cue: ScheduledCue): Promise<void> {
   });
 
   try {
-    await audio.play();
-  } catch (error) {
-    cleanup();
-    setVoiceState({
-      phase: "ERROR",
-      enabled: true,
-      pendingCues: activeTimeoutIds.length,
-      detail: error instanceof Error ? error.message : `Failed to play ${cue.kind}.`,
-      roundToken: activeRoundToken,
-    });
+    const playedWithWebAudio = await playCueWithWebAudio(cue);
+    if (!playedWithWebAudio) {
+      await playCueWithHtmlAudio(cue);
+    }
+  } catch (primaryError) {
+    try {
+      await playCueWithHtmlAudio(cue);
+      return;
+    } catch (fallbackError) {
+      const finalError = fallbackError instanceof Error ? fallbackError : primaryError;
+      setVoiceState({
+        phase: "ERROR",
+        enabled: true,
+        pendingCues: activeTimeoutIds.length,
+        detail: finalError instanceof Error ? finalError.message : `Failed to play ${cue.kind}.`,
+        roundToken: activeRoundToken,
+      });
+      return;
+    }
   }
 }
 
