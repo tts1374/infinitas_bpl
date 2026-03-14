@@ -611,7 +611,7 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
                     </div>
                 </div>
 
-                {/* 下部：ストラテジーエリア（BO3用） */}
+                {/* 下部：ストラテジーエリア（3 round用） */}
                 {roomStatus !== 'PLAYING' ? (
                     <footer className="mt-4 grid grid-cols-4 gap-4 h-28">
                         <div className={`rounded-2xl border p-3 flex flex-col justify-center transition-all ${picks[0] ? 'bg-cyan-500/10 border-cyan-500' : 'bg-[#1a1a1b] border-white/5'}`}>

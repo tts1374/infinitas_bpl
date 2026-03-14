@@ -238,7 +238,7 @@ Smoke check: /api/charts?play_style=SP&level_filter=ANY
 - [ ] play 1 ラウンド以上
 - [ ] result 表示
 
-### 6.2 BPL (BO3)
+### 6.2 BPL (3 round)
 
 - [ ] create
 - [ ] join

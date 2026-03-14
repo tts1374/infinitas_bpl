@@ -50,7 +50,7 @@ When section 4 is required, include:
 When section 5 is required, include:
 
 - 2-player ARENA flow.
-- 2-player BPL (BO3) flow.
+- 2-player BPL (3 round) flow.
 - Duplicate pick replacement.
 - Timeout (soft ttl) and FORCE_ADVANCE.
 - Host proxy skip (after unlock).

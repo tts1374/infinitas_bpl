@@ -172,7 +172,7 @@ type LobbyRoomSummary = {
 - rank3+: 0
 - 同点同順位、順位飛ばしあり
 
-### 5.4 BPL（BO3）
+### 5.4 BPL（3 round）
 - 3ラウンド固定
 - 各ラウンド勝者が1勝
 - 先に2勝で勝利
