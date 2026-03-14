@@ -62,8 +62,9 @@
   - payload: `{ request_id: string, round_index: number, observed_key: ExpectedKey, metric_value: number, source_meta?: object }`
 - `SKIP_SELF`
   - payload: `{ request_id: string, round_index: number, reason: "UNOWNED"|"TECH"|"OTHER" }`
-- `SKIP_HOST_ASSIGN`（ホスト）
+- `SKIP_HOST_ASSIGN`（ホスト / 予約）
   - payload: `{ request_id: string, round_index: number, target_player_id: string, reason: "UNOWNED"|"TECH"|"OTHER" }`
+  - 備考: 現行v1では受理しない。未確定者の強制確定は `FORCE_ADVANCE` を用いる
 - `FORCE_ADVANCE`（ホスト）
   - payload: `{ request_id: string }`
 
@@ -182,12 +183,15 @@
 }
 ```
 
+- `timers.result_deadline` は Ph1 現行フローでは通常 `null` 固定の予約欄
+
 ## 6. DO側ガード（必須）
 - 状態ガード: 状態に合わない操作は `ERROR` または `*_REJECTED`
 - 冪等化: `(player_id, client_msg_id)` は二重適用しない
 - 操作系は `(player_id, type, request_id)` でも二重適用しない
 - 先着順: `PICK_SUBMIT` の採用順はDO受信順（DOがaccepted_at付与）
-- 代理SKIP: `now - round_started_at >= 240s` かつ target未確定のみ許可
+- `SKIP_HOST_ASSIGN`: 現行v1では `INVALID_STATE` を返して受理しない
+- `FORCE_ADVANCE`: `room_state=PLAYING` かつ未確定者ありのときのみ許可し、未確定者を `TIMEOUT` / `submitted_by=SYSTEM` で確定する
 - START_MATCH: `players >= 2` かつ `room_state=LOBBY` かつ全員READY かつ前マッチ揮発状態クリア済みのみ
 - RETURN_TO_LOBBY: `room_state=RESULT` のみ。復帰時は全員readyと前マッチ揮発状態をリセットする
 - RESULT_SUBMIT: `observed_key == expected_key` かつ `round_index == current_round_index` のみ採用（accept_window=0）

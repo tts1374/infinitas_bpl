@@ -3,7 +3,6 @@ import type { RoomSettings } from "./room-settings";
 
 export const LOBBY_ROOM_STATUSES = [
   "LOBBY",
-  "READY_CHECK",
   "PICKING",
   "PLAYING",
   "RESULT",

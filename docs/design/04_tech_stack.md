@@ -121,12 +121,12 @@ Ph1 では以下を重視する。
 ### Durable Object の責務
 - ルーム状態の保持
 - FSM 遷移
-- READY_CHECK / PICKING / PLAYING / RESULT 制御
+- LOBBY 内 ready 管理 / PICKING / PLAYING / RESULT 制御
 - タイマー管理
 - 提出受理
 - expected一致判定
-- FORCE_ADVANCE
-- ホスト代理SKIP
+- FORCE_ADVANCE（未確定者の強制 `TIMEOUT` 確定）
+- `SKIP_HOST_ASSIGN` は予約メッセージとして保持するが、現行v1では無効
 - 結果集計
 - ルーム内ブロードキャスト
 - 一覧要約（`LobbyRoomSummary`）の生成と `LobbyDirectoryDO` への通知
@@ -135,7 +135,7 @@ Ph1 では以下を重視する。
 ### LobbyDirectoryDO の責務
 - 公開ロビー一覧の正本保持（storage 永続化 / constructor 復元）
 - 一覧取得時と更新時の TTL 清掃
-- 表示条件（公開・非満員・LOBBY/READY_CHECK・TTL 未超過）のフィルタ
+- 表示条件（公開・非満員・LOBBY・TTL 未超過）のフィルタ
 - `upsertRoom` / `removeRoom` による RoomDO からの更新受理
 
 ---

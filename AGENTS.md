@@ -59,7 +59,7 @@ Unless the task explicitly requires it:
 ### 2.2 Server
 - Cloudflare Workers (HTTP entry)
 - Durable Objects (Room FSM + timers + aggregation + WS broadcast)
-- Cloudflare KV (Lobby list lightweight metadata only)
+- `LobbyDirectoryDO`（公開ロビー一覧の軽量サマリ正本）
 
 ### 2.3 Sources (fixed per device)
 - `inf_daken_counter` (today_update.xml)
@@ -81,7 +81,9 @@ These design docs are normative. Implementation MUST match them.
 - docs/design/06_source_io_spec.md
 - docs/design/07_constants.md
 - docs/design/08_repo_structure.md
-- docs/design/09_implementation_plan.md (Ph1 plan; freeze after Ph1 done)
+
+Historical only:
+- docs/design/09_implementation_plan.md (frozen reference; not a normative spec source)
 
 Rule:
 - If implementation must deviate, update the relevant design doc(s) first, then implement.
@@ -176,17 +178,17 @@ Required behavior:
 ## 8. Cloudflare-specific Execution Rules
 
 ### 8.1 Worker vs DO responsibilities
-- Worker routes must remain thin (routing + KV list).
+- Worker routes must remain thin (routing + lobby directory access).
 - DO owns: FSM, timers, idempotency, expected_key enforcement, aggregation, broadcast.
 
 ### 8.2 Idempotency
 - Client MUST send `client_msg_id` for every WS message.
 - DO MUST de-duplicate by `(player_id, client_msg_id)`.
 
-### 8.3 Lobby (KV)
-- KV stores only lightweight metadata (no full room state, no secrets).
-- `expires_at` is set at creation time; list API excludes expired entries.
-- DO closure attempts KV deletion; list API still excludes by expires_at as safety.
+### 8.3 Lobby (`LobbyDirectoryDO`)
+- 公開ロビー一覧の正本は `LobbyDirectoryDO` storage に保持する。
+- 一覧は軽量サマリのみを保持し、ルーム本体状態や secrets は置かない。
+- 一覧取得時/更新時に TTL 清掃を行い、公開・非満員・`LOBBY`・TTL 未超過のみ返す。
 
 ### 8.4 Failure mode
 - If DO state is lost, the room is closed with `ROOM_STATE_LOST` and clients show a blocking error dialog.

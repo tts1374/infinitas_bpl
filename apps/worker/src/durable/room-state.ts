@@ -214,7 +214,7 @@ export interface RoomStatePersistenceRecord {
   version: 1;
   initialized: boolean;
   room_id: string;
-  room_state: RoomState | "READY_CHECK";
+  room_state: RoomState;
   settings: RoomSettings;
   host_player_id: string | null;
   created_at: string;
@@ -1236,7 +1236,9 @@ export class RoomLobbyState {
 
     this.initialized = true;
     this.roomId = record.room_id;
-    this.roomState = record.room_state === "READY_CHECK" ? "LOBBY" : record.room_state;
+    // Legacy pre-release snapshots may still contain READY_CHECK; fold them into LOBBY on restore.
+    const persistedRoomState = record.room_state as RoomState | "READY_CHECK";
+    this.roomState = persistedRoomState === "READY_CHECK" ? "LOBBY" : persistedRoomState;
     this.settings = normalizeSettingsVisibility({ ...record.settings });
     this.hostPlayerId = record.host_player_id;
     this.createdAt = parseRequiredDate(record.created_at);
