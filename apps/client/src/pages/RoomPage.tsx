@@ -125,6 +125,17 @@ function getRemainingSeconds(targetAtMs: number | null, nowMs: number): number |
   return Math.max(0, Math.ceil((targetAtMs - nowMs) / 1_000));
 }
 
+function getNextClockTickDelayMs(nowMs: number, anchorAtMs: number | null): number {
+  if (anchorAtMs === null) {
+    const offset = nowMs % 1_000;
+    return offset === 0 ? 1_000 : 1_000 - offset;
+  }
+
+  const elapsedFromAnchorMs = nowMs - anchorAtMs;
+  const offset = ((elapsedFromAnchorMs % 1_000) + 1_000) % 1_000;
+  return offset === 0 ? 1_000 : 1_000 - offset;
+}
+
 function getPlayingCountdown(round: CurrentRoundSnapshot, nowMs: number): {
   label: string;
   remainingSeconds: number;
@@ -917,13 +928,21 @@ export function RoomPage() {
       return;
     }
 
-    const intervalId = window.setInterval(() => {
-      setClockNowMs(Date.now());
-    }, 1_000);
+    let timeoutId: number | null = null;
+    const anchorAtMs =
+      snapshot?.room_state === "PLAYING" ? getIsoTimeMs(snapshot?.current_round?.round_started_at) : null;
 
-    setClockNowMs(Date.now());
+    const tickClock = () => {
+      const nowMs = Date.now();
+      setClockNowMs(nowMs);
+      timeoutId = window.setTimeout(tickClock, getNextClockTickDelayMs(nowMs, anchorAtMs));
+    };
+
+    tickClock();
     return () => {
-      window.clearInterval(intervalId);
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+      }
     };
   }, [
     snapshot?.room_state,
