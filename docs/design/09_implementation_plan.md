@@ -1,5 +1,10 @@
 # 実装計画書（Ph1）
 
+Status: Frozen
+
+Ph1 実装計画の履歴資料。現行仕様の正本ではない。
+現行仕様は `docs/design/01_fsm.md` から `docs/design/08_repo_structure.md` を参照すること。
+
 ## 0. 目的
 Ph1 の実装範囲、作業順序、PR 分割、完了条件を定義する。  
 本計画は以下の設計文書を前提とする。

@@ -156,7 +156,6 @@ npm run lint
   - `CLOUDFLARE_WORKERS_SUBDOMAIN`
 - [ ] `wrangler.toml` の本番設定を確認した
 - [ ] Durable Object migration tag が意図通り
-- [ ] KV namespace の本番 ID を確認した
 - [ ] preview と production の混同がない
 - [ ] 本番 deploy 実行者と権限を確認した
 - [ ] ロールバック時に戻すバージョンを控えた
@@ -166,7 +165,7 @@ npm run lint
 - `apps/worker/wrangler.toml`
 - `.github/workflows/deploy-worker.yml`
 - `apps/worker/README.md`
-- Cloudflare dashboard の DO / KV / Worker
+- Cloudflare dashboard の DO / Worker
 
 手動 deploy コマンド:
 
@@ -200,11 +199,11 @@ Smoke check: /api/charts?play_style=SP&level_filter=ANY
 
 ### 5.1 FSM / Protocol
 
-- [ ] `LOBBY -> READY_CHECK -> PICKING -> PLAYING -> RESULT -> CLOSED` を確認
+- [ ] `LOBBY` 内 ready 管理から `PICKING -> PLAYING -> RESULT -> CLOSED` への遷移を確認
 - [ ] `client_msg_id` による重複排除を確認
 - [ ] `expected_key` enforcement を確認
 - [ ] host 権限制御を確認
-- [ ] `expires_at` による KV 一覧除外を確認
+- [ ] `LobbyDirectoryDO` の公開・非満員・`LOBBY`・TTL フィルタを確認
 
 参照:
 
@@ -254,7 +253,7 @@ Smoke check: /api/charts?play_style=SP&level_filter=ANY
 - [ ] 重複 pick の差し替え
 - [ ] `TIMEOUT` 発生
 - [ ] `FORCE_ADVANCE` 動作
-- [ ] host 代理 SKIP 動作
+- [ ] `SKIP_HOST_ASSIGN` が v1 では拒否され、強制確定は `FORCE_ADVANCE` で扱うことを確認
 - [ ] `ROOM_STATE_LOST` 表示と room close
 
 記録テンプレート:

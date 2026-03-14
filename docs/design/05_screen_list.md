@@ -89,7 +89,7 @@ Ph1 の画面は以下とする。
 - 一覧には以下をすべて満たすルームのみ表示する
   - `isPublic = true`
   - `isFull = false`
-  - `status in [LOBBY, READY_CHECK]`
+  - `status = LOBBY`
   - TTL 未超過
 - `PICKING` / `PLAYING` / `RESULT` は一覧非表示とする
 
@@ -182,17 +182,17 @@ Ph1 の画面は以下とする。
   - READY切替
   - 退出
 - ホスト:
-  - START
+  - START ボタン（送信操作: `START_MATCH`）
   - RESULT から戻った後の再戦開始
   - 解散
 - 非ホスト:
 - START ボタンは表示しない
 
 ## 6.4 制約
-- ホストのみ START 実行可能
-- `players < 2` は START 成功不可
-- `ready=false` の参加者がいる間は START 成功不可
-- `max_players` は募集枠であり、開始人数は START 時点の参加人数で確定
+- ホストのみ `START_MATCH` 実行可能
+- `players < 2` は `START_MATCH` 成功不可
+- `ready=false` の参加者がいる間は `START_MATCH` 成功不可
+- `max_players` は募集枠であり、開始人数は `START_MATCH` 時点の参加人数で確定
 - `RESULT -> LOBBY` 復帰時は全員 ready が解除される
 - LOBBY ready ttl 20分超過で解散
 

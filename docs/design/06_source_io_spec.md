@@ -386,7 +386,7 @@ Ph1では以下を採用する。
 - `UnmatchedTitleLog` に記録
 - ラウンドが進行した場合は最終的に
   - 本人SKIP
-  - ホスト代理SKIP
+  - `FORCE_ADVANCE` による `TIMEOUT` 確定
   - TIMEOUT
   のいずれかで確定
 

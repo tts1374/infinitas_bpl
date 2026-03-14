@@ -26,7 +26,7 @@
 
 ### 状態遷移（概要）
 - ルーム作成完了時は `LOBBY` に入る
-- `LOBBY` -> `PICKING`（ホスト `START`。条件: players>=2 かつ全員READY）
+- `LOBBY` -> `PICKING`（ホスト `START_MATCH`。条件: players>=2 かつ全員READY）
 - `PICKING` -> `PLAYING`（DOが確定譜面リストを凍結して遷移）
 - `PLAYING` -> `PLAYING`（全員確定で次ラウンドへ）
 - `PLAYING` -> `RESULT`（全ラウンド消化時。`RESULT_READY` を保持）
@@ -48,7 +48,7 @@
 - `ready_check_ttl = 20min`（LOBBY開始または `RESULT -> LOBBY` 復帰から。超過で解散）
 - `picking_ttl = 120s`（PICKING開始から。超過で未pick者をランダム補完して凍結）
 - `round_soft_ttl = 5min`（`count_go` 以降。超過で未確定者をTIMEOUT確定）
-- `host_skip_unlock_seconds = 240s`（現行v1では代理SKIP無効。将来拡張用の予約値）
+- `host_skip_unlock_seconds = 240s`（`SKIP_HOST_ASSIGN` 用の予約値。現行v1では操作を受理しない）
 - `match_ttl = 30min`（`START_MATCH` 成功時、すなわち `PICKING` 開始時から固定）
 - `rejoin_cooldown = 10s`（退出後の同一ルーム再入室抑止。ホスト非明示切断時の再接続猶予にも使用）
 
@@ -72,10 +72,10 @@
 - 一覧表示条件（`GET /api/lobby`）
   - `isPublic = true`
   - `isFull = false`
-  - `status in [LOBBY, READY_CHECK]`
+  - `status = LOBBY`
   - TTL 未超過
 - TTL 判定
-  - `status in [LOBBY, READY_CHECK]`: `now - ttlStartedAt > ready_check_ttl` で期限切れ
+  - `status = LOBBY`: `now - ttlStartedAt > ready_check_ttl` で期限切れ
   - `status in [PICKING, PLAYING, RESULT]`: `now - ttlStartedAt > match_ttl` で期限切れ
 - `LobbyDirectoryDO` は一覧取得時/更新時に期限切れルームを清掃する
 - ルーム終了（CLOSED）時は `LobbyDirectoryDO` から削除する
@@ -83,9 +83,9 @@
 ## 6. LOBBY（参加・設定閲覧）
 - 参加/退出は自由（最大 `max_players`）
 - ready 管理は `LOBBY` の内部状態として扱う
-- 全員が `ready=true` になって初めて `START` 条件を満たせる
+- 全員が `ready=true` になって初めて `START_MATCH` 条件を満たせる
 - ホスト自身も `ready=true` 必須
-- ホストのみ `START` を実行できる。`START` ボタンは常時表示し、条件未達時は遷移させず不足理由を表示する
+- ホストのみ `START_MATCH` を実行できる。UI の `START` ボタンは常時表示し、条件未達時は遷移させず不足理由を表示する
 - `visibility=PRIVATE` の場合は join_code必須（入口のWorkerで弾くか、DOで弾くかを統一）
 - `RESULT -> LOBBY` 復帰時には以下をクリアする
   - 全員の ready 状態
@@ -98,11 +98,11 @@
   - `match_ttl` を含む前マッチの寿命管理情報
 
 ### 開始条件
-- `players < 2` の間は `START` 成功不可
-- `ready=false` の参加者が 1 人でもいる間は `START` 成功不可
-- `START` はホストのみ
-- `START` 実行で以後参加不可（席ロック）。退出は可能（退出者は以後TIMEOUT扱い）
-- 前マッチ揮発状態が未クリアなら `START` を拒否する
+- `players < 2` の間は `START_MATCH` 成功不可
+- `ready=false` の参加者が 1 人でもいる間は `START_MATCH` 成功不可
+- `START_MATCH` はホストのみ
+- `START_MATCH` 実行で以後参加不可（席ロック）。退出は可能（退出者は以後TIMEOUT扱い）
+- 前マッチ揮発状態が未クリアなら `START_MATCH` を拒否する
 
 ## 8. PICKING（指名・凍結）
 ### 8.1 指名ルール
@@ -139,13 +139,13 @@
 
 ### 9.4 SKIP（自己申告のみ）
 - SKIP は常に本人のみ実行可能（`SKIP_SELF`）
-- 他プレイヤーへの代理 SKIP（`SKIP_HOST_ASSIGN`）は受理しない
+- 他プレイヤーへの代理 SKIP（`SKIP_HOST_ASSIGN`）は現行v1では受理しない
 - SKIP理由は必須: `UNOWNED | TECH | OTHER`
 
-### 9.5 強制進行（FORCE_ADVANCE）
+### 9.5 強制進行（`FORCE_ADVANCE` / force finalize）
 - ホストのみ
 - クライアントは確認ダイアログ必須
-- DOは未確定者を全員 `TIMEOUT` として確定し次ラウンドへ（最終ならRESULTへ）
+- DOは未確定者を全員 `TIMEOUT`（`submitted_by=SYSTEM`）として確定し次ラウンドへ進める（最終ならRESULTへ）
 
 ### 9.6 タイムアウト処理
 - `round_soft_ttl` 到達で未確定者は `TIMEOUT`

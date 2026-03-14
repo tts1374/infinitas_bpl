@@ -47,9 +47,9 @@
 - Durable Objects の FSM / タイマー / 集計 / 権限制御変更
 - WebSocket message schema 変更（type/payload）
 - 監視ソース I/O 仕様変更（`inf_daken_counter` / `inf-notebook`）
-- ロビー一覧（KV）のスキーマ / 取得 / ページング変更
+- ロビー一覧（`LobbyDirectoryDO`）のスキーマ / 取得 / フィルタ変更
 - 保存形式 / 互換性に影響する変更（settings / result snapshot）
-- CI / デプロイ変更（Wrangler / Workers / DO / KV）
+- CI / デプロイ変更（Wrangler / Workers / DO）
 - 依存関係更新（lockfile含む）
 - client / worker / shared をまたぐクロスレイヤ変更
 - セキュリティ・再現性・整合性に影響する変更
@@ -81,7 +81,7 @@
 ### 記載形式（例）
 
 - [ ] 設計確認（該当 docs/design の確認）
-- [ ] 影響範囲特定（client / worker / shared / KV）
+- [ ] 影響範囲特定（client / worker / shared / lobby directory）
 - [ ] 実装
 - [ ] テスト
 - [ ] 回帰確認
@@ -168,7 +168,7 @@
 - FSM/Protocol 検証
 - 監視ソース検証
 - 最低限のE2E
-- DO state loss / KV listing / expected_key enforcement / idempotency
+- DO state loss / lobby listing / expected_key enforcement / idempotency
 
 ---
 

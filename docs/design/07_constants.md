@@ -12,7 +12,7 @@ Ph1で固定するタイマー値、制約値、表示/運用上の定数を整�
 - `READY_CHECK_TTL_MINUTES = 20`
   - LOBBY開始または `RESULT -> LOBBY` 復帰から20分で解散
 - `START_MIN_PLAYERS = 2`
-  - `players < 2` の間はホストSTART不可
+  - `players < 2` の間はホスト `START_MATCH` 不可
 - `PICKING_TTL_SECONDS = 120`
   - PICKING開始から120秒で未pickをランダム補完
 
@@ -123,7 +123,7 @@ Ph1で固定するタイマー値、制約値、表示/運用上の定数を整�
 ## 6.2 LobbyDirectory 一覧保持
 - `LOBBY_READY_CHECK_TTL_MS = 20 * 60 * 1000`
 - `LOBBY_MATCH_TTL_MS = 30 * 60 * 1000`
-- `LOBBY_STATUS_VISIBLE = ["LOBBY", "READY_CHECK"]`
+- `LOBBY_STATUS_VISIBLE = ["LOBBY"]`
 - TTL 判定は `ttlStartedAt` のみを使う
 
 ---

@@ -37,12 +37,12 @@
 
 ## 3. FSM/Protocol検証（該当変更時のみ必須）
 変更がある場合は必ず確認する:
-- RoomState 遷移（LOBBY->READY_CHECK->PICKING->PLAYING->RESULT->CLOSED）
-- タイマー（20min/5min/30min/5min）動作
+- RoomState 遷移（LOBBY内ready管理 -> PICKING -> PLAYING -> RESULT -> CLOSED）
+- タイマー（ready_check 20min / picking 120s / round_soft_ttl 5min / match_ttl 30min）動作
 - expected_key enforcement（accept_window=0）
 - idempotency（client_msg_id）重複排除
-- host権限（START/force advance/host skip）
-- KV listing（expires_at / limit=10 / cursor）
+- host権限（START_MATCH / RETURN_TO_LOBBY / FORCE_ADVANCE）
+- LobbyDirectory 一覧（公開・非満員・LOBBY・TTL 未超過）
 
 ---
 
@@ -59,7 +59,7 @@
 - 2人で BPL(BO3): 同様
 - 重複ピックの差し替え
 - TIMEOUT（soft ttl）と FORCE_ADVANCE
-- host代理SKIP（unlock後）
+- `SKIP_HOST_ASSIGN` が v1 では拒否され、強制確定は `FORCE_ADVANCE` で扱われる
 - DO state loss -> ROOM_STATE_LOST -> room close
 
 ---
@@ -67,4 +67,4 @@
 ## 6. リリース前確認（Ph1）
 - バージョン整合性
 - CHANGELOG（ある場合）
-- ルーム一覧(KV)のexpires運用確認
+- `LobbyDirectoryDO` の一覧フィルタ / TTL 運用確認

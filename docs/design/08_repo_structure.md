@@ -271,11 +271,9 @@ HTTP / WS Upgrade の入口。
 apps/worker/src/durable/
   room-object.ts
   lobby-directory-object.ts
-  room-fsm.ts
   room-state.ts
-  room-timers.ts
-  room-broadcast.ts
-  room-aggregation.ts
+  result-rating.ts
+  ws-codec.ts
 ```
 
 ### room-object.ts
@@ -285,35 +283,21 @@ apps/worker/src/durable/
 * クライアント接続管理
 * メッセージ受信入口
 
-### room-fsm.ts
-
-* RoomState 遷移
-* READY_CHECK/PICKING/PLAYING/RESULT/CLOSED 制御
-
 ### room-state.ts
 
 * DO内部状態管理
 * players / picks / rounds / submissions / deadlines
+* LOBBY 内 ready 管理 / PICKING / PLAYING / RESULT の進行データ
 
-### room-timers.ts
+### result-rating.ts
 
-* READY_CHECK TTL
-* round soft TTL
-* host skip unlock
-* match TTL
-* result TTL
+* rated 可否判定
+* ARENA 配点 / BPL BO3 集計
+* RESULT_READY 用のレーティング情報生成
 
-### room-broadcast.ts
+### ws-codec.ts
 
-* ルーム内イベント配信
-* snapshot送信
-* 状態更新通知
-
-### room-aggregation.ts
-
-* ARENA 配点
-* BPL BO3 集計
-* RESULT生成
+* WS envelope の decode/encode 補助
 
 ---
 
@@ -379,7 +363,7 @@ packages/shared/
 * ExpectedKey
 * FrozenRound
 * Submission
-* RoomSnapshot
+* RoomStateSnapshot
 * UnmatchedTitleLog
 
 ### ws

@@ -24,7 +24,7 @@
 - `ready_check_deadline: datetime|null`（LOBBY ready 管理用。ルーム作成時と `RESULT -> LOBBY` 復帰時に張り直す）
 - `picking_deadline: datetime|null`
 - `match_deadline: datetime|null`（`START_MATCH` 成功時、すなわち `PICKING` 開始時点で初めて確定）
-- `result_deadline: datetime|null`（互換用。通常フローでは `null`）
+- `result_deadline: datetime|null`（Ph1未使用。現行フローでは通常 `null` 固定の予約欄）
 - `closed_at: datetime|null`
 - `close_reason: ALL_ROUNDS_COMPLETED|MATCH_TTL_EXPIRED|READY_CHECK_TTL_EXPIRED|HOST_DISCONNECTED|HOST_ABORTED|PICKING_ABORTED|FORCE_CLOSED|null`
 - `result_ready_payload: object|null`（`RESULT` 中は保持し、`RESULT -> LOBBY` 復帰時にクリア。`summary.is_rated / rated_block_reason / rating_*` を含む）
@@ -58,7 +58,6 @@
 - `round_index: int`
 - `expected_key: ExpectedKey`
 - `display: { title: string, level: int|null }`
-- `started_at: datetime|null`（PLAYINGで開始時に埋める）
 - `started_at: datetime|null`（`ROUND_BEGIN` 時点。演出開始時刻）
 - `soft_ttl_seconds: int = 300`
 
@@ -119,7 +118,7 @@ type LobbyRoomSummary = {
   currentPlayers: number;
   maxPlayers: 2 | 3 | 4;
   isFull: boolean;
-  status: "LOBBY" | "READY_CHECK" | "PICKING" | "PLAYING" | "RESULT";
+  status: "LOBBY" | "PICKING" | "PLAYING" | "RESULT";
   ttlStartedAt: number;
   createdAt: number;
   updatedAt: number;
@@ -128,7 +127,6 @@ type LobbyRoomSummary = {
 
 ### 3.2 更新タイミング
 - ルーム作成: `status=LOBBY`, `ttlStartedAt=now` で upsert
-- `LOBBY -> READY_CHECK`: status のみ更新（`ttlStartedAt` は維持）
 - `START_MATCH` 成功（`PICKING` 開始）: `ttlStartedAt=now` に更新して upsert
 - `PLAYING` / `RESULT`: status のみ更新（`ttlStartedAt` は維持）
 - `RESULT -> LOBBY`: `ttlStartedAt=now` に更新して upsert
@@ -137,12 +135,12 @@ type LobbyRoomSummary = {
 ### 3.3 TTL / 一覧導出
 - `ttlStartedAt` は TTL 判定の唯一の起点時刻とする（`updatedAt` はTTL判定に使わない）
 - 期限判定:
-  - `status in [LOBBY, READY_CHECK]`: `now - ttlStartedAt > ready_check_ttl`
+  - `status = LOBBY`: `now - ttlStartedAt > ready_check_ttl`
   - `status in [PICKING, PLAYING, RESULT]`: `now - ttlStartedAt > match_ttl`
 - `GET /api/lobby` は返却前に期限切れを清掃し、以下のみ返す
   - `isPublic = true`
   - `isFull = false`
-  - `status in [LOBBY, READY_CHECK]`
+  - `status = LOBBY`
   - TTL 未超過
 
 ## 4. キー設計
