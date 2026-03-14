@@ -95,6 +95,83 @@ interface RoomDurableRecord {
   next_event_seq: number;
 }
 
+type RoomDoLogLevel = "INFO" | "WARN" | "ERROR";
+type RoomDoLogOutcome = "ok" | "rejected" | "duplicate" | "ignored" | "error";
+
+interface RoomDoStructuredLog {
+  schema_version: 1;
+  ts: string;
+  level: RoomDoLogLevel;
+  component: "room-do";
+  event: string;
+  room_id: string;
+  room_state: RoomStateSnapshot["room_state"] | "(uninitialized)";
+  host_player_id?: string | null;
+  player_id?: string | null;
+  is_host?: boolean | null;
+  source?: RoomStateSnapshot["players"][number]["source"] | null;
+  message_type?: string | null;
+  client_msg_id?: string | null;
+  request_id?: string | null;
+  round_index?: number | null;
+  close_reason?: string | null;
+  error_code?: string | null;
+  outcome?: RoomDoLogOutcome;
+  detail?: JsonObject;
+}
+
+interface RoomDoLogInput {
+  level?: RoomDoLogLevel;
+  event: string;
+  player_id?: string | null;
+  is_host?: boolean | null;
+  source?: RoomDoStructuredLog["source"];
+  message_type?: string | null;
+  client_msg_id?: string | null;
+  request_id?: string | null;
+  round_index?: number | null;
+  close_reason?: string | null;
+  error_code?: string | null;
+  outcome?: RoomDoLogOutcome;
+  room_state?: RoomDoStructuredLog["room_state"];
+  detail?: JsonObject;
+}
+
+type RoomDoMessageLogContext = Omit<RoomDoLogInput, "event" | "player_id" | "message_type" | "client_msg_id">;
+type RoomDoMessageEventLogInput = Omit<RoomDoLogInput, "player_id" | "message_type" | "client_msg_id">;
+
+type ClientEnvelopeLogContext = {
+  type: string;
+  player_id: string;
+  client_msg_id: string;
+};
+
+function summarizeExpectedKey(expectedKey: ExpectedKey): JsonObject {
+  return {
+    play_style: expectedKey.play_style,
+    difficulty: expectedKey.difficulty,
+    title_search_key: expectedKey.title_search_key,
+  };
+}
+
+function normalizeUnknownError(error: unknown): JsonObject {
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack ?? null,
+    };
+  }
+
+  return {
+    value: String(error),
+  };
+}
+
+function withRoundIndex(roundIndex: number | undefined): Pick<RoomDoLogInput, "round_index"> | Record<string, never> {
+  return roundIndex === undefined ? {} : { round_index: roundIndex };
+}
+
 function normalizeSeenClientMessageIds(rawMessageIds: unknown[]): string[] {
   const normalized: string[] = [];
   const seen = new Set<string>();
@@ -476,6 +553,112 @@ export class RoomDurableObject {
     });
   }
 
+  private buildMessageLogInput(message: ClientEnvelopeLogContext): Omit<RoomDoLogInput, "event">;
+  private buildMessageLogInput(
+    message: ClientEnvelopeLogContext,
+    input: RoomDoMessageLogContext,
+  ): Omit<RoomDoLogInput, "event">;
+  private buildMessageLogInput(
+    message: ClientEnvelopeLogContext,
+    input: RoomDoMessageEventLogInput,
+  ): RoomDoLogInput;
+  private buildMessageLogInput(
+    message: ClientEnvelopeLogContext,
+    input: RoomDoMessageLogContext | RoomDoMessageEventLogInput = {},
+  ): Omit<RoomDoLogInput, "event"> | RoomDoLogInput {
+    return {
+      player_id: message.player_id,
+      message_type: message.type,
+      client_msg_id: message.client_msg_id,
+      ...input,
+    };
+  }
+
+  private resolvePlayerSource(playerId: string | null | undefined): RoomDoStructuredLog["source"] | undefined {
+    if (!this.roomState.isInitialized() || playerId == null) {
+      return undefined;
+    }
+
+    const snapshot = this.roomState.toSnapshot();
+    const player = snapshot.players.find((entry) => entry.player_id === playerId);
+    return player?.source;
+  }
+
+  private logRoomEvent(input: RoomDoLogInput): void {
+    const roomId = this.roomState.isInitialized() ? this.roomState.getRoomId() : "(uninitialized)";
+    const roomState = input.room_state ?? (this.roomState.isInitialized() ? this.roomState.getRoomState() : "(uninitialized)");
+    const hostPlayerId = this.roomState.isInitialized() ? this.roomState.getHostPlayerId() : null;
+    const playerId = input.player_id;
+    const logEntry: RoomDoStructuredLog = {
+      schema_version: 1,
+      ts: new Date().toISOString(),
+      level: input.level ?? "INFO",
+      component: "room-do",
+      event: input.event,
+      room_id: roomId,
+      room_state: roomState,
+      ...(hostPlayerId === null ? {} : { host_player_id: hostPlayerId }),
+      ...(playerId === undefined ? {} : { player_id: playerId }),
+      ...(input.is_host === undefined
+        ? playerId == null || hostPlayerId == null
+          ? {}
+          : { is_host: hostPlayerId === playerId }
+        : { is_host: input.is_host }),
+      ...(input.source === undefined
+        ? playerId == null
+          ? {}
+          : { source: this.resolvePlayerSource(playerId) ?? null }
+        : { source: input.source }),
+      ...(input.message_type === undefined ? {} : { message_type: input.message_type }),
+      ...(input.client_msg_id === undefined ? {} : { client_msg_id: input.client_msg_id }),
+      ...(input.request_id === undefined ? {} : { request_id: input.request_id }),
+      ...(input.round_index === undefined ? {} : { round_index: input.round_index }),
+      ...(input.close_reason === undefined ? {} : { close_reason: input.close_reason }),
+      ...(input.error_code === undefined ? {} : { error_code: input.error_code }),
+      ...(input.outcome === undefined ? {} : { outcome: input.outcome }),
+      ...(input.detail === undefined ? {} : { detail: input.detail }),
+    };
+
+    const serialized = JSON.stringify(logEntry);
+    switch (logEntry.level) {
+      case "ERROR":
+        console.error(serialized);
+        return;
+      case "WARN":
+        console.warn(serialized);
+        return;
+      default:
+        console.info(serialized);
+    }
+  }
+
+  private logTransitionIfChanged(
+    previousState: RoomDoStructuredLog["room_state"],
+    input: Omit<RoomDoLogInput, "event" | "room_state" | "close_reason"> = {},
+  ): void {
+    if (!this.roomState.isInitialized()) {
+      return;
+    }
+
+    const nextState = this.roomState.getRoomState();
+    if (previousState === nextState) {
+      return;
+    }
+
+    const snapshot = this.roomState.toSnapshot();
+    this.logRoomEvent({
+      ...input,
+      event: "fsm.transition",
+      room_state: nextState,
+      ...(snapshot.close_reason === undefined ? {} : { close_reason: snapshot.close_reason }),
+      detail: {
+        from_state: previousState,
+        to_state: nextState,
+        ...(input.detail ?? {}),
+      },
+    });
+  }
+
   async fetch(request: Request): Promise<Response> {
     await this.readyPromise;
     const url = new URL(request.url);
@@ -570,9 +753,15 @@ export class RoomDurableObject {
 
   async webSocketError(socket: WebSocket, error: unknown): Promise<void> {
     await this.readyPromise;
-    console.warn("[room-do] websocket error", {
-      roomId: this.roomState.isInitialized() ? this.roomState.getRoomId() : "(uninitialized)",
-      error,
+    const session = this.getOrCreateSocketSession(socket);
+    this.logRoomEvent({
+      level: "WARN",
+      event: "socket.error",
+      player_id: session.playerId,
+      outcome: "error",
+      detail: {
+        error: normalizeUnknownError(error),
+      },
     });
     await this.handleSocketClose(socket, {
       trigger: "error",
@@ -760,35 +949,66 @@ export class RoomDurableObject {
     data: string | ArrayBuffer | ArrayBufferView,
   ): Promise<void> {
     const session = this.getOrCreateSocketSession(socket);
+    let messageContext: ClientEnvelopeLogContext | null = null;
     try {
       if (typeof data !== "string") {
-        this.sendError(socket, "INVALID_STATE", "Only text messages are supported.");
+        this.sendError(socket, "INVALID_STATE", "Only text messages are supported.", {
+          player_id: session.playerId,
+          detail: {
+            validation: "non_text_payload",
+          },
+        });
         return;
       }
 
       const decoded = decodeClientMessage(data);
       if (!decoded.ok) {
-        this.sendError(socket, "INVALID_STATE", decoded.error);
+        this.sendError(socket, "INVALID_STATE", decoded.error, {
+          player_id: session.playerId,
+          detail: {
+            validation: "decode_failed",
+          },
+        });
         return;
       }
 
       const message = decoded.message;
+      messageContext = message;
       if (
         message.client_msg_id.trim().length === 0 ||
         message.player_id.trim().length === 0 ||
         message.room_id.trim().length === 0
       ) {
-        this.sendError(socket, "INVALID_STATE", "Envelope fields must not be empty.");
+        this.sendError(socket, "INVALID_STATE", "Envelope fields must not be empty.", this.buildMessageLogInput(message, {
+          detail: {
+            validation: "empty_envelope_field",
+          },
+        }));
         return;
       }
 
+      this.logRoomEvent(this.buildMessageLogInput(message, {
+        event: "ws.recv",
+        outcome: "ok",
+      }));
+
       if (this.roomState.isInitialized() && message.room_id !== this.roomState.getRoomId()) {
-        this.sendError(socket, "INVALID_STATE", "room_id does not match this room.");
+        this.sendError(socket, "INVALID_STATE", "room_id does not match this room.", this.buildMessageLogInput(message, {
+          detail: {
+            validation: "room_id_mismatch",
+            observed_room_id: message.room_id,
+          },
+        }));
         return;
       }
 
       if (session.playerId !== null && session.playerId !== message.player_id) {
-        this.sendError(socket, "INVALID_STATE", "player_id mismatch on this socket.");
+        this.sendError(socket, "INVALID_STATE", "player_id mismatch on this socket.", this.buildMessageLogInput(message, {
+          detail: {
+            validation: "player_id_mismatch",
+            session_player_id: session.playerId,
+          },
+        }));
         return;
       }
 
@@ -797,12 +1017,16 @@ export class RoomDurableObject {
       }
 
       if (this.isDuplicateMessage(message.player_id, message.client_msg_id)) {
+        this.logRoomEvent(this.buildMessageLogInput(message, {
+          event: "ws.duplicate",
+          outcome: "duplicate",
+        }));
         return;
       }
       await this.persistRoomRecord();
 
       if (message.type !== "ROOM_JOIN" && session.playerId === null) {
-        this.sendError(socket, "INVALID_STATE", "Send ROOM_JOIN before this message.");
+        this.sendError(socket, "INVALID_STATE", "Send ROOM_JOIN before this message.", this.buildMessageLogInput(message));
         return;
       }
 
@@ -849,10 +1073,33 @@ export class RoomDurableObject {
             socket,
             "INVALID_STATE",
             `Message type ${message.type} is unavailable in ${this.roomState.getRoomState()}.`,
+            this.buildMessageLogInput(message),
           );
       }
-    } catch {
-      this.sendError(socket, "INVALID_STATE", "Failed to process message.");
+    } catch (error) {
+      if (messageContext === null) {
+        this.sendError(socket, "INVALID_STATE", "Failed to process message.", {
+          level: "ERROR",
+          outcome: "error",
+          player_id: session.playerId,
+          detail: {
+            error: normalizeUnknownError(error),
+          },
+        });
+      } else {
+        this.sendError(
+          socket,
+          "INVALID_STATE",
+          "Failed to process message.",
+          this.buildMessageLogInput(messageContext, {
+            level: "ERROR",
+            outcome: "error",
+            detail: {
+              error: normalizeUnknownError(error),
+            },
+          }),
+        );
+      }
     }
   }
 
@@ -863,19 +1110,19 @@ export class RoomDurableObject {
     const session = this.getOrCreateSocketSession(socket);
     const playerId = session.playerId;
     const isCurrentSocket = playerId !== null && this.isCurrentSocketForPlayer(playerId, socket);
-
-    const roomId = this.roomState.isInitialized()
-      ? this.roomState.getRoomId()
-      : "(uninitialized)";
-    console.info("[room-do] socket closed", {
-      roomId,
-      playerId,
-      roomState: this.roomState.getRoomState(),
-      trigger: context.trigger,
-      code: context.code,
-      reason: context.reason,
-      wasClean: context.wasClean,
-      activeSocketCount: this.sessionsBySocket.size,
+    this.logRoomEvent({
+      event: "socket.close",
+      player_id: playerId,
+      outcome: "ok",
+      detail: {
+        trigger: context.trigger,
+        code: context.code,
+        reason: context.reason,
+        was_clean: context.wasClean,
+        active_socket_count: this.sessionsBySocket.size,
+        is_current_socket: isCurrentSocket,
+        connection_id: session.connectionId,
+      },
     });
 
     this.sessionsBySocket.delete(socket);
@@ -897,7 +1144,19 @@ export class RoomDurableObject {
 
   private async handleRoomJoin(session: RoomSocketSession, message: ClientMessage<"ROOM_JOIN">): Promise<void> {
     if (!this.roomState.isInitialized()) {
-      this.sendJoinRejected(session.socket, "ROOM_STATE_LOST");
+      this.logRoomEvent(this.buildMessageLogInput(message, {
+        level: "ERROR",
+        event: "state.loss",
+        error_code: "ROOM_STATE_LOST",
+        outcome: "error",
+        detail: {
+          operation: "ROOM_JOIN",
+        },
+      }));
+      this.sendJoinRejected(session.socket, "ROOM_STATE_LOST", this.buildMessageLogInput(message, {
+        level: "ERROR",
+        outcome: "error",
+      }));
       return;
     }
 
@@ -910,12 +1169,23 @@ export class RoomDurableObject {
         room_state_snapshot: this.roomState.toSnapshot(),
       });
       this.sendResultReadyIfAvailable(session.socket);
+      this.logRoomEvent(this.buildMessageLogInput(message, {
+        event: "room.join",
+        outcome: "ignored",
+        detail: {
+          join_type: "CURRENT_SESSION",
+        },
+      }));
       return;
     }
 
     const payload = parseRoomJoinPayload(message.payload);
     if (payload === null) {
-      this.sendJoinRejected(session.socket, "INVALID_JOIN_PAYLOAD");
+      this.sendJoinRejected(session.socket, "INVALID_JOIN_PAYLOAD", this.buildMessageLogInput(message, {
+        detail: {
+          validation: "invalid_join_payload",
+        },
+      }));
       return;
     }
 
@@ -924,7 +1194,12 @@ export class RoomDurableObject {
       const expectedJoinCode = normalizeJoinCode(settings.join_code);
       const observedJoinCode = normalizeJoinCode(payload.join_code);
       if (expectedJoinCode === null || observedJoinCode !== expectedJoinCode) {
-        this.sendJoinRejected(session.socket, "JOIN_CODE_INVALID");
+        this.sendJoinRejected(session.socket, "JOIN_CODE_INVALID", this.buildMessageLogInput(message, {
+          source: payload.source,
+          detail: {
+            validation: "join_code_invalid",
+          },
+        }));
         return;
       }
     }
@@ -937,7 +1212,16 @@ export class RoomDurableObject {
       now,
     });
     if (!joinResult.ok) {
-      this.sendJoinRejected(session.socket, joinResult.reason ?? "ROOM_JOIN_REJECTED");
+      this.sendJoinRejected(
+        session.socket,
+        joinResult.reason ?? "ROOM_JOIN_REJECTED",
+        this.buildMessageLogInput(message, {
+          source: payload.source,
+          detail: {
+            join_reason: joinResult.reason ?? "ROOM_JOIN_REJECTED",
+          },
+        }),
+      );
       return;
     }
 
@@ -956,11 +1240,22 @@ export class RoomDurableObject {
       room_state_snapshot: snapshot,
     });
     this.sendResultReadyIfAvailable(session.socket);
+    this.logRoomEvent(this.buildMessageLogInput(message, {
+      event: "room.join",
+      source: payload.source,
+      outcome: "ok",
+      detail: {
+        join_type: joinResult.join_type,
+        joined_at: joinedAt,
+        attached_at: attachedAt,
+      },
+    }));
     this.broadcastRoomUpdated();
   }
 
   private async handleRoomLeave(session: RoomSocketSession, closeSocket: boolean): Promise<void> {
     const playerId = session.playerId;
+    const previousState = this.roomState.isInitialized() ? this.roomState.getRoomState() : "(uninitialized)";
     this.clearSessionPlayerBinding(session);
 
     if (playerId === null) {
@@ -970,19 +1265,22 @@ export class RoomDurableObject {
       return;
     }
 
+    const leaveReason = closeSocket ? "HOST_ABORTED" : "HOST_DISCONNECTED";
     const leaveResult = this.roomState.leavePlayer(
       playerId,
       new Date(),
-      closeSocket ? "HOST_ABORTED" : "HOST_DISCONNECTED",
+      leaveReason,
     );
-    console.info("[room-do] leave player", {
-      roomId: this.roomState.getRoomId(),
-      playerId,
-      closeSocket,
-      leaveReason: closeSocket ? "HOST_ABORTED" : "HOST_DISCONNECTED",
-      wasHost: leaveResult.was_host,
-      roomWasClosed: leaveResult.room_was_closed,
-      roomState: this.roomState.getRoomState(),
+    this.logRoomEvent({
+      event: "room.leave",
+      player_id: playerId,
+      outcome: "ok",
+      detail: {
+        close_socket: closeSocket,
+        leave_reason: leaveReason,
+        was_host: leaveResult.was_host,
+        room_was_closed: leaveResult.room_was_closed,
+      },
     });
     if (!leaveResult.changed) {
       if (closeSocket) {
@@ -996,6 +1294,14 @@ export class RoomDurableObject {
       await this.syncAlarm();
       if (this.roomState.getRoomState() === "CLOSED") {
         await this.clearAlarm();
+        this.logTransitionIfChanged(previousState, {
+          player_id: playerId,
+          outcome: "ok",
+          detail: {
+            trigger: "room_leave",
+            leave_reason: leaveReason,
+          },
+        });
         this.broadcastRoomClosed(true);
         await this.removeLobbyDirectoryEntry();
         this.disconnectAll(4000, closeSocket ? "Host left." : "Host disconnected.");
@@ -1017,23 +1323,38 @@ export class RoomDurableObject {
 
   private async handleReadySet(session: RoomSocketSession, message: ClientMessage<"READY_SET">): Promise<void> {
     if (session.playerId === null) {
-      this.sendError(session.socket, "INVALID_STATE", "Send ROOM_JOIN before this message.");
+      this.sendError(session.socket, "INVALID_STATE", "Send ROOM_JOIN before this message.", this.buildMessageLogInput(message));
       return;
     }
 
     const payload = parseReadySetPayload(message.payload);
     if (payload === null) {
-      this.sendError(session.socket, "INVALID_STATE", "READY_SET payload is invalid.");
+      this.sendError(session.socket, "INVALID_STATE", "READY_SET payload is invalid.", this.buildMessageLogInput(message, {
+        detail: {
+          validation: "invalid_ready_set_payload",
+        },
+      }));
       return;
     }
 
     const result = this.roomState.setPlayerReady(session.playerId, payload.ready);
     if (!result.ok) {
-      this.sendError(session.socket, "INVALID_STATE", "READY_SET is only available in LOBBY.");
+      this.sendError(session.socket, "INVALID_STATE", "READY_SET is only available in LOBBY.", this.buildMessageLogInput(message, {
+        detail: {
+          reason: result.reason ?? "INVALID_STATE",
+        },
+      }));
       return;
     }
 
     await this.persistRoomRecord();
+    this.logRoomEvent(this.buildMessageLogInput(message, {
+      event: "ready.set",
+      outcome: "ok",
+      detail: {
+        ready: payload.ready,
+      },
+    }));
     this.broadcast("READY_STATUS_CHANGED", {
       player_id: session.playerId,
       ready: payload.ready,
@@ -1046,41 +1367,66 @@ export class RoomDurableObject {
     message: ClientMessage<"START_MATCH">,
   ): Promise<void> {
     if (session.playerId === null) {
-      this.sendError(session.socket, "INVALID_STATE", "Send ROOM_JOIN before this message.");
+      this.sendError(session.socket, "INVALID_STATE", "Send ROOM_JOIN before this message.", this.buildMessageLogInput(message));
       return;
     }
 
     const payload = parseRequestIdPayload(message.payload);
     if (payload === null) {
-      this.sendError(session.socket, "INVALID_STATE", "START_MATCH payload is invalid.");
+      this.sendError(session.socket, "INVALID_STATE", "START_MATCH payload is invalid.", this.buildMessageLogInput(message, {
+        detail: {
+          validation: "invalid_request_id_payload",
+        },
+      }));
       return;
     }
 
     if (this.isDuplicateRequest(session.playerId, message.type, payload.request_id)) {
+      this.logRoomEvent(this.buildMessageLogInput(message, {
+        event: "ws.duplicate",
+        request_id: payload.request_id,
+        outcome: "duplicate",
+        detail: {
+          dedupe_key: "request_id",
+        },
+      }));
       this.sendStateSnapshot(session.socket);
       return;
     }
 
+    const previousState = this.roomState.getRoomState();
     const result = this.roomState.startMatch(session.playerId, new Date());
     if (!result.ok) {
       switch (result.reason) {
         case "NOT_HOST":
-          this.sendError(session.socket, "NOT_HOST", "Only the host can start the match.");
+          this.sendError(session.socket, "NOT_HOST", "Only the host can start the match.", this.buildMessageLogInput(message, {
+            request_id: payload.request_id,
+          }));
           return;
         case "START_REQUIRES_MIN_PLAYERS":
-          this.sendStartMatchRejected(session.socket, "START_REQUIRES_MIN_PLAYERS");
+          this.sendStartMatchRejected(session.socket, "START_REQUIRES_MIN_PLAYERS", this.buildMessageLogInput(message, {
+            request_id: payload.request_id,
+          }));
           return;
         case "NOT_ALL_PLAYERS_READY":
-          this.sendStartMatchRejected(session.socket, "NOT_ALL_PLAYERS_READY");
+          this.sendStartMatchRejected(session.socket, "NOT_ALL_PLAYERS_READY", this.buildMessageLogInput(message, {
+            request_id: payload.request_id,
+          }));
           return;
         case "PREVIOUS_MATCH_NOT_CLEARED":
-          this.sendStartMatchRejected(session.socket, "PREVIOUS_MATCH_NOT_CLEARED");
+          this.sendStartMatchRejected(session.socket, "PREVIOUS_MATCH_NOT_CLEARED", this.buildMessageLogInput(message, {
+            request_id: payload.request_id,
+          }));
           return;
         case "BPL_REQUIRES_TWO_PLAYERS":
-          this.sendStartMatchRejected(session.socket, "BPL_REQUIRES_TWO_PLAYERS");
+          this.sendStartMatchRejected(session.socket, "BPL_REQUIRES_TWO_PLAYERS", this.buildMessageLogInput(message, {
+            request_id: payload.request_id,
+          }));
           return;
         default:
-          this.sendStartMatchRejected(session.socket, "INVALID_STATE");
+          this.sendStartMatchRejected(session.socket, "INVALID_STATE", this.buildMessageLogInput(message, {
+            request_id: payload.request_id,
+          }));
           return;
       }
     }
@@ -1094,6 +1440,13 @@ export class RoomDurableObject {
       event_id: this.nextEventId("match_found"),
       scheduled_at: new Date().toISOString(),
     });
+    this.logTransitionIfChanged(previousState, this.buildMessageLogInput(message, {
+      request_id: payload.request_id,
+      outcome: "ok",
+      detail: {
+        trigger: "start_match",
+      },
+    }));
     this.broadcastRoomUpdated();
   }
 
@@ -1102,29 +1455,49 @@ export class RoomDurableObject {
     message: ClientMessage<"RETURN_TO_LOBBY">,
   ): Promise<void> {
     if (session.playerId === null) {
-      this.sendError(session.socket, "INVALID_STATE", "Send ROOM_JOIN before this message.");
+      this.sendError(session.socket, "INVALID_STATE", "Send ROOM_JOIN before this message.", this.buildMessageLogInput(message));
       return;
     }
 
     const payload = parseRequestIdPayload(message.payload);
     if (payload === null) {
-      this.sendError(session.socket, "INVALID_STATE", "RETURN_TO_LOBBY payload is invalid.");
+      this.sendError(session.socket, "INVALID_STATE", "RETURN_TO_LOBBY payload is invalid.", this.buildMessageLogInput(message, {
+        detail: {
+          validation: "invalid_request_id_payload",
+        },
+      }));
       return;
     }
 
     if (this.isDuplicateRequest(session.playerId, message.type, payload.request_id)) {
+      this.logRoomEvent(this.buildMessageLogInput(message, {
+        event: "ws.duplicate",
+        request_id: payload.request_id,
+        outcome: "duplicate",
+        detail: {
+          dedupe_key: "request_id",
+        },
+      }));
       this.sendStateSnapshot(session.socket);
       return;
     }
 
+    const previousState = this.roomState.getRoomState();
     const result = this.roomState.returnToLobby(session.playerId, new Date());
     if (!result.ok) {
       if (result.reason === "NOT_HOST") {
-        this.sendError(session.socket, "NOT_HOST", "Only the host can return the room to LOBBY.");
+        this.sendError(session.socket, "NOT_HOST", "Only the host can return the room to LOBBY.", this.buildMessageLogInput(message, {
+          request_id: payload.request_id,
+        }));
         return;
       }
 
-      this.sendError(session.socket, "INVALID_STATE", "RETURN_TO_LOBBY is only available in RESULT.");
+      this.sendError(session.socket, "INVALID_STATE", "RETURN_TO_LOBBY is only available in RESULT.", this.buildMessageLogInput(message, {
+        request_id: payload.request_id,
+        detail: {
+          reason: result.reason ?? "INVALID_STATE",
+        },
+      }));
       return;
     }
 
@@ -1132,31 +1505,54 @@ export class RoomDurableObject {
     await this.persistRoomRecord();
     await this.syncAlarm();
     await this.syncLobbyDirectory();
+    this.logTransitionIfChanged(previousState, this.buildMessageLogInput(message, {
+      request_id: payload.request_id,
+      outcome: "ok",
+      detail: {
+        trigger: "return_to_lobby",
+      },
+    }));
     this.broadcastRoomUpdated();
   }
 
   private async handlePickSubmit(session: RoomSocketSession, message: ClientMessage<"PICK_SUBMIT">): Promise<void> {
     if (session.playerId === null) {
-      this.sendError(session.socket, "INVALID_STATE", "Send ROOM_JOIN before this message.");
+      this.sendError(session.socket, "INVALID_STATE", "Send ROOM_JOIN before this message.", this.buildMessageLogInput(message));
       return;
     }
 
     const payload = parsePickSubmitPayload(message.payload);
     if (payload === null) {
-      this.send(session.socket, "PICK_REJECTED", { reason: "INVALID_PICK_CHART_KEY" });
+      this.sendPickRejected(session.socket, "INVALID_PICK_CHART_KEY", this.buildMessageLogInput(message, {
+        detail: {
+          validation: "invalid_pick_submit_payload",
+        },
+      }));
       return;
     }
 
     if (this.isDuplicateRequest(session.playerId, message.type, payload.request_id)) {
+      this.logRoomEvent(this.buildMessageLogInput(message, {
+        event: "ws.duplicate",
+        request_id: payload.request_id,
+        outcome: "duplicate",
+        detail: {
+          dedupe_key: "request_id",
+        },
+      }));
       this.sendStateSnapshot(session.socket);
       return;
     }
 
+    const previousState = this.roomState.getRoomState();
     const result = this.roomState.submitPick(session.playerId, payload.pick_chart_key, new Date());
     if (!result.ok || result.accepted_pick === undefined) {
-      this.send(session.socket, "PICK_REJECTED", {
-        reason: result.reason ?? "PICK_REJECTED",
-      });
+      this.sendPickRejected(session.socket, result.reason ?? "PICK_REJECTED", this.buildMessageLogInput(message, {
+        request_id: payload.request_id,
+        detail: {
+          pick_chart_key: payload.pick_chart_key,
+        },
+      }));
       return;
     }
 
@@ -1167,6 +1563,25 @@ export class RoomDurableObject {
 
     await this.syncAlarm();
     await this.syncLobbyDirectory();
+    this.logRoomEvent(this.buildMessageLogInput(message, {
+      event: "pick.submit",
+      request_id: payload.request_id,
+      outcome: "ok",
+      ...withRoundIndex(result.round_begin?.round_index),
+      detail: {
+        pick_chart_key: result.accepted_pick.pick_chart_key,
+        round_started: result.round_begin !== undefined,
+      },
+    }));
+    this.logTransitionIfChanged(previousState, this.buildMessageLogInput(message, {
+      request_id: payload.request_id,
+      outcome: "ok",
+      ...withRoundIndex(result.round_begin?.round_index),
+      detail: {
+        trigger: result.round_begin === undefined ? "pick_submit" : "pick_submit_complete",
+        accepted_pick_chart_key: result.accepted_pick.pick_chart_key,
+      },
+    }));
     this.broadcastRoomUpdated();
   }
 
@@ -1175,21 +1590,35 @@ export class RoomDurableObject {
     message: ClientMessage<"RESULT_SUBMIT">,
   ): Promise<void> {
     if (session.playerId === null) {
-      this.sendError(session.socket, "INVALID_STATE", "Send ROOM_JOIN before this message.");
+      this.sendError(session.socket, "INVALID_STATE", "Send ROOM_JOIN before this message.", this.buildMessageLogInput(message));
       return;
     }
 
     const payload = parseResultSubmitPayload(message.payload);
     if (payload === null) {
-      this.sendError(session.socket, "INVALID_STATE", "RESULT_SUBMIT payload is invalid.");
+      this.sendError(session.socket, "INVALID_STATE", "RESULT_SUBMIT payload is invalid.", this.buildMessageLogInput(message, {
+        detail: {
+          validation: "invalid_result_submit_payload",
+        },
+      }));
       return;
     }
 
     if (this.isDuplicateRequest(session.playerId, message.type, payload.request_id)) {
+      this.logRoomEvent(this.buildMessageLogInput(message, {
+        event: "ws.duplicate",
+        request_id: payload.request_id,
+        round_index: payload.round_index,
+        outcome: "duplicate",
+        detail: {
+          dedupe_key: "request_id",
+        },
+      }));
       this.sendStateSnapshot(session.socket);
       return;
     }
 
+    const previousState = this.roomState.getRoomState();
     const result = this.roomState.submitResult(
       session.playerId,
       payload.round_index,
@@ -1200,65 +1629,187 @@ export class RoomDurableObject {
     );
     if (!result.ok) {
       switch (result.reason) {
-        case "RESULT_KEY_MISMATCH":
-          this.sendError(session.socket, "RESULT_KEY_MISMATCH", "observed_key does not match current round.");
+        case "RESULT_KEY_MISMATCH": {
+          const expectedKey = this.roomState.toSnapshot().current_round?.expected_key ?? null;
+          const detail = {
+            expected_key: expectedKey === null ? null : summarizeExpectedKey(expectedKey),
+            observed_key: summarizeExpectedKey(payload.observed_key),
+          };
+          this.logRoomEvent(this.buildMessageLogInput(message, {
+            level: "WARN",
+            event: "round.key_mismatch",
+            request_id: payload.request_id,
+            round_index: payload.round_index,
+            outcome: "rejected",
+            detail,
+          }));
+          this.sendError(
+            session.socket,
+            "RESULT_KEY_MISMATCH",
+            "observed_key does not match current round.",
+            this.buildMessageLogInput(message, {
+              request_id: payload.request_id,
+              round_index: payload.round_index,
+              detail,
+            }),
+          );
           return;
+        }
         case "ROUND_ALREADY_CONFIRMED":
-          this.sendError(session.socket, "ROUND_ALREADY_CONFIRMED", "Player already confirmed for this round.");
+          this.sendError(
+            session.socket,
+            "ROUND_ALREADY_CONFIRMED",
+            "Player already confirmed for this round.",
+            this.buildMessageLogInput(message, {
+              request_id: payload.request_id,
+              round_index: payload.round_index,
+            }),
+          );
           return;
         default:
-          this.sendError(session.socket, "INVALID_STATE", "RESULT_SUBMIT is unavailable in the current state.");
+          this.sendError(
+            session.socket,
+            "INVALID_STATE",
+            "RESULT_SUBMIT is unavailable in the current state.",
+            this.buildMessageLogInput(message, {
+              request_id: payload.request_id,
+              round_index: payload.round_index,
+              detail: {
+                reason: result.reason ?? "INVALID_STATE",
+              },
+            }),
+          );
           return;
       }
     }
 
     this.rememberRequest(session.playerId, message.type, payload.request_id);
-    await this.publishRoundTransition(result);
+    this.logRoomEvent(this.buildMessageLogInput(message, {
+      event: "round.confirm",
+      request_id: payload.request_id,
+      round_index: payload.round_index,
+      outcome: "ok",
+      detail: {
+        status: "PLAYED",
+        metric_value: payload.metric_value,
+        observed_key: summarizeExpectedKey(payload.observed_key),
+        confirmation_count: result.confirmations.length,
+      },
+    }));
+    await this.publishRoundTransition(result, {
+      ...this.buildMessageLogInput(message, {
+        request_id: payload.request_id,
+        round_index: payload.round_index,
+        outcome: "ok",
+        detail: {
+          trigger: "result_submit",
+        },
+      }),
+      previous_room_state: previousState,
+    });
   }
 
   private async handleSkipSelf(session: RoomSocketSession, message: ClientMessage<"SKIP_SELF">): Promise<void> {
     if (session.playerId === null) {
-      this.sendError(session.socket, "INVALID_STATE", "Send ROOM_JOIN before this message.");
+      this.sendError(session.socket, "INVALID_STATE", "Send ROOM_JOIN before this message.", this.buildMessageLogInput(message));
       return;
     }
 
     const payload = parseSkipPayload(message.payload);
     if (payload === null) {
-      this.sendError(session.socket, "INVALID_STATE", "SKIP_SELF payload is invalid.");
+      this.sendError(session.socket, "INVALID_STATE", "SKIP_SELF payload is invalid.", this.buildMessageLogInput(message, {
+        detail: {
+          validation: "invalid_skip_payload",
+        },
+      }));
       return;
     }
 
     if (this.isDuplicateRequest(session.playerId, message.type, payload.request_id)) {
+      this.logRoomEvent(this.buildMessageLogInput(message, {
+        event: "ws.duplicate",
+        request_id: payload.request_id,
+        round_index: payload.round_index,
+        outcome: "duplicate",
+        detail: {
+          dedupe_key: "request_id",
+        },
+      }));
       this.sendStateSnapshot(session.socket);
       return;
     }
 
+    const previousState = this.roomState.getRoomState();
     const result = this.roomState.skipSelf(session.playerId, payload.round_index, payload.reason, new Date());
     if (!result.ok) {
       switch (result.reason) {
         case "ROUND_ALREADY_CONFIRMED":
-          this.sendError(session.socket, "ROUND_ALREADY_CONFIRMED", "Player already confirmed for this round.");
+          this.sendError(
+            session.socket,
+            "ROUND_ALREADY_CONFIRMED",
+            "Player already confirmed for this round.",
+            this.buildMessageLogInput(message, {
+              request_id: payload.request_id,
+              round_index: payload.round_index,
+            }),
+          );
           return;
         default:
-          this.sendError(session.socket, "INVALID_STATE", "SKIP_SELF is unavailable in the current state.");
+          this.sendError(
+            session.socket,
+            "INVALID_STATE",
+            "SKIP_SELF is unavailable in the current state.",
+            this.buildMessageLogInput(message, {
+              request_id: payload.request_id,
+              round_index: payload.round_index,
+              detail: {
+                reason: result.reason ?? "INVALID_STATE",
+              },
+            }),
+          );
           return;
       }
     }
 
     this.rememberRequest(session.playerId, message.type, payload.request_id);
-    await this.publishRoundTransition(result);
+    this.logRoomEvent(this.buildMessageLogInput(message, {
+      event: "round.confirm",
+      request_id: payload.request_id,
+      round_index: payload.round_index,
+      outcome: "ok",
+      detail: {
+        status: "SKIPPED",
+        reason: payload.reason,
+        confirmation_count: result.confirmations.length,
+      },
+    }));
+    await this.publishRoundTransition(result, {
+      ...this.buildMessageLogInput(message, {
+        request_id: payload.request_id,
+        round_index: payload.round_index,
+        outcome: "ok",
+        detail: {
+          trigger: "skip_self",
+        },
+      }),
+      previous_room_state: previousState,
+    });
   }
 
   private async handleSkipHostAssign(
     session: RoomSocketSession,
-    _message: ClientMessage<"SKIP_HOST_ASSIGN">,
+    message: ClientMessage<"SKIP_HOST_ASSIGN">,
   ): Promise<void> {
     if (session.playerId === null) {
-      this.sendError(session.socket, "INVALID_STATE", "Send ROOM_JOIN before this message.");
+      this.sendError(session.socket, "INVALID_STATE", "Send ROOM_JOIN before this message.", this.buildMessageLogInput(message));
       return;
     }
 
-    this.sendError(session.socket, "INVALID_STATE", "SKIP_HOST_ASSIGN is disabled. Use SKIP_SELF.");
+    this.sendError(session.socket, "INVALID_STATE", "SKIP_HOST_ASSIGN is disabled. Use SKIP_SELF.", this.buildMessageLogInput(message, {
+      detail: {
+        feature_state: "disabled",
+      },
+    }));
   }
 
   private async handleForceAdvance(
@@ -1266,39 +1817,80 @@ export class RoomDurableObject {
     message: ClientMessage<"FORCE_ADVANCE">,
   ): Promise<void> {
     if (session.playerId === null) {
-      this.sendError(session.socket, "INVALID_STATE", "Send ROOM_JOIN before this message.");
+      this.sendError(session.socket, "INVALID_STATE", "Send ROOM_JOIN before this message.", this.buildMessageLogInput(message));
       return;
     }
 
     const payload = parseRequestIdPayload(message.payload);
     if (payload === null) {
-      this.sendError(session.socket, "INVALID_STATE", "FORCE_ADVANCE payload is invalid.");
+      this.sendError(session.socket, "INVALID_STATE", "FORCE_ADVANCE payload is invalid.", this.buildMessageLogInput(message, {
+        detail: {
+          validation: "invalid_request_id_payload",
+        },
+      }));
       return;
     }
 
     if (this.isDuplicateRequest(session.playerId, message.type, payload.request_id)) {
+      this.logRoomEvent(this.buildMessageLogInput(message, {
+        event: "ws.duplicate",
+        request_id: payload.request_id,
+        outcome: "duplicate",
+        detail: {
+          dedupe_key: "request_id",
+        },
+      }));
       this.sendStateSnapshot(session.socket);
       return;
     }
 
+    const previousState = this.roomState.getRoomState();
     const result = this.roomState.forceAdvance(session.playerId, new Date());
     if (!result.ok) {
       switch (result.reason) {
         case "NOT_HOST":
-          this.sendError(session.socket, "NOT_HOST", "Only the host can force advance.");
+          this.sendError(session.socket, "NOT_HOST", "Only the host can force advance.", this.buildMessageLogInput(message, {
+            request_id: payload.request_id,
+          }));
           return;
         default:
           this.sendError(
             session.socket,
             "INVALID_STATE",
             "FORCE_ADVANCE is unavailable unless the current round still has unconfirmed players.",
+            this.buildMessageLogInput(message, {
+              request_id: payload.request_id,
+              detail: {
+                reason: result.reason ?? "INVALID_STATE",
+              },
+            }),
           );
           return;
       }
     }
 
     this.rememberRequest(session.playerId, message.type, payload.request_id);
-    await this.publishRoundTransition(result);
+    this.logRoomEvent(this.buildMessageLogInput(message, {
+      event: "round.force_advance",
+      request_id: payload.request_id,
+      outcome: "ok",
+      ...withRoundIndex(result.force_advance_applied?.round_index),
+      detail: {
+        timed_out_players: result.force_advance_applied?.timed_out_players ?? [],
+        confirmation_count: result.confirmations.length,
+      },
+    }));
+    await this.publishRoundTransition(result, {
+      ...this.buildMessageLogInput(message, {
+        request_id: payload.request_id,
+        outcome: "ok",
+        ...withRoundIndex(result.force_advance_applied?.round_index),
+        detail: {
+          trigger: "force_advance",
+        },
+      }),
+      previous_room_state: previousState,
+    });
   }
 
   private sendStateSnapshot(socket: WebSocket): void {
@@ -1398,16 +1990,65 @@ export class RoomDurableObject {
     socket.send(JSON.stringify(envelope));
   }
 
-  private sendError(socket: WebSocket, code: ErrorCode, message: string): void {
+  private sendError(
+    socket: WebSocket,
+    code: ErrorCode,
+    message: string,
+    input: Omit<RoomDoLogInput, "event" | "error_code"> = {},
+  ): void {
+    this.logRoomEvent({
+      ...input,
+      level: input.level ?? (input.outcome === "error" ? "ERROR" : "WARN"),
+      event: "ws.reject",
+      error_code: code,
+      outcome: input.outcome ?? "rejected",
+    });
     this.send(socket, "ERROR", { code, message });
   }
 
-  private sendJoinRejected(socket: WebSocket, reason: string): void {
+  private sendJoinRejected(
+    socket: WebSocket,
+    reason: string,
+    input: Omit<RoomDoLogInput, "event" | "error_code"> = {},
+  ): void {
+    this.logRoomEvent({
+      ...input,
+      level: input.level ?? "WARN",
+      event: "ws.reject",
+      error_code: reason,
+      outcome: input.outcome ?? "rejected",
+    });
     this.send(socket, "ROOM_JOIN_REJECTED", { reason });
   }
 
-  private sendStartMatchRejected(socket: WebSocket, reason: string): void {
+  private sendStartMatchRejected(
+    socket: WebSocket,
+    reason: string,
+    input: Omit<RoomDoLogInput, "event" | "error_code"> = {},
+  ): void {
+    this.logRoomEvent({
+      ...input,
+      level: input.level ?? "WARN",
+      event: "ws.reject",
+      error_code: reason,
+      outcome: input.outcome ?? "rejected",
+    });
     this.send(socket, "START_MATCH_REJECTED", { reason });
+  }
+
+  private sendPickRejected(
+    socket: WebSocket,
+    reason: string,
+    input: Omit<RoomDoLogInput, "event" | "error_code"> = {},
+  ): void {
+    this.logRoomEvent({
+      ...input,
+      level: input.level ?? "WARN",
+      event: "ws.reject",
+      error_code: reason,
+      outcome: input.outcome ?? "rejected",
+    });
+    this.send(socket, "PICK_REJECTED", { reason });
   }
 
   private sendResultReadyIfAvailable(socket: WebSocket): void {
@@ -1434,7 +2075,20 @@ export class RoomDurableObject {
   }
 
   private broadcastRoomClosed(includeUnjoined = false): void {
-    this.broadcast("ROOM_CLOSED", this.buildRoomClosedPayload(), includeUnjoined);
+    const payload = this.buildRoomClosedPayload();
+    this.logRoomEvent({
+      level: "WARN",
+      event: "room.close",
+      room_state: "CLOSED",
+      close_reason: payload.close_reason,
+      outcome: "ok",
+      detail: {
+        closed_at: payload.closed_at,
+        include_unjoined: includeUnjoined,
+        result_ready: payload.result_ready,
+      },
+    });
+    this.broadcast("ROOM_CLOSED", payload, includeUnjoined);
   }
 
   private isDuplicateMessage(playerId: string, clientMessageId: string): boolean {
@@ -1553,12 +2207,21 @@ export class RoomDurableObject {
     await this.state.storage.put(ROOM_RECORD_STORAGE_KEY, record);
   }
 
-  private async publishRoundTransition(result: RoundTransitionResult): Promise<void> {
+  private async publishRoundTransition(
+    result: RoundTransitionResult,
+    logInput: (Omit<RoomDoLogInput, "event" | "room_state" | "close_reason"> & {
+      previous_room_state?: RoomDoStructuredLog["room_state"];
+    }) = {},
+  ): Promise<void> {
     await this.persistRoomRecord();
     await this.syncAlarm();
     await this.syncLobbyDirectory();
     this.broadcastRoundTransition(result);
     this.broadcastRoomUpdated();
+    if (logInput.previous_room_state !== undefined) {
+      const { previous_room_state: previousState, ...transitionInput } = logInput;
+      this.logTransitionIfChanged(previousState, transitionInput);
+    }
     if (this.roomState.getRoomState() === "CLOSED") {
       this.broadcastRoomClosed();
       this.disconnectAll(4000, "Room closed.");
@@ -1574,31 +2237,91 @@ export class RoomDurableObject {
       return true;
     }
 
+    const previousPickingState = this.roomState.getRoomState();
     const pickingTransition = this.roomState.expirePickingIfNeeded(now);
     if (pickingTransition !== null) {
       await this.persistRoomRecord();
       this.broadcastPickingTimeoutTransition(pickingTransition);
       await this.syncAlarm();
       await this.syncLobbyDirectory();
+      this.logRoomEvent({
+        event: "pick.timeout",
+        outcome: "ok",
+        ...withRoundIndex(pickingTransition.round_begin?.round_index),
+        detail: {
+          auto_pick_count: pickingTransition.accepted_picks.length,
+          auto_picks: pickingTransition.accepted_picks.map((pick) => ({
+            player_id: pick.player_id,
+            pick_chart_key: pick.pick_chart_key,
+          })),
+        },
+      });
+      this.logTransitionIfChanged(previousPickingState, {
+        outcome: "ok",
+        ...withRoundIndex(pickingTransition.round_begin?.round_index),
+        detail: {
+          trigger: "picking_ttl",
+          auto_pick_count: pickingTransition.accepted_picks.length,
+        },
+      });
       this.broadcastRoomUpdated();
       return false;
     }
 
+    const previousMatchState = this.roomState.getRoomState();
     const matchTransition = this.roomState.expireMatchIfNeeded(now);
     if (matchTransition !== null) {
-      await this.publishRoundTransition(matchTransition);
+      if (matchTransition.confirmations.length > 0) {
+        this.logRoomEvent({
+          event: "round.timeout",
+          outcome: "ok",
+          ...withRoundIndex(matchTransition.confirmations[0]?.round_index),
+          detail: {
+            trigger: "match_ttl",
+            timed_out_players: matchTransition.confirmations.map((confirmation) => confirmation.player_id),
+            confirmation_count: matchTransition.confirmations.length,
+          },
+        });
+      }
+      await this.publishRoundTransition(matchTransition, {
+        previous_room_state: previousMatchState,
+        outcome: "ok",
+        ...withRoundIndex(matchTransition.confirmations[0]?.round_index),
+        detail: {
+          trigger: "match_ttl",
+        },
+      });
       return false;
     }
 
+    const previousRoundState = this.roomState.getRoomState();
     const roundTransition = this.roomState.expireCurrentRoundIfNeeded(now);
     if (roundTransition !== null) {
-      await this.publishRoundTransition(roundTransition);
+      this.logRoomEvent({
+        event: "round.timeout",
+        outcome: "ok",
+        ...withRoundIndex(roundTransition.confirmations[0]?.round_index),
+        detail: {
+          trigger: "round_ttl",
+          timed_out_players: roundTransition.confirmations.map((confirmation) => confirmation.player_id),
+          confirmation_count: roundTransition.confirmations.length,
+        },
+      });
+      await this.publishRoundTransition(roundTransition, {
+        previous_room_state: previousRoundState,
+        outcome: "ok",
+        ...withRoundIndex(roundTransition.confirmations[0]?.round_index),
+        detail: {
+          trigger: "round_ttl",
+        },
+      });
     }
 
     return false;
   }
 
   private async closeHostDisconnectOnTimeout(now: Date): Promise<boolean> {
+    const previousState = this.roomState.getRoomState();
     const closed = this.roomState.closeHostDisconnectIfExpired(now);
     if (!closed) {
       return false;
@@ -1606,6 +2329,13 @@ export class RoomDurableObject {
 
     await this.persistRoomRecord();
     await this.clearAlarm();
+    this.logTransitionIfChanged(previousState, {
+      level: "WARN",
+      outcome: "ok",
+      detail: {
+        trigger: "host_disconnect_ttl",
+      },
+    });
     this.broadcastRoomClosed(true);
     await this.removeLobbyDirectoryEntry();
     this.disconnectAll(4000, "Host disconnected.");
@@ -1613,6 +2343,7 @@ export class RoomDurableObject {
   }
 
   private async closeReadyCheckOnTimeout(now: Date): Promise<boolean> {
+    const previousState = this.roomState.getRoomState();
     const closed = this.roomState.closeReadyCheckIfExpired(now);
     if (!closed) {
       return false;
@@ -1620,6 +2351,13 @@ export class RoomDurableObject {
 
     await this.persistRoomRecord();
     await this.clearAlarm();
+    this.logTransitionIfChanged(previousState, {
+      level: "WARN",
+      outcome: "ok",
+      detail: {
+        trigger: "ready_check_ttl",
+      },
+    });
     this.broadcastRoomClosed(true);
     await this.removeLobbyDirectoryEntry();
     this.disconnectAll(4001, "Ready check timed out.");
