@@ -112,7 +112,7 @@ function isExpired(room: LobbyRoomSummary, now: number): boolean {
     return false;
   }
 
-  if (room.status === "LOBBY" || room.status === "READY_CHECK") {
+  if (room.status === "LOBBY") {
     return age > READY_CHECK_TTL_MS;
   }
 
@@ -128,7 +128,7 @@ function isListVisible(room: LobbyRoomSummary, now: number): boolean {
     return false;
   }
 
-  return room.status === "LOBBY" || room.status === "READY_CHECK";
+  return room.status === "LOBBY";
 }
 
 function buildStoredRooms(input: unknown): Map<string, LobbyRoomSummary> {
