@@ -73,6 +73,15 @@ function normalizeBaseUrl(value: string | undefined): string {
   return (trimmed.length === 0 ? DEFAULT_API_BASE_URL : trimmed).replace(/\/+$/, "");
 }
 
+function resolveApiBaseUrl(rawSettings: PartialClientSettings | null, defaultValue: string): string {
+  const injectedApiBaseUrl = runtimeConfig.settingsDefaults.apiBaseUrl?.trim();
+  if (injectedApiBaseUrl && injectedApiBaseUrl.length > 0) {
+    return normalizeBaseUrl(injectedApiBaseUrl);
+  }
+
+  return normalizeBaseUrl(rawSettings?.apiBaseUrl ?? defaultValue);
+}
+
 function normalizeDirectory(value: string | undefined): string {
   const trimmed = value?.trim() ?? "";
   if (trimmed.length === 0) {
@@ -238,7 +247,7 @@ function normalizeSettings(rawSettings: PartialClientSettings | null): ClientSet
   const voiceSettings = normalizeVoiceSettings(rawSettings);
 
   return {
-    apiBaseUrl: normalizeBaseUrl(rawSettings?.apiBaseUrl ?? defaults.apiBaseUrl),
+    apiBaseUrl: resolveApiBaseUrl(rawSettings, defaults.apiBaseUrl),
     playerId: rawSettings?.playerId?.trim() || defaults.playerId,
     displayName: rawSettings?.displayName?.trim() ?? defaults.displayName,
     source: normalizeSource(rawSettings?.source ?? defaults.source),

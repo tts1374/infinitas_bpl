@@ -79,7 +79,9 @@ function parseSourceType(value: string | undefined): SourceType | undefined {
 const instanceId = normalizeInstanceId(readSearchParam("instance"));
 const displayName = readSearchParam("name");
 const playerId = readSearchParam("playerId");
-const apiBaseUrl = readSearchParam("api");
+const apiBaseUrlFromEnv = import.meta.env.VITE_WORKER_API_BASE_URL?.trim();
+const apiBaseUrl =
+  apiBaseUrlFromEnv && apiBaseUrlFromEnv.length > 0 ? apiBaseUrlFromEnv : readSearchParam("api");
 const source = parseSourceType(readSearchParam("source"));
 const updaterTarget =
   readSearchParam("updateTarget") ?? import.meta.env.VITE_UPDATER_TARGET?.trim() ?? "windows-x86_64";

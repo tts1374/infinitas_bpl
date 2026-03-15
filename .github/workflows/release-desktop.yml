@@ -46,6 +46,7 @@ jobs:
           CLOUDFLARE_API_TOKEN_RELEASE: ${{ secrets.CLOUDFLARE_API_TOKEN_RELEASE }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           PUBLIC_R2_BASE_URL: ${{ vars.PUBLIC_R2_BASE_URL }}
+          CLOUDFLARE_WORKERS_SUBDOMAIN: ${{ vars.CLOUDFLARE_WORKERS_SUBDOMAIN }}
         run: |
           $required = @{
             TAURI_SIGNING_PRIVATE_KEY = $env:TAURI_SIGNING_PRIVATE_KEY
@@ -53,6 +54,7 @@ jobs:
             CLOUDFLARE_API_TOKEN_RELEASE = $env:CLOUDFLARE_API_TOKEN_RELEASE
             CLOUDFLARE_ACCOUNT_ID = $env:CLOUDFLARE_ACCOUNT_ID
             PUBLIC_R2_BASE_URL = $env:PUBLIC_R2_BASE_URL
+            CLOUDFLARE_WORKERS_SUBDOMAIN = $env:CLOUDFLARE_WORKERS_SUBDOMAIN
           }
 
           foreach ($entry in $required.GetEnumerator()) {
@@ -98,6 +100,8 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           $publicR2BaseUrl = "${{ vars.PUBLIC_R2_BASE_URL }}".Trim().TrimEnd("/")
+          $workerSubdomain = "${{ vars.CLOUDFLARE_WORKERS_SUBDOMAIN }}".Trim()
+          $workerApiBaseUrl = "https://infinitas-arena.$workerSubdomain.workers.dev"
           $updaterEndpoint = "$publicR2BaseUrl/channels/stable/latest.json"
           $tauriConfig = Get-Content -Raw apps/client/src-tauri/tauri.conf.json | ConvertFrom-Json
 
@@ -108,6 +112,7 @@ jobs:
           } | ConvertTo-Json -Compress -Depth 8
 
           $env:TAURI_UPDATER_PLUGIN_CONFIG = $updaterPluginConfig
+          $env:VITE_WORKER_API_BASE_URL = $workerApiBaseUrl
           npm --workspace @infinitas/client run tauri:build
 
       - name: Collect and normalize updater artifacts
