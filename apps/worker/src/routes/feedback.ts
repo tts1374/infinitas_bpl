@@ -580,7 +580,10 @@ async function notifyDiscord(payload: FeedbackPayload, env: WorkerEnv, destinati
       headers: {
         "content-type": "application/json; charset=utf-8",
       },
-      body: JSON.stringify({ content }),
+      body: JSON.stringify({
+        content,
+        allowed_mentions: { parse: [] },
+      }),
     });
     if (!response.ok) {
       console.warn(`feedback discord notify failed: status=${response.status}`);
