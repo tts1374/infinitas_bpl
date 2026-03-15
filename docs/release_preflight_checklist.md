@@ -187,10 +187,12 @@ Smoke check: /api/charts?play_style=SP&level_filter=ANY
   - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
   - `CLOUDFLARE_API_TOKEN_RELEASE`
   - `CLOUDFLARE_ACCOUNT_ID`
+- [ ] GitHub Variables を確認した
+  - `PUBLIC_R2_BASE_URL`
+  - `CLOUDFLARE_R2_BUCKET`（未設定時は既定値 `infinitas-arena-updates`）
 - [ ] GitHub Actions `Release Desktop` workflow が実行可能
-- [ ] `apps/update-worker/wrangler.toml` の `DOWNLOAD_BASE_URL` / `APP_KV` / `APP_BUCKET` を確認した
-- [ ] R2 upload 先 path 規約 `bpl-app/stable/<version>/windows-x86_64/` を確認した
-- [ ] `app:stable:latest` を upload 成功後にのみ更新する手順を確認した
+- [ ] R2 upload 先 path 規約 `releases/<version>/windows-x86_64/` を確認した
+- [ ] `channels/stable/latest.json` を artifact upload 成功後にのみ更新する手順を確認した
 - [ ] Wrangler v4 の `--remote` を使うことを確認した
 
 ---

@@ -75,9 +75,10 @@ Windows 向け updater 配布は [release-desktop.yml](../../.github/workflows/r
 1. `apps/client/src-tauri/tauri.conf.json` から version を一度だけ抽出する
 2. GitHub Secrets 経由で updater 署名鍵を注入して Tauri build を行う
 3. `.msi` と `.msi.sig` を 1 件ずつ特定し、`app.msi` / `app.msi.sig` に正規化する
-4. R2 へ upload する
-5. upload 成功後のみ KV `app:stable:latest` を更新する
-6. R2 object と KV 値を `wrangler ... --remote` で post-check する
+4. `releases/<version>/windows-x86_64/` に R2 upload する
+5. `channels/stable/latest.json` を生成し、R2 へ upload する
+6. R2 object と `latest.json` を `wrangler ... --remote` / public URL で post-check する
+7. 別 job で GitHub Release を作成し、R2 のダウンロード URL を本文に記載する（GitHub Assets は未使用）
 
 ### 必要な GitHub Secrets
 
@@ -86,57 +87,50 @@ Windows 向け updater 配布は [release-desktop.yml](../../.github/workflows/r
 - `CLOUDFLARE_API_TOKEN_RELEASE`
 - `CLOUDFLARE_ACCOUNT_ID`
 
-### 任意の GitHub Variables
+### GitHub Variables
 
 - `CLOUDFLARE_R2_BUCKET`
   - 未設定時の既定値: `infinitas-arena-updates`
-- `CLOUDFLARE_KV_BINDING_NAME`
-  - 未設定時の既定値: `APP_KV`
-
-### workflow_dispatch inputs
-
-- `download_base_path`
-  - 既定値: `bpl-app/stable`
-- `app_target`
-  - 既定値: `windows-x86_64`
+- `PUBLIC_R2_BASE_URL`
+  - 例: `https://xxxxxxxxxxxxxxxx.r2.dev`
+  - `latest.json` と GitHub Release 本文のダウンロード URL 生成に使用
 
 ### Cloudflare 側の準備
 
 - R2 bucket `infinitas-arena-updates` が存在していること
-- KV namespace `infinitas-arena-config` が存在していること
-- Worker `infinitas-arena-update-api` の Wrangler 設定が repo 内の [wrangler.toml](./wrangler.toml) と一致していること
-- 配布 URL のベースが `DOWNLOAD_BASE_URL` と整合していること
+- R2 bucket の Public Development URL を取得し、`PUBLIC_R2_BASE_URL` に設定していること
 
 ### 起動方法
 
 1. GitHub Actions の `Release Desktop` workflow を開く
-2. 必要なら `download_base_path` / `app_target` を上書きする
-3. 実行後、artifact `desktop-updater-<version>` と R2 / KV の post-check 成功を確認する
+2. 実行する
+3. 実行後、artifact `desktop-updater-<version>`、R2 post-check、GitHub Release 作成成功を確認する
 
 ### R2 path 規約
 
 workflow は R2 に次の path で配置します。
 
 ```text
-bpl-app/
+releases/
+  <version>/
+    windows-x86_64/
+      app.msi
+      app.msi.sig
+channels/
   stable/
-    <version>/
-      windows-x86_64/
-        app.msi
-        app.msi.sig
+    latest.json
 ```
 
 ### latest 更新順序
 
-`app:stable:latest` は R2 upload の後にしか更新しません。build、artifact 収集、upload のいずれかが失敗した場合は workflow を fail させ、latest は進めません。
+`channels/stable/latest.json` は `app.msi` / `app.msi.sig` の R2 upload が成功した後にのみ更新します。build、artifact 収集、upload のいずれかが失敗した場合は workflow を fail させ、latest の更新は行いません。
 
 ### 失敗時の扱いとロールバック
 
-- version 抽出、artifact 収集、R2 upload、KV update のどこかで失敗したら workflow は fail します
+- version 抽出、artifact 収集、R2 upload、`latest.json` upload のどこかで失敗したら workflow は fail します
 - 2 個目の R2 upload に失敗した場合は、先に upload した object を削除して partial upload を残さないようにします
-- `app:stable:latest` は upload 成功後にしか更新しないため、既存版は維持されます
-- もし KV を戻す必要がある場合は、`wrangler kv key put --binding APP_KV "app:stable:latest" "<previous-version>" --remote` を使って手動で直前 version に戻します
+- `channels/stable/latest.json` は upload 成功後にしか更新しないため、既存版は維持されます
 
 ### Wrangler v4 の注意
 
-Wrangler v4 では remote の R2 / KV 操作に `--remote` が必要です。release workflow でも `wrangler r2 object put/get/delete` と `wrangler kv key put/get` のすべてで `--remote` を明示しています。
+Wrangler v4 では remote の R2 操作に `--remote` が必要です。release workflow でも `wrangler r2 object put/get/delete` に `--remote` を明示しています。

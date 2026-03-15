@@ -2,17 +2,6 @@ name: Release Desktop
 
 on:
   workflow_dispatch:
-    inputs:
-      download_base_path:
-        description: R2 prefix for updater artifacts
-        required: true
-        default: infinitas-arena/stable
-        type: string
-      app_target:
-        description: Tauri updater target
-        required: true
-        default: windows-x86_64
-        type: string
 
 permissions:
   contents: read
@@ -21,13 +10,12 @@ concurrency:
   group: release-desktop-stable
   cancel-in-progress: false
 
-env:
-  WRANGLER_CONFIG_PATH: apps/update-worker/wrangler.toml
-  KV_LATEST_KEY: app:stable:latest
-
 jobs:
   release:
     runs-on: windows-latest
+    outputs:
+      app_version: ${{ steps.release_meta.outputs.app_version }}
+      app_target: ${{ steps.release_meta.outputs.app_target }}
     defaults:
       run:
         shell: pwsh
@@ -57,17 +45,19 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           CLOUDFLARE_API_TOKEN_RELEASE: ${{ secrets.CLOUDFLARE_API_TOKEN_RELEASE }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PUBLIC_R2_BASE_URL: ${{ vars.PUBLIC_R2_BASE_URL }}
         run: |
           $required = @{
             TAURI_SIGNING_PRIVATE_KEY = $env:TAURI_SIGNING_PRIVATE_KEY
             TAURI_SIGNING_PRIVATE_KEY_PASSWORD = $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD
             CLOUDFLARE_API_TOKEN_RELEASE = $env:CLOUDFLARE_API_TOKEN_RELEASE
             CLOUDFLARE_ACCOUNT_ID = $env:CLOUDFLARE_ACCOUNT_ID
+            PUBLIC_R2_BASE_URL = $env:PUBLIC_R2_BASE_URL
           }
 
           foreach ($entry in $required.GetEnumerator()) {
             if ([string]::IsNullOrWhiteSpace($entry.Value)) {
-              throw "Missing required secret: $($entry.Key)"
+              throw "Missing required value: $($entry.Key)"
             }
           }
 
@@ -77,47 +67,23 @@ jobs:
       - name: Resolve release metadata
         id: release_meta
         env:
-          INPUT_DOWNLOAD_BASE_PATH: ${{ inputs.download_base_path }}
-          INPUT_APP_TARGET: ${{ inputs.app_target }}
           VAR_CLOUDFLARE_R2_BUCKET: ${{ vars.CLOUDFLARE_R2_BUCKET }}
-          VAR_CLOUDFLARE_KV_BINDING_NAME: ${{ vars.CLOUDFLARE_KV_BINDING_NAME }}
         run: |
           $version = (node scripts/release/get-tauri-version.mjs | Out-String).Trim()
           if ([string]::IsNullOrWhiteSpace($version)) {
             throw "Version extraction returned empty output."
           }
 
-          $downloadBasePath = $env:INPUT_DOWNLOAD_BASE_PATH
-          if ([string]::IsNullOrWhiteSpace($downloadBasePath)) {
-            $downloadBasePath = "infinitas-arena/stable"
-          }
-          $downloadBasePath = $downloadBasePath.Trim().Trim("/")
-          if ([string]::IsNullOrWhiteSpace($downloadBasePath)) {
-            throw "download_base_path resolved to an empty string."
-          }
-
-          $appTarget = $env:INPUT_APP_TARGET
-          if ([string]::IsNullOrWhiteSpace($appTarget)) {
-            $appTarget = "windows-x86_64"
-          }
-          $appTarget = $appTarget.Trim()
-          if ([string]::IsNullOrWhiteSpace($appTarget)) {
-            throw "app_target resolved to an empty string."
-          }
+          $appTarget = "windows-x86_64"
 
           $bucket = $env:VAR_CLOUDFLARE_R2_BUCKET
           if ([string]::IsNullOrWhiteSpace($bucket)) {
             $bucket = "infinitas-arena-updates"
           }
 
-          $kvBindingName = $env:VAR_CLOUDFLARE_KV_BINDING_NAME
-          if ([string]::IsNullOrWhiteSpace($kvBindingName)) {
-            $kvBindingName = "APP_KV"
-          }
-
           $bundleDir = "apps/client/src-tauri/target/release/bundle/msi"
           $artifactDir = Join-Path $env:RUNNER_TEMP "desktop-release\$version"
-          $r2ObjectPrefix = "$downloadBasePath/$version/$appTarget"
+          $r2ObjectPrefix = "releases/$version/$appTarget"
 
           Add-Content -Path $env:GITHUB_OUTPUT -Value "app_version=$version"
           Add-Content -Path $env:GITHUB_OUTPUT -Value "app_target=$appTarget"
@@ -125,13 +91,24 @@ jobs:
           Add-Content -Path $env:GITHUB_OUTPUT -Value "artifact_dir=$artifactDir"
           Add-Content -Path $env:GITHUB_OUTPUT -Value "r2_bucket=$bucket"
           Add-Content -Path $env:GITHUB_OUTPUT -Value "r2_object_prefix=$r2ObjectPrefix"
-          Add-Content -Path $env:GITHUB_OUTPUT -Value "kv_binding_name=$kvBindingName"
 
       - name: Build signed Windows updater artifacts
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: npm --workspace @infinitas/client run tauri:build
+        run: |
+          $publicR2BaseUrl = "${{ vars.PUBLIC_R2_BASE_URL }}".Trim().TrimEnd("/")
+          $updaterEndpoint = "$publicR2BaseUrl/channels/stable/latest.json"
+          $tauriConfig = Get-Content -Raw apps/client/src-tauri/tauri.conf.json | ConvertFrom-Json
+
+          $updaterPluginConfig = @{
+            endpoints = @($updaterEndpoint)
+            pubkey = $tauriConfig.plugins.updater.pubkey
+            windows = $tauriConfig.plugins.updater.windows
+          } | ConvertTo-Json -Compress -Depth 8
+
+          $env:TAURI_UPDATER_PLUGIN_CONFIG = $updaterPluginConfig
+          npm --workspace @infinitas/client run tauri:build
 
       - name: Collect and normalize updater artifacts
         run: |
@@ -157,21 +134,27 @@ jobs:
             -ObjectPrefix "${{ steps.release_meta.outputs.r2_object_prefix }}" `
             -ArtifactDirectory "${{ steps.release_meta.outputs.artifact_dir }}"
 
-      - name: Update KV latest after upload
+      - name: Generate updater latest.json
+        run: |
+          .\scripts\release\generate-updater-latest-json.ps1 `
+            -Version "${{ steps.release_meta.outputs.app_version }}" `
+            -Target "${{ steps.release_meta.outputs.app_target }}" `
+            -PublicR2BaseUrl "${{ vars.PUBLIC_R2_BASE_URL }}" `
+            -SignatureFile (Join-Path "${{ steps.release_meta.outputs.artifact_dir }}" "app.msi.sig") `
+            -OutputPath (Join-Path "${{ steps.release_meta.outputs.artifact_dir }}" "latest.json") `
+            -Notes "Release notes are managed in GitHub Releases."
+
+      - name: Upload updater latest.json to R2
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN_RELEASE }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          & npx wrangler kv key put `
-            "${{ env.KV_LATEST_KEY }}" `
-            "${{ steps.release_meta.outputs.app_version }}" `
-            --config "${{ env.WRANGLER_CONFIG_PATH }}" `
-            --binding "${{ steps.release_meta.outputs.kv_binding_name }}" `
-            --preview false `
-            --remote
+          $latestPath = Join-Path "${{ steps.release_meta.outputs.artifact_dir }}" "latest.json"
+          $latestObject = "${{ steps.release_meta.outputs.r2_bucket }}/channels/stable/latest.json"
 
+          & npx wrangler r2 object put $latestObject --file $latestPath --remote
           if ($LASTEXITCODE -ne 0) {
-            throw "Failed to update KV latest key."
+            throw "Failed to upload latest.json to R2: $latestObject"
           }
 
       - name: Post-check published artifacts and latest
@@ -184,11 +167,15 @@ jobs:
 
           $bucket = "${{ steps.release_meta.outputs.r2_bucket }}"
           $prefix = "${{ steps.release_meta.outputs.r2_object_prefix }}"
+          $expectedVersion = "${{ steps.release_meta.outputs.app_version }}"
+          $publicR2BaseUrl = "${{ vars.PUBLIC_R2_BASE_URL }}".Trim().TrimEnd("/")
+          $expectedDownloadUrl = "$publicR2BaseUrl/$prefix/app.msi"
 
           $msiObject = "$bucket/$prefix/app.msi"
           $sigObject = "$bucket/$prefix/app.msi.sig"
           $msiPath = Join-Path $verifyDir "app.msi"
           $sigPath = Join-Path $verifyDir "app.msi.sig"
+          $latestPath = Join-Path $verifyDir "latest.json"
 
           & npx wrangler r2 object get $msiObject --file $msiPath --remote
           if ($LASTEXITCODE -ne 0) {
@@ -209,20 +196,75 @@ jobs:
             throw "Verified MSI signature object is empty."
           }
 
-          $latest = & npx wrangler kv key get `
-            "${{ env.KV_LATEST_KEY }}" `
-            --config "${{ env.WRANGLER_CONFIG_PATH }}" `
-            --binding "${{ steps.release_meta.outputs.kv_binding_name }}" `
-            --text `
-            --preview false `
-            --remote
-
-          if ($LASTEXITCODE -ne 0) {
-            throw "Failed to verify KV latest key."
+          $latestUrl = "$publicR2BaseUrl/channels/stable/latest.json"
+          try {
+            Invoke-WebRequest -Uri $latestUrl -OutFile $latestPath -ErrorAction Stop
+          } catch {
+            throw "Failed to download latest JSON from: $latestUrl"
           }
 
-          $latest = ($latest | Out-String).Trim()
-
-          if ($latest -ne "${{ steps.release_meta.outputs.app_version }}") {
-            throw "KV latest value '$latest' does not match released version '${{ steps.release_meta.outputs.app_version }}'."
+          $latestRaw = (Get-Content -Raw -LiteralPath $latestPath)
+          if ([string]::IsNullOrWhiteSpace($latestRaw)) {
+            throw "Downloaded latest.json is empty."
           }
+
+          $latest = $latestRaw | ConvertFrom-Json
+
+          if ($latest.version -ne $expectedVersion) {
+            throw "latest.json version '$($latest.version)' does not match released version '$expectedVersion'."
+          }
+
+          $platformEntry = $latest.platforms.'windows-x86_64'
+          if ($null -eq $platformEntry) {
+            throw "latest.json is missing platforms.windows-x86_64."
+          }
+
+          if ($platformEntry.url -ne $expectedDownloadUrl) {
+            throw "latest.json url '$($platformEntry.url)' does not match expected '$expectedDownloadUrl'."
+          }
+
+          if ([string]::IsNullOrWhiteSpace($platformEntry.signature)) {
+            throw "latest.json platforms.windows-x86_64.signature is empty."
+          }
+
+  github_release:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Build GitHub Release body template
+        env:
+          APP_VERSION: ${{ needs.release.outputs.app_version }}
+          APP_TARGET: ${{ needs.release.outputs.app_target }}
+          PUBLIC_R2_BASE_URL: ${{ vars.PUBLIC_R2_BASE_URL }}
+        run: |
+          download_url="${PUBLIC_R2_BASE_URL%/}/releases/${APP_VERSION}/${APP_TARGET}/app.msi"
+
+          cat > release-notes.md <<EOF
+          ## Version
+          - INFINITAS Arena v${APP_VERSION}
+
+          ## Download URL
+          - Windows (${APP_TARGET}): ${download_url}
+
+          ## Changes
+          - Fill in the release-specific changes here.
+
+          ## Notes
+          - Desktop binaries are distributed via Cloudflare R2.
+          - GitHub Release assets are intentionally not used for binaries.
+          EOF
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APP_VERSION: ${{ needs.release.outputs.app_version }}
+        run: |
+          tag="v${APP_VERSION}"
+          title="INFINITAS Arena v${APP_VERSION}"
+
+          gh release create "$tag" \
+            --target "${GITHUB_SHA}" \
+            --title "$title" \
+            --notes-file release-notes.md
