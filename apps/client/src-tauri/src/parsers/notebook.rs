@@ -1109,7 +1109,7 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .expect("system time before epoch")
             .as_nanos();
-        let temp_dir = env::temp_dir().join(format!("infinitas-bpl-{prefix}-{unique_suffix}"));
+        let temp_dir = env::temp_dir().join(format!("infinitas-arena-{prefix}-{unique_suffix}"));
         fs::create_dir_all(&temp_dir).expect("temp dir should be created");
         temp_dir
     }

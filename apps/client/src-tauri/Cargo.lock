@@ -1913,7 +1913,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "infinitas-bpl-client"
+name = "infinitas-arena-client"
 version = "1.0.0"
 dependencies = [
  "notify",
