@@ -1,3 +1,3 @@
 fn main() {
-    infinitas_bpl_client_lib::run();
+    infinitas_arena_client_lib::run();
 }

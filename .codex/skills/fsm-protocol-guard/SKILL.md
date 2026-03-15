@@ -1,6 +1,6 @@
 ---
 name: fsm-protocol-guard
-description: "Guard high-risk Room FSM and WebSocket protocol work in infinitas_bpl. Use when a task touches Durable Objects state transitions, timers, aggregation, expected_key enforcement, idempotency, host authority, WS schema/payload contracts, lobby KV behavior, or ROOM_STATE_LOST failure handling, to enforce Plan Mode and produce invariant-aware verification requirements."
+description: "Guard high-risk Room FSM and WebSocket protocol work in infinitas_arena. Use when a task touches Durable Objects state transitions, timers, aggregation, expected_key enforcement, idempotency, host authority, WS schema/payload contracts, lobby KV behavior, or ROOM_STATE_LOST failure handling, to enforce Plan Mode and produce invariant-aware verification requirements."
 ---
 
 # Fsm Protocol Guard

@@ -1,6 +1,6 @@
 ---
 name: plan-mode-gate
-description: "Determine whether a requested change in infinitas_bpl must run in Plan Mode before implementation, using AGENTS.md, WORKFLOW.md, and QUALITY.md. Use when starting coding tasks to classify risk, output either a lightweight pre-execution note for Local Execution or a tasks file draft for Plan Mode, and gate implementation until the required artifact exists."
+description: "Determine whether a requested change in infinitas_arena must run in Plan Mode before implementation, using AGENTS.md, WORKFLOW.md, and QUALITY.md. Use when starting coding tasks to classify risk, output either a lightweight pre-execution note for Local Execution or a tasks file draft for Plan Mode, and gate implementation until the required artifact exists."
 ---
 
 # Plan Mode Gate

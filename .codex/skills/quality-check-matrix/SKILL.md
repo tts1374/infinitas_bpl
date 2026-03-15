@@ -1,6 +1,6 @@
 ---
 name: quality-check-matrix
-description: "Select required verification checks for infinitas_bpl tasks using QUALITY.md, AGENTS.md, and WORKFLOW.md. Use when validating completion, preparing a PR, or reviewing risky changes to produce an area-aware checklist that always includes technical and diff validation, and conditionally adds FSM/Protocol, monitoring source, and E2E checks."
+description: "Select required verification checks for infinitas_arena tasks using QUALITY.md, AGENTS.md, and WORKFLOW.md. Use when validating completion, preparing a PR, or reviewing risky changes to produce an area-aware checklist that always includes technical and diff validation, and conditionally adds FSM/Protocol, monitoring source, and E2E checks."
 ---
 
 # Quality Check Matrix

@@ -5,7 +5,7 @@ edition = "2021"
 build = "build.rs"
 
 [lib]
-name = "infinitas_bpl_client_lib"
+name = "infinitas_arena_client_lib"
 crate-type = ["rlib"]
 
 [dependencies]
