@@ -1,7 +1,7 @@
 # Plan: feat/pr1-shared-definitions
 
 ## 作業宣言
-- worktree: `C:\work\infinitas_arena\infinitas_bpl`
+- worktree: `C:\work\infinitas_arena\infinitas_arena`
 - branch: `feat/pr1-shared-definitions`
 - base branch: `v1`
 - BASE_SHA: `845314d4ea457c2f2b33549508c78ec78f1b4aa4`

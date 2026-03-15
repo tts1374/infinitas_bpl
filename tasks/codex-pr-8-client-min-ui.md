@@ -1,7 +1,7 @@
 # Plan: codex/pr-8-client-min-ui
 
 ## 作業宣言
-- worktree: `C:\work\infinitas_arena\infinitas_bpl_pr8_client_ui`
+- worktree: `C:\work\infinitas_arena\infinitas_arena_pr8_client_ui`
 - branch: `codex/pr-8-client-min-ui`
 - base branch: `v1`
 - BASE_SHA: `ee7fb47eceaa75dc1b3fc8180b6c6bdbd7741f96`

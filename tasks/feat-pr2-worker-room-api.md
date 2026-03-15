@@ -1,7 +1,7 @@
 # Plan: feat/pr2-worker-room-api
 
 ## 作業宣言
-- worktree: `C:\work\infinitas_arena\infinitas_bpl`
+- worktree: `C:\work\infinitas_arena\infinitas_arena`
 - branch: `feat/pr2-worker-room-api`
 - base branch: `v1`
 - BASE_SHA: `2dbe8a7b054d4713988fe4ccb31f0a64b15831b6`

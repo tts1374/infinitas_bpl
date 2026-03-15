@@ -1,7 +1,7 @@
 # Plan: codex/pr5-picking
 
 ## 作業宣言
-- worktree: `C:\work\infinitas_arena\infinitas_bpl_pr5_picking`
+- worktree: `C:\work\infinitas_arena\infinitas_arena_pr5_picking`
 - branch: `codex/pr5-picking`
 - base branch: `v1`
 - BASE_SHA: `08dd9c805197e9e59e3082f88ab095b0ace5a4fe`

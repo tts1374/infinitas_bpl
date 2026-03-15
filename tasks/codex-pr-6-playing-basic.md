@@ -1,7 +1,7 @@
 # Plan: codex/pr-6-playing-basic
 
 ## 作業宣言
-- worktree: `C:\work\infinitas_arena\infinitas_bpl_pr6_playing_basic`
+- worktree: `C:\work\infinitas_arena\infinitas_arena_pr6_playing_basic`
 - branch: `codex/pr-6-playing-basic`
 - base branch: `v1`
 - BASE_SHA: `26995f726b66736c25ce25b9d97f0973a46b88dc`

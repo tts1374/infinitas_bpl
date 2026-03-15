@@ -12,7 +12,7 @@
 ## Base
 - Base branch: `v1`
 - Base SHA: `bc6690855530b0ec35d2869e4d96875a58aa63ae`
-- Worktree: `C:/work/infinitas_arena/infinitas_bpl__roomdo_structured_logs`
+- Worktree: `C:/work/infinitas_arena/infinitas_arena__roomdo_structured_logs`
 - Branch: `codex/roomdo-structured-logs`
 
 ## Changes

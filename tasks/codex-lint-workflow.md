@@ -1,7 +1,7 @@
 # Plan: codex/lint-workflow
 
 ## 作業宣言
-- worktree: `C:\work\infinitas_arena\infinitas_bpl_lint`
+- worktree: `C:\work\infinitas_arena\infinitas_arena_lint`
 - branch: `codex/lint-workflow`
 - base branch: `v1`
 - BASE_SHA: `368256b4fca6cf24fdb63facb65dc0256804e9c8`

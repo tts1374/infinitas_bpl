@@ -1,7 +1,7 @@
 # Plan: v1-inf-notebook-summary-watcher
 
 ## 作業宣言
-- worktree: `C:\work\infinitas_arena\infinitas_bpl`
+- worktree: `C:\work\infinitas_arena\infinitas_arena`
 - branch: `v1`
 - base branch: `v1`
 - BASE_SHA: `025ad49208df2652d6441aad0b21e8640d59c8d5`

@@ -1,7 +1,7 @@
 # Plan: codex/pr-10-inf-notebook
 
 ## 作業宣言
-- worktree: `C:\work\infinitas_arena\infinitas_bpl_pr10`
+- worktree: `C:\work\infinitas_arena\infinitas_arena_pr10`
 - branch: `codex/pr-10-inf-notebook`
 - base branch: `v1`
 - BASE_SHA: `ccc00cba0d902967ce6b31f57aaedd66d83f6f6d`

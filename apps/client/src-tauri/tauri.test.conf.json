@@ -1,6 +1,6 @@
 {
   "productName": "INFINITAS Arena Test",
-  "identifier": "com.infinitas.bpl.client.test",
+  "identifier": "com.infinitas.arena.client.test",
   "build": {
     "beforeBuildCommand": "npm --workspace @infinitas/client run build:test"
   },

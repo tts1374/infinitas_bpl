@@ -1,7 +1,7 @@
 # Plan: codex/stats-screen
 
 ## 作業宣言
-- worktree: `C:\work\infinitas_arena\infinitas_bpl_stats`
+- worktree: `C:\work\infinitas_arena\infinitas_arena_stats`
 - branch: `codex/stats-screen`
 - base branch: `v1`
 - BASE_SHA: `a170a7b34ab91448100f910fe2fd6b469eb6f761`

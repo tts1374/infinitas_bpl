@@ -81,7 +81,7 @@
       }
     },
     {
-      "label": "INFINITAS BPL Dev Stack",
+      "label": "INFINITAS ARENA Dev Stack",
       "dependsOn": [
         "Worker Dev",
         "Tauri Dev"

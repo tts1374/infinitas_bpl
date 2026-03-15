@@ -1,7 +1,7 @@
 # Plan: codex/pr4-ready-check
 
 ## 作業宣言
-- worktree: `C:\work\infinitas_arena\infinitas_bpl_pr4_ready_check`
+- worktree: `C:\work\infinitas_arena\infinitas_arena_pr4_ready_check`
 - branch: `codex/pr4-ready-check`
 - base branch: `v1`
 - BASE_SHA: `076ad15906af181a8cd9e28610a3de200a2596c3`

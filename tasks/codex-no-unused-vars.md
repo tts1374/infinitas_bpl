@@ -1,7 +1,7 @@
 # Plan: codex/no-unused-vars
 
 ## 作業宣言
-- worktree: `C:\work\infinitas_arena\infinitas_bpl_unused`
+- worktree: `C:\work\infinitas_arena\infinitas_arena_unused`
 - branch: `codex/no-unused-vars`
 - base branch: `v1`
 - BASE_SHA: `be7f77c34a5b2f245079781e8c75d3ed31a672ed`

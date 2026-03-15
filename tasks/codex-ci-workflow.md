@@ -1,7 +1,7 @@
 # Plan: codex/ci-workflow
 
 ## 作業宣言
-- worktree: `C:\work\infinitas_arena\infinitas_bpl_ci`
+- worktree: `C:\work\infinitas_arena\infinitas_arena_ci`
 - branch: `codex/ci-workflow`
 - base branch: `v1`
 - BASE_SHA: `cafc52e8cca8b5a21abee80cc095ba60f552ef90`

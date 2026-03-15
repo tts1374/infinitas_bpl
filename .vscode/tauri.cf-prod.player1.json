@@ -1,5 +1,5 @@
 {
-  "identifier": "com.infinitas.bpl.client.cfprodplayer1",
+  "identifier": "com.infinitas.arena.client.cfprodplayer1",
   "build": {
     "beforeDevCommand": "cmd /c exit 0",
     "devUrl": "http://localhost:1420?instance=cf-prod-player1&label=PLAYER1&name=PLYR01&playerId=cf-prod-player1&api=https://infinitas-arena.tts1374.workers.dev&debugUi=0"

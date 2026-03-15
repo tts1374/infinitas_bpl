@@ -2,7 +2,7 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "INFINITAS BPL (Tauri Dev)",
+      "name": "INFINITAS ARENA (Tauri Dev)",
       "type": "node-terminal",
       "request": "launch",
       "preLaunchTask": "Worker Dev",
@@ -10,21 +10,21 @@
       "cwd": "${workspaceFolder}"
     },
     {
-      "name": "INFINITAS BPL (2 Clients Local)",
+      "name": "INFINITAS ARENA (2 Clients Local)",
       "type": "node-terminal",
       "request": "launch",
       "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\scripts\\start-local-two-clients.ps1\"",
       "cwd": "${workspaceFolder}"
     },
     {
-      "name": "INFINITAS BPL (Tauri Dev -> CF Prod PLAYER1)",
+      "name": "INFINITAS ARENA (Tauri Dev -> CF Prod PLAYER1)",
       "type": "node-terminal",
       "request": "launch",
       "command": "powershell -NoProfile -ExecutionPolicy Bypass -Command '& { $env:INFINITAS_INSTANCE_ID = ''cf-prod-player1''; $env:CARGO_TARGET_DIR = ''${workspaceFolder}\\testdata\\runtime\\cargo-target\\cf-prod-player1''; npm exec --workspace @infinitas/client -- tauri dev --no-dev-server-wait --config ''${workspaceFolder}\\.vscode\\tauri.cf-prod.player1.json'' }'",
       "cwd": "${workspaceFolder}"
     },
     {
-      "name": "INFINITAS BPL (Tauri Dev -> CF Prod PLAYER2)",
+      "name": "INFINITAS ARENA (Tauri Dev -> CF Prod PLAYER2)",
       "type": "node-terminal",
       "request": "launch",
       "command": "powershell -NoProfile -ExecutionPolicy Bypass -Command '& { $env:INFINITAS_INSTANCE_ID = ''cf-prod-player2''; $env:CARGO_TARGET_DIR = ''${workspaceFolder}\\testdata\\runtime\\cargo-target\\cf-prod-player2''; npm exec --workspace @infinitas/client -- tauri dev --no-dev-server-wait --config ''${workspaceFolder}\\.vscode\\tauri.cf-prod.player2.json'' }'",
@@ -33,11 +33,11 @@
   ],
   "compounds": [
     {
-      "name": "INFINITAS BPL (CF Prod PLAYER1 + PLAYER2)",
+      "name": "INFINITAS ARENA (CF Prod PLAYER1 + PLAYER2)",
       "preLaunchTask": "Client Dev Server",
       "configurations": [
-        "INFINITAS BPL (Tauri Dev -> CF Prod PLAYER1)",
-        "INFINITAS BPL (Tauri Dev -> CF Prod PLAYER2)"
+        "INFINITAS ARENA (Tauri Dev -> CF Prod PLAYER1)",
+        "INFINITAS ARENA (Tauri Dev -> CF Prod PLAYER2)"
       ],
       "stopAll": true
     }

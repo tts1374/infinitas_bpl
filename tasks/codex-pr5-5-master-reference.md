@@ -1,7 +1,7 @@
 # Plan: codex/pr5-5-master-reference
 
 ## 作業宣言
-- worktree: `C:\work\infinitas_arena\infinitas_bpl_pr55_master_reference`
+- worktree: `C:\work\infinitas_arena\infinitas_arena_pr55_master_reference`
 - branch: `codex/pr5-5-master-reference`
 - base branch: `v1`
 - BASE_SHA: `06b0be55389fbe403abd74d8298c6656853630ce`
@@ -59,8 +59,8 @@
 
 ## 検証結果
 - `python scripts/build_worker_chart_master.py`
-- `node C:\work\infinitas_arena\infinitas_bpl\node_modules\typescript\bin\tsc --noEmit -p apps/worker/tsconfig.json`
-- `node C:\work\infinitas_arena\infinitas_bpl\node_modules\typescript\bin\tsc --noEmit -p tsconfig.json`
+- `node C:\work\infinitas_arena\infinitas_arena\node_modules\typescript\bin\tsc --noEmit -p apps/worker/tsconfig.json`
+- `node C:\work\infinitas_arena\infinitas_arena\node_modules\typescript\bin\tsc --noEmit -p tsconfig.json`
 - snapshot sanity:
   - `release_tag=2026-02-23`
   - `charts=11121`

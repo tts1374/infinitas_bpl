@@ -1,7 +1,7 @@
 # Plan: codex/room-ready-pick-list
 
 ## 作業宣言
-- worktree: `C:\work\infinitas_arena\infinitas_bpl__codex_room_ready_pick`
+- worktree: `C:\work\infinitas_arena\infinitas_arena__codex_room_ready_pick`
 - branch: `codex/room-ready-pick-list`
 - base branch: `v1`
 - BASE_SHA: `197440077129a503974a1332a0523223f1b13131`

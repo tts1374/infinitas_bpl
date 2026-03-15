@@ -1,7 +1,7 @@
 # Plan: codex/worker-test-path
 
 ## 作業宣言
-- worktree: `C:\work\infinitas_arena\infinitas_bpl_worker_tests`
+- worktree: `C:\work\infinitas_arena\infinitas_arena_worker_tests`
 - branch: `codex/worker-test-path`
 - base branch: `v1`
 - BASE_SHA: `de2ff36`

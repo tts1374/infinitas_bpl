@@ -13,7 +13,7 @@
 ## Base
 - Base branch: `v1`
 - Base SHA: `0bb71a1ca4dfa1b7f15ff8854d7c0dc532e929be`
-- Worktree: `C:/work/infinitas_arena/infinitas_bpl__design_fsm_doc_align`
+- Worktree: `C:/work/infinitas_arena/infinitas_arena__design_fsm_doc_align`
 - Branch: `codex/design-fsm-doc-align`
 
 ## Changes

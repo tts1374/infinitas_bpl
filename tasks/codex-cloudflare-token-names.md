@@ -1,7 +1,7 @@
 # Plan: codex/cloudflare-token-names
 
 ## 作業宣言
-- worktree: `C:\work\infinitas_arena\infinitas_bpl`
+- worktree: `C:\work\infinitas_arena\infinitas_arena`
 - branch: `v1`
 - base branch: `v1`
 - BASE_SHA: `11b1a7eaf9a6616e3bfc7c9b3a2eb36ea823c839`

@@ -1,7 +1,7 @@
 # Plan: codex/pr-12-audio-local-save
 
 ## 作業宣言
-- worktree: `C:\work\infinitas_arena\infinitas_bpl_pr12`
+- worktree: `C:\work\infinitas_arena\infinitas_arena_pr12`
 - branch: `codex/pr-12-audio-local-save`
 - base branch: `v1`
 - BASE_SHA: `93d12dbd0c77ef2e05854e81a0aef2cd490d13af`

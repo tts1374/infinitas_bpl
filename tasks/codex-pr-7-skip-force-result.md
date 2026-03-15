@@ -1,7 +1,7 @@
 # Plan: codex/pr-7-skip-force-result
 
 ## 作業宣言
-- worktree: `C:\work\infinitas_arena\infinitas_bpl_pr7`
+- worktree: `C:\work\infinitas_arena\infinitas_arena_pr7`
 - branch: `codex/pr-7-skip-force-result`
 - base branch: `v1`
 - BASE_SHA: `76d9af1636e4c686f8e9cb7da0e89faad07c9f6f`

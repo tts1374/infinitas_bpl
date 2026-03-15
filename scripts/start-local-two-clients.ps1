@@ -112,7 +112,7 @@ function New-ClientSpec([int]$Index, [string]$RuntimeRoot, [string]$ConfigRoot, 
     Label = $label
     DisplayName = $displayName
     PlayerId = $playerId
-    WindowTitle = "INFINITAS BPL Client ($label)"
+    WindowTitle = "INFINITAS ARENA Client ($label)"
     DakenFile = Join-Path $dakenDir "today_update.xml"
     NotebookExportFile = Join-Path $notebookExportDir "recent.json"
     NotebookRecordsFile = Join-Path $notebookRecordsDir "summary.json"

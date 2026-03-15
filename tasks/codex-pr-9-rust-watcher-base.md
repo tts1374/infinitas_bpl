@@ -1,7 +1,7 @@
 # Plan: codex/pr-9-rust-watcher-base
 
 ## 作業宣言
-- worktree: `C:\work\infinitas_arena\infinitas_bpl_pr9`
+- worktree: `C:\work\infinitas_arena\infinitas_arena_pr9`
 - branch: `codex/pr-9-rust-watcher-base`
 - base branch: `v1`
 - BASE_SHA: `bb1b7ee2a427d9ff4a30730b6e06359d39205e1a`

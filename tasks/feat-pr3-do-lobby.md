@@ -1,7 +1,7 @@
 # Plan: feat/pr3-do-lobby
 
 ## 作業宣言
-- worktree: `C:\work\infinitas_arena\infinitas_bpl`
+- worktree: `C:\work\infinitas_arena\infinitas_arena`
 - branch: `feat/pr3-do-lobby`
 - base branch: `v1`
 - BASE_SHA: `b5c6ca458e07f56c2bb1beeba3dbe91119eefb65`
