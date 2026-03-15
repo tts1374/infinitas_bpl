@@ -1,4 +1,5 @@
 import { handleGetCharts } from "./routes/charts";
+import { handlePostFeedback } from "./routes/feedback";
 import { handleGetLobby } from "./routes/lobby";
 import { handlePostRooms, handleRoomWebSocket, matchRoomWebSocketPath } from "./routes/rooms";
 import { LobbyDirectoryDO } from "./durable/lobby-directory-object";
@@ -9,6 +10,7 @@ import { methodNotAllowed, noContent, notFound, withCors } from "./utils/http";
 const CHARTS_ALLOWED_METHODS = ["GET"];
 const ROOMS_ALLOWED_METHODS = ["POST"];
 const LOBBY_ALLOWED_METHODS = ["GET"];
+const FEEDBACK_ALLOWED_METHODS = ["POST"];
 
 export { RoomDurableObject, LobbyDirectoryDO };
 
@@ -52,6 +54,17 @@ export default {
       }
 
       return withCors(methodNotAllowed([...CHARTS_ALLOWED_METHODS, "OPTIONS"]), request, CHARTS_ALLOWED_METHODS);
+    }
+
+    if (url.pathname === "/api/feedback") {
+      if (request.method === "OPTIONS") {
+        return withCors(noContent(), request, FEEDBACK_ALLOWED_METHODS);
+      }
+      if (request.method === "POST") {
+        return withCors(await handlePostFeedback(request, env), request, FEEDBACK_ALLOWED_METHODS);
+      }
+
+      return withCors(methodNotAllowed([...FEEDBACK_ALLOWED_METHODS, "OPTIONS"]), request, FEEDBACK_ALLOWED_METHODS);
     }
 
     return notFound();

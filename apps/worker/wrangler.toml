@@ -2,6 +2,16 @@ name = "infinitas-arena"
 main = "src/index.ts"
 compatibility_date = "2025-01-01"
 
+[vars]
+REPO_OWNER_GITHUB = "tts1374"
+REPO_NAME_GITHUB = "infinitas_arena"
+APP_ENV = "production"
+
+[[kv_namespaces]]
+binding = "FEEDBACK_KV"
+id = "a03343c6198440b096eeb37bfacd1260"
+preview_id = "9367beac3a0a474aad9af13b46395feb"
+
 [[durable_objects.bindings]]
 name = "ROOM_DO"
 class_name = "RoomDurableObject"

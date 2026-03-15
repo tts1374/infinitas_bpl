@@ -39,11 +39,15 @@ jobs:
           CLOUDFLARE_API_TOKEN_WORKER: ${{ secrets.CLOUDFLARE_API_TOKEN_WORKER }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_WORKERS_SUBDOMAIN: ${{ vars.CLOUDFLARE_WORKERS_SUBDOMAIN }}
+          ISSUE_TOKEN: ${{ secrets.ISSUE_TOKEN }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
           required_vars=(
             CLOUDFLARE_API_TOKEN_WORKER
             CLOUDFLARE_ACCOUNT_ID
             CLOUDFLARE_WORKERS_SUBDOMAIN
+            ISSUE_TOKEN
+            DISCORD_WEBHOOK_URL
           )
 
           for name in "${required_vars[@]}"; do
@@ -55,6 +59,24 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Put Worker secret ISSUE_TOKEN
+        working-directory: ${{ env.WORKER_DIR }}
+        env:
+          CLOUDFLARE_API_TOKEN_WORKER: ${{ secrets.CLOUDFLARE_API_TOKEN_WORKER }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          ISSUE_TOKEN: ${{ secrets.ISSUE_TOKEN }}
+        run: |
+          printf "%s" "${ISSUE_TOKEN}" | CLOUDFLARE_API_TOKEN="${CLOUDFLARE_API_TOKEN_WORKER}" npx wrangler secret put ISSUE_TOKEN
+
+      - name: Put Worker secret DISCORD_WEBHOOK_URL
+        working-directory: ${{ env.WORKER_DIR }}
+        env:
+          CLOUDFLARE_API_TOKEN_WORKER: ${{ secrets.CLOUDFLARE_API_TOKEN_WORKER }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          printf "%s" "${DISCORD_WEBHOOK_URL}" | CLOUDFLARE_API_TOKEN="${CLOUDFLARE_API_TOKEN_WORKER}" npx wrangler secret put DISCORD_WEBHOOK_URL
 
       - name: Deploy Worker with Wrangler
         working-directory: ${{ env.WORKER_DIR }}

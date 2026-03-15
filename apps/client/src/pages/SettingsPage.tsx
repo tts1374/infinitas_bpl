@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronLeft, Database, FolderOpen, Save, Settings as SettingsIcon, User, Volume2, VolumeX } from "lucide-react";
+import { ChevronLeft, Database, FolderOpen, MessageSquare, Save, Settings as SettingsIcon, User, Volume2, VolumeX } from "lucide-react";
 import { pickDirectory, validateSourceDirectory } from "../services/tauri-bridge";
+import { sendFeedback, type FeedbackRequest } from "../services/worker-api-client";
 import { sourceStore } from "../stores/source-store";
 import {
   getActiveSourceDirectory,
@@ -9,6 +10,7 @@ import {
   settingsStore,
   useSettingsStore,
 } from "../stores/settings-store";
+import clientPackageJson from "../../package.json";
 
 interface SettingsPageProps {
   roomJoined: boolean;
@@ -38,14 +40,42 @@ const SOURCE_OPTIONS = [
 const HIDDEN_SOURCE_IDS = new Set<(typeof SOURCE_OPTIONS)[number]["id"]>(["inf_daken_counter"]);
 const VISIBLE_SOURCE_OPTIONS = SOURCE_OPTIONS.filter((option) => !HIDDEN_SOURCE_IDS.has(option.id));
 const VOLUME_PREVIEW_SE_URL = "/se/count_beep.mp3";
+const FEEDBACK_TITLE_MAX_LENGTH = 100;
+const FEEDBACK_SUMMARY_MAX_LENGTH = 2000;
+const FEEDBACK_STEPS_MAX_LENGTH = 2000;
+const FEEDBACK_SUPPLEMENT_MAX_LENGTH = 2000;
+const FEEDBACK_PROBLEM_MAX_LENGTH = 2000;
+const FEEDBACK_PROPOSAL_MAX_LENGTH = 2000;
+const FEEDBACK_CONTENT_MAX_LENGTH = 3000;
+const FEEDBACK_SCREEN = "SettingsScreen";
+const APP_VERSION = typeof clientPackageJson.version === "string" ? clientPackageJson.version : "unknown";
+
+type FeedbackCategory = "bug" | "feature" | "other";
+
+interface FeedbackDraft {
+  category: FeedbackCategory;
+  title: string;
+  summary: string;
+  steps: string;
+  supplement: string;
+  problem: string;
+  proposal: string;
+  content: string;
+}
 
 export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProps) {
   const draft = useSettingsStore((state) => state.draft);
+  const savedApiBaseUrl = useSettingsStore((state) => state.saved.apiBaseUrl);
   const statusMessage = useSettingsStore((state) => state.statusMessage);
   const _lastSavedAt = useSettingsStore((state) => state.lastSavedAt);
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
   const [displayNameError, setDisplayNameError] = useState<string | null>(null);
   const [validationMessage, setValidationMessage] = useState<string | null>(null);
+  const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
+  const [feedbackDraft, setFeedbackDraft] = useState<FeedbackDraft>(() => createInitialFeedbackDraft());
+  const [feedbackMessage, setFeedbackMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [feedbackValidationError, setFeedbackValidationError] = useState<string | null>(null);
+  const [isFeedbackSubmitting, setIsFeedbackSubmitting] = useState(false);
 
   const activeDirectory = getActiveSourceDirectory(draft);
   const activeOption = getSourceOption(draft.source);
@@ -148,6 +178,29 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
     }
   }
 
+  async function handleSubmitFeedback(): Promise<void> {
+    const validationError = validateFeedbackDraft(feedbackDraft);
+    if (validationError !== null) {
+      setFeedbackValidationError(validationError);
+      return;
+    }
+
+    setFeedbackValidationError(null);
+    setFeedbackMessage(null);
+    setIsFeedbackSubmitting(true);
+    try {
+      await sendFeedback(savedApiBaseUrl, buildFeedbackRequest(feedbackDraft));
+      setFeedbackDraft(createInitialFeedbackDraft());
+      setIsFeedbackModalOpen(false);
+      setFeedbackMessage({ type: "success", text: "送信しました" });
+    } catch {
+      setFeedbackMessage({ type: "error", text: "送信に失敗しました" });
+      setFeedbackValidationError("送信に失敗しました");
+    } finally {
+      setIsFeedbackSubmitting(false);
+    }
+  }
+
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-col gap-12">
       <header className="mb-2">
@@ -159,10 +212,35 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
           <ChevronLeft size={18} className="transition-transform group-hover:-translate-x-1" />
           ロビーに戻る
         </button>
-        <h1 className="flex items-center gap-3 text-4xl font-black italic uppercase tracking-tighter text-white">
-          <SettingsIcon className="h-8 w-8 text-cyan-500" />
-          System Settings
-        </h1>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <h1 className="flex items-center gap-3 text-4xl font-black italic uppercase tracking-tighter text-white">
+            <SettingsIcon className="h-8 w-8 text-cyan-500" />
+            System Settings
+          </h1>
+          <aside className="w-full max-w-xs rounded-2xl border border-cyan-500/20 bg-cyan-500/5 p-4">
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-300">Support</p>
+            <p className="mt-2 text-xs font-semibold leading-relaxed text-gray-300">
+              不具合報告・改善要望・その他の相談を送信できます。
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setFeedbackValidationError(null);
+                setFeedbackMessage(null);
+                setIsFeedbackModalOpen(true);
+              }}
+              className="mt-4 inline-flex items-center gap-2 rounded-xl border border-cyan-400/40 bg-cyan-500/20 px-4 py-2 text-sm font-black text-cyan-200 transition-all hover:bg-cyan-500/30"
+            >
+              <MessageSquare size={16} />
+              フィードバックを送信
+            </button>
+            {feedbackMessage ? (
+              <p className={`mt-3 text-xs font-bold ${feedbackMessage.type === "success" ? "text-emerald-300" : "text-red-300"}`}>
+                {feedbackMessage.text}
+              </p>
+            ) : null}
+          </aside>
+        </div>
       </header>
 
       <div className="space-y-12">
@@ -319,7 +397,6 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
         <footer className="space-y-3 pt-4">
           <p className="text-sm text-gray-400">{statusMessage ?? "Ready to save local settings."}</p>
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            
             <button
               type="button"
               onClick={() => {
@@ -333,6 +410,156 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
           </div>
         </footer>
       </div>
+
+      {isFeedbackModalOpen ? (
+        <div className="fixed inset-0 z-[1200]">
+          <div className="absolute inset-0 bg-black/85 backdrop-blur-[2px]" />
+          <div className="relative flex min-h-full items-center justify-center p-4">
+            <div className="flex max-h-[90vh] w-full max-w-[680px] flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#252526] shadow-[0_25px_70px_rgba(0,0,0,0.8)]">
+              <div className="flex items-center justify-between border-b border-white/5 bg-white/[0.02] px-8 py-6">
+                <h2 className="text-xl font-black text-white">フィードバック送信</h2>
+              </div>
+              <div className="flex flex-col gap-5 overflow-y-auto p-8">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-300">種別</label>
+                  <select
+                    value={feedbackDraft.category}
+                    onChange={(event) => {
+                      const nextCategory = event.currentTarget.value as FeedbackCategory;
+                      setFeedbackDraft((current) => ({ ...current, category: nextCategory }));
+                      setFeedbackValidationError(null);
+                    }}
+                    className="w-full rounded-xl border border-white/10 bg-[#1e1e1e] p-3 text-sm font-bold text-white outline-none transition-all focus:border-cyan-500"
+                  >
+                    <option value="bug">不具合報告</option>
+                    <option value="feature">改善要望</option>
+                    <option value="other">その他</option>
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-300">件名</label>
+                  <input
+                    type="text"
+                    value={feedbackDraft.title}
+                    maxLength={FEEDBACK_TITLE_MAX_LENGTH}
+                    onChange={(event) => {
+                      const nextTitle = event.currentTarget.value;
+                      setFeedbackDraft((current) => ({ ...current, title: nextTitle }));
+                      setFeedbackValidationError(null);
+                    }}
+                    className="w-full rounded-xl border border-white/10 bg-[#1e1e1e] p-4 text-sm font-bold text-white outline-none transition-all placeholder:text-gray-600 focus:border-cyan-500"
+                  />
+                </div>
+
+                {feedbackDraft.category === "bug" ? (
+                  <>
+                    <FeedbackTextarea
+                      label="何が起きましたか？"
+                      value={feedbackDraft.summary}
+                      maxLength={FEEDBACK_SUMMARY_MAX_LENGTH}
+                      onChange={(value) => {
+                        setFeedbackDraft((current) => ({ ...current, summary: value }));
+                        setFeedbackValidationError(null);
+                      }}
+                    />
+                    <FeedbackTextarea
+                      label="その前に何をしていましたか？（任意）"
+                      value={feedbackDraft.steps}
+                      maxLength={FEEDBACK_STEPS_MAX_LENGTH}
+                      onChange={(value) => {
+                        setFeedbackDraft((current) => ({ ...current, steps: value }));
+                        setFeedbackValidationError(null);
+                      }}
+                    />
+                    <FeedbackTextarea
+                      label="補足（任意）"
+                      value={feedbackDraft.supplement}
+                      maxLength={FEEDBACK_SUPPLEMENT_MAX_LENGTH}
+                      onChange={(value) => {
+                        setFeedbackDraft((current) => ({ ...current, supplement: value }));
+                        setFeedbackValidationError(null);
+                      }}
+                    />
+                  </>
+                ) : null}
+
+                {feedbackDraft.category === "feature" ? (
+                  <>
+                    <FeedbackTextarea
+                      label="困っていること"
+                      value={feedbackDraft.problem}
+                      maxLength={FEEDBACK_PROBLEM_MAX_LENGTH}
+                      onChange={(value) => {
+                        setFeedbackDraft((current) => ({ ...current, problem: value }));
+                        setFeedbackValidationError(null);
+                      }}
+                    />
+                    <FeedbackTextarea
+                      label="こうしてほしい"
+                      value={feedbackDraft.proposal}
+                      maxLength={FEEDBACK_PROPOSAL_MAX_LENGTH}
+                      onChange={(value) => {
+                        setFeedbackDraft((current) => ({ ...current, proposal: value }));
+                        setFeedbackValidationError(null);
+                      }}
+                    />
+                  </>
+                ) : null}
+
+                {feedbackDraft.category === "other" ? (
+                  <FeedbackTextarea
+                    label="内容"
+                    value={feedbackDraft.content}
+                    maxLength={FEEDBACK_CONTENT_MAX_LENGTH}
+                    onChange={(value) => {
+                      setFeedbackDraft((current) => ({ ...current, content: value }));
+                      setFeedbackValidationError(null);
+                    }}
+                  />
+                ) : null}
+
+                <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 text-xs leading-relaxed text-amber-100">
+                  <p>送信内容は不具合管理や改善検討に利用されます。</p>
+                  <p>不具合報告・改善要望は公開 Issue として登録される場合があります。</p>
+                  <p>個人情報、join code、表示名、ローカルファイルパスは入力しないでください。</p>
+                </div>
+              </div>
+
+              <div className="shrink-0 border-t border-white/5 bg-[#252526] px-8 py-5">
+                {feedbackValidationError ? <p className="text-sm font-semibold text-red-400">{feedbackValidationError}</p> : null}
+
+                <div className={`flex gap-3 ${feedbackValidationError ? "pt-3" : ""}`}>
+                  <button
+                    type="button"
+                    disabled={isFeedbackSubmitting}
+                    onClick={() => {
+                      setIsFeedbackModalOpen(false);
+                    }}
+                    className="flex-1 rounded-xl bg-white/5 py-4 font-bold text-white transition-all hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    キャンセル
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isFeedbackSubmitting}
+                    onClick={() => {
+                      void handleSubmitFeedback();
+                    }}
+                    className={`flex-1 rounded-xl py-4 font-black transition-all ${
+                      isFeedbackSubmitting
+                        ? "cursor-not-allowed bg-gray-700 text-gray-400"
+                        : "bg-cyan-500 text-black shadow-[0_10px_20px_rgba(6,182,212,0.2)] hover:bg-cyan-400"
+                    }`}
+                  >
+                    {isFeedbackSubmitting ? "送信中..." : "送信"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }
@@ -368,4 +595,155 @@ function validateDisplayName(value: string): string | null {
   }
 
   return null;
+}
+
+function createInitialFeedbackDraft(): FeedbackDraft {
+  return {
+    category: "bug",
+    title: "",
+    summary: "",
+    steps: "",
+    supplement: "",
+    problem: "",
+    proposal: "",
+    content: "",
+  };
+}
+
+function validateFeedbackDraft(draft: FeedbackDraft): string | null {
+  const title = draft.title.trim();
+  if (title.length === 0) {
+    return "件名は必須です。";
+  }
+  if (Array.from(title).length > FEEDBACK_TITLE_MAX_LENGTH) {
+    return "件名は100文字以内で入力してください。";
+  }
+
+  if (draft.category === "bug") {
+    if (draft.summary.trim().length === 0) {
+      return "何が起きましたか？は必須です。";
+    }
+    if (Array.from(draft.summary.trim()).length > FEEDBACK_SUMMARY_MAX_LENGTH) {
+      return "何が起きましたか？は2000文字以内で入力してください。";
+    }
+    if (Array.from(draft.steps.trim()).length > FEEDBACK_STEPS_MAX_LENGTH) {
+      return "その前に何をしていましたか？は2000文字以内で入力してください。";
+    }
+    if (Array.from(draft.supplement.trim()).length > FEEDBACK_SUPPLEMENT_MAX_LENGTH) {
+      return "補足は2000文字以内で入力してください。";
+    }
+    return null;
+  }
+
+  if (draft.category === "feature") {
+    if (draft.problem.trim().length === 0) {
+      return "困っていることは必須です。";
+    }
+    if (draft.proposal.trim().length === 0) {
+      return "こうしてほしいは必須です。";
+    }
+    if (Array.from(draft.problem.trim()).length > FEEDBACK_PROBLEM_MAX_LENGTH) {
+      return "困っていることは2000文字以内で入力してください。";
+    }
+    if (Array.from(draft.proposal.trim()).length > FEEDBACK_PROPOSAL_MAX_LENGTH) {
+      return "こうしてほしいは2000文字以内で入力してください。";
+    }
+    return null;
+  }
+
+  if (draft.content.trim().length === 0) {
+    return "内容は必須です。";
+  }
+  if (Array.from(draft.content.trim()).length > FEEDBACK_CONTENT_MAX_LENGTH) {
+    return "内容は3000文字以内で入力してください。";
+  }
+
+  return null;
+}
+
+function buildFeedbackRequest(draft: FeedbackDraft): FeedbackRequest {
+  const client = {
+    appVersion: APP_VERSION,
+    platform: detectClientPlatform(),
+    screen: FEEDBACK_SCREEN,
+    sentAt: new Date().toISOString(),
+  };
+
+  if (draft.category === "bug") {
+    const steps = draft.steps.trim();
+    const supplement = draft.supplement.trim();
+    return {
+      category: "bug",
+      title: draft.title.trim(),
+      body: {
+        summary: draft.summary.trim(),
+        ...(steps.length > 0 ? { steps } : {}),
+        ...(supplement.length > 0 ? { supplement } : {}),
+      },
+      client,
+    };
+  }
+
+  if (draft.category === "feature") {
+    return {
+      category: "feature",
+      title: draft.title.trim(),
+      body: {
+        problem: draft.problem.trim(),
+        proposal: draft.proposal.trim(),
+      },
+      client,
+    };
+  }
+
+  return {
+    category: "other",
+    title: draft.title.trim(),
+    body: {
+      content: draft.content.trim(),
+    },
+    client,
+  };
+}
+
+function detectClientPlatform(): string {
+  const userAgent = navigator.userAgent.toLowerCase();
+  if (userAgent.includes("windows")) {
+    return "windows";
+  }
+  if (userAgent.includes("mac")) {
+    return "macos";
+  }
+  if (userAgent.includes("linux")) {
+    return "linux";
+  }
+
+  return "unknown";
+}
+
+function FeedbackTextarea({
+  label,
+  value,
+  maxLength,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  maxLength: number;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <label className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-300">{label}</label>
+      <textarea
+        value={value}
+        maxLength={maxLength}
+        rows={4}
+        onChange={(event) => {
+          onChange(event.currentTarget.value);
+        }}
+        className="w-full rounded-xl border border-white/10 bg-[#1e1e1e] p-4 text-sm text-white outline-none transition-all placeholder:text-gray-600 focus:border-cyan-500"
+      />
+    </div>
+  );
 }
