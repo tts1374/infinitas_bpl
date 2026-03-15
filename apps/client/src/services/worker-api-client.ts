@@ -14,6 +14,48 @@ export interface ChartSearchResponse {
   next_cursor: string | null;
 }
 
+export type FeedbackCategory = "bug" | "feature" | "other";
+
+export interface FeedbackClientMeta {
+  appVersion: string;
+  platform: string;
+  screen: string;
+  sentAt: string;
+}
+
+export interface FeedbackBugBody {
+  summary: string;
+  steps?: string;
+  supplement?: string;
+}
+
+export interface FeedbackFeatureBody {
+  problem: string;
+  proposal: string;
+}
+
+export interface FeedbackOtherBody {
+  content: string;
+}
+
+export type FeedbackBody = FeedbackBugBody | FeedbackFeatureBody | FeedbackOtherBody;
+
+export interface FeedbackRequest {
+  category: FeedbackCategory;
+  title: string;
+  body: FeedbackBody;
+  client: FeedbackClientMeta;
+}
+
+export interface FeedbackResponse {
+  ok: true;
+  result: {
+    category: FeedbackCategory;
+    destination: "github" | "kv";
+    key?: string;
+  };
+}
+
 interface ApiErrorBody {
   error?: {
     code?: string;
@@ -114,4 +156,12 @@ export async function listCharts(baseUrl: string, query: ChartSearchQuery): Prom
 
   const url = `${normalizedBaseUrl}/api/charts?${searchParams}`;
   return requestJson<ChartSearchResponse>(url, { method: "GET" });
+}
+
+export async function sendFeedback(baseUrl: string, payload: FeedbackRequest): Promise<FeedbackResponse> {
+  const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
+  return requestJson<FeedbackResponse>(`${normalizedBaseUrl}/api/feedback`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
