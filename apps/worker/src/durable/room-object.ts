@@ -88,6 +88,15 @@ const REQUEST_ID_LOG_LIMIT = 300;
 const OPEN_WEBSOCKET_STATE = 1;
 const SWITCHING_PROTOCOLS_STATUS = 101;
 const ROOM_RECORD_STORAGE_KEY = "room-record";
+const DEFAULT_MIN_SUPPORTED_CLIENT_VERSION = "1.0.1";
+const CLIENT_VERSION_UNSUPPORTED_REASON = "CLIENT_VERSION_UNSUPPORTED";
+const CLIENT_VERSION_PATTERN = /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+
+interface ParsedClientVersion {
+  major: number;
+  minor: number;
+  patch: number;
+}
 
 type SeenClientMessageIdsRecord = Record<string, string[]>;
 
@@ -340,6 +349,65 @@ function parseInitializationInput(payload: unknown): RoomInitializationInput | n
 
 interface ParsedRoomJoinPayload extends RoomJoinPayload {
   song_unlocks: SongUnlockSettings;
+  client_version?: string;
+}
+
+function parseClientVersion(rawValue: string): ParsedClientVersion | null {
+  const match = CLIENT_VERSION_PATTERN.exec(rawValue.trim());
+  if (match === null) {
+    return null;
+  }
+
+  const majorRaw = match[1];
+  const minorRaw = match[2];
+  const patchRaw = match[3];
+  if (majorRaw === undefined || minorRaw === undefined || patchRaw === undefined) {
+    return null;
+  }
+
+  return {
+    major: Number.parseInt(majorRaw, 10),
+    minor: Number.parseInt(minorRaw, 10),
+    patch: Number.parseInt(patchRaw, 10),
+  };
+}
+
+function compareClientVersions(left: ParsedClientVersion, right: ParsedClientVersion): number {
+  if (left.major !== right.major) {
+    return left.major - right.major;
+  }
+  if (left.minor !== right.minor) {
+    return left.minor - right.minor;
+  }
+  return left.patch - right.patch;
+}
+
+function formatClientVersion(version: ParsedClientVersion): string {
+  return `${version.major}.${version.minor}.${version.patch}`;
+}
+
+function resolveMinSupportedClientVersion(rawValue: unknown): ParsedClientVersion {
+  if (typeof rawValue === "string") {
+    const parsed = parseClientVersion(rawValue);
+    if (parsed !== null) {
+      return parsed;
+    }
+  }
+
+  const fallback = parseClientVersion(DEFAULT_MIN_SUPPORTED_CLIENT_VERSION);
+  if (fallback === null) {
+    throw new Error("DEFAULT_MIN_SUPPORTED_CLIENT_VERSION must be a valid semantic version.");
+  }
+
+  return fallback;
+}
+
+function buildUnsupportedClientVersionReason(minSupportedVersion: ParsedClientVersion): string {
+  return (
+    `${CLIENT_VERSION_UNSUPPORTED_REASON}: ` +
+    `このバージョンのクライアントはサポート対象外です。` +
+    `v${formatClientVersion(minSupportedVersion)} 以上へアップデートしてください。`
+  );
 }
 
 function normalizeOwnedPackIds(rawOwnedPackIds: unknown): number[] {
@@ -391,6 +459,8 @@ function parseRoomJoinPayload(payload: unknown): ParsedRoomJoinPayload | null {
   const displayNameRaw = asOptionalString(payload.display_name);
   const source = asEnumValue(payload.source, SOURCE_TYPES);
   const joinCode = asOptionalString(payload.join_code);
+  const clientVersionRaw = asOptionalString(payload.client_version);
+  const clientVersion = clientVersionRaw?.trim() ?? "";
 
   const displayName = displayNameRaw?.trim() ?? "";
   if (displayName.length === 0 || source === undefined) {
@@ -400,6 +470,7 @@ function parseRoomJoinPayload(payload: unknown): ParsedRoomJoinPayload | null {
   return {
     display_name: displayName,
     source,
+    ...(clientVersion.length === 0 ? {} : { client_version: clientVersion }),
     song_unlocks: parseSongUnlockSettings(payload.client_capabilities),
     ...(joinCode === undefined ? {} : { join_code: joinCode }),
   };
@@ -584,6 +655,7 @@ export class RoomDurableObject {
   private readonly activeSocketByPlayerId = new Map<string, WebSocket>();
   private readonly seenClientMessageIds = new Map<string, Set<string>>();
   private readonly processedRequestKeySet = new Set<string>();
+  private readonly minSupportedClientVersion: ParsedClientVersion;
   private processedRequestKeys: string[] = [];
   private nextEventSeq = 0;
   private readonly readyPromise: Promise<void>;
@@ -592,6 +664,7 @@ export class RoomDurableObject {
     private readonly state: DurableObjectStateLike,
     private readonly env: WorkerEnv,
   ) {
+    this.minSupportedClientVersion = resolveMinSupportedClientVersion(this.env.MIN_SUPPORTED_CLIENT_VERSION);
     this.readyPromise = this.state.blockConcurrencyWhile(async () => {
       const record = await this.state.storage.get<RoomDurableRecord>(ROOM_RECORD_STORAGE_KEY);
       if (record !== undefined) {
@@ -1285,6 +1358,27 @@ export class RoomDurableObject {
           validation: "invalid_join_payload",
         },
       }));
+      return;
+    }
+
+    const parsedClientVersion =
+      payload.client_version === undefined ? null : parseClientVersion(payload.client_version);
+    if (
+      parsedClientVersion === null ||
+      compareClientVersions(parsedClientVersion, this.minSupportedClientVersion) < 0
+    ) {
+      this.sendJoinRejected(
+        session.socket,
+        buildUnsupportedClientVersionReason(this.minSupportedClientVersion),
+        this.buildMessageLogInput(message, {
+          source: payload.source,
+          detail: {
+            validation: "client_version_unsupported",
+            client_version: payload.client_version ?? null,
+            min_supported_client_version: formatClientVersion(this.minSupportedClientVersion),
+          },
+        }),
+      );
       return;
     }
 

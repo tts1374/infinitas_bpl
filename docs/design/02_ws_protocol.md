@@ -40,7 +40,7 @@
 
 ### 3.1 ルーム
 - `ROOM_JOIN`
-  - payload: `{ join_code?: string, display_name: string, source: "inf_daken_counter"|"inf-notebook", client_capabilities?: object }`
+  - payload: `{ join_code?: string, display_name: string, source: "inf_daken_counter"|"inf-notebook", client_version?: string, client_capabilities?: object }`
   - 備考: WS接続直後に必ず送る（DOがJOIN完了するまでstate配信しない）
 - `ROOM_LEAVE`
   - payload: `{}`
@@ -81,6 +81,7 @@
   - payload: `{ room_state_snapshot: RoomStateSnapshot }`
 - `ROOM_JOIN_REJECTED`
   - payload: `{ reason: string }`
+  - 備考: `client_version` が最小対応版未満または未送信の場合、`reason` には `CLIENT_VERSION_UNSUPPORTED: ...` を返す
 - `ROOM_UPDATED`
   - payload: `{ room_state_snapshot: RoomStateSnapshot }`
 - `ROOM_CLOSED`
@@ -196,5 +197,6 @@
 - START_MATCH: `players >= 2` かつ `room_state=LOBBY` かつ全員READY かつ前マッチ揮発状態クリア済みのみ
 - RETURN_TO_LOBBY: `room_state=RESULT` のみ。復帰時は全員readyと前マッチ揮発状態をリセットする
 - RESULT_SUBMIT: `observed_key == expected_key` かつ `round_index == current_round_index` のみ採用（accept_window=0）
+- ROOM_JOIN: `client_version >= MIN_SUPPORTED_CLIENT_VERSION` を満たさない場合は `ROOM_JOIN_REJECTED` を返す
 - PICKING timeout: 未pickプレイヤーへランダム割当を行ってから `PICK_FROZEN` / `ROUND_BEGIN` を配信
 - `RESULT_READY` 生成後の `RESULT` / `CLOSED` では提出系はすべて拒否（勝敗改変防止）

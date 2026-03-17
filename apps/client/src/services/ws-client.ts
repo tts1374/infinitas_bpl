@@ -6,8 +6,11 @@ import {
   type ServerMessage,
   type SourceType,
 } from "@infinitas/shared";
+import clientPackageJson from "../../package.json";
 
 export type SocketConnectionState = "CONNECTING" | "JOINING" | "CONNECTED" | "DISCONNECTED";
+
+const APP_VERSION = typeof clientPackageJson.version === "string" ? clientPackageJson.version : "unknown";
 
 interface RoomSocketClientOptions {
   apiBaseUrl: string;
@@ -62,6 +65,7 @@ export class RoomSocketClient {
       this.send("ROOM_JOIN", {
         display_name: this.options.displayName,
         source: this.options.source,
+        client_version: APP_VERSION,
         client_capabilities: {
           song_unlocks: {
             bit_unlocked: this.options.bitUnlockEnabled,

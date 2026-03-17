@@ -13,6 +13,7 @@ export interface RoomJoinPayload {
   join_code?: string;
   display_name: string;
   source: SourceType;
+  client_version?: string;
   client_capabilities?: JsonObject;
 }
 

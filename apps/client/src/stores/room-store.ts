@@ -325,6 +325,19 @@ function joinRejectDialog(reason: string, hasSnapshot: boolean): {
   code?: string;
   blocking?: boolean;
 } {
+  const unsupportedVersionPrefix = "CLIENT_VERSION_UNSUPPORTED:";
+  if (reason.startsWith(unsupportedVersionPrefix)) {
+    const message = reason.slice(unsupportedVersionPrefix.length).trim();
+    return {
+      title: "アップデートが必要です",
+      description:
+        message.length > 0
+          ? message
+          : "このバージョンのクライアントはサポート対象外です。最新版へアップデートしてください。",
+      code: "CLIENT_VERSION_UNSUPPORTED",
+    };
+  }
+
   switch (reason) {
     case "ROOM_FULL":
       return {

@@ -32,6 +32,7 @@ export interface WorkerEnv {
   REPO_OWNER_GITHUB: string;
   REPO_NAME_GITHUB: string;
   APP_ENV: string;
+  MIN_SUPPORTED_CLIENT_VERSION: string;
   ISSUE_TOKEN: string;
   DISCORD_WEBHOOK_URL: string;
 }
