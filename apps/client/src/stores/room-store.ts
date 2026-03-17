@@ -49,6 +49,9 @@ export interface RoomConnectionSettings {
   playerId: string;
   displayName: string;
   source: SourceType;
+  bitUnlockEnabled: boolean;
+  djpUnlockEnabled: boolean;
+  ownedPackIds: number[];
 }
 
 interface RoomReconnectContext {
@@ -501,6 +504,9 @@ function startSocketConnection(
     playerId: settings.playerId,
     displayName: trimmedDisplayName,
     source: settings.source,
+    bitUnlockEnabled: settings.bitUnlockEnabled,
+    djpUnlockEnabled: settings.djpUnlockEnabled,
+    ownedPackIds: settings.ownedPackIds,
     joinCode: connection.joinCode,
     onMessage(message) {
       handleServerMessage(client, message);

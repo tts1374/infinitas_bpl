@@ -23,9 +23,11 @@ import {
   type SubmissionReason,
   type SubmissionStatus,
   type SubmittedBy,
+  type MatchSongUnlockFilter,
+  type SongUnlockSettings,
   type WinMetric,
 } from "@infinitas/shared";
-import type { ResolvedMasterChart, RoomChartMaster } from "../master/chart-master";
+import type { ResolvedMasterChart, RoomChartMaster, SearchChartsOptions } from "../master/chart-master";
 import { evaluateResultRating } from "./result-rating";
 
 const BPL_PICK_CUTIN_DELAY_SECONDS = 3;
@@ -36,6 +38,7 @@ interface InternalPlayer {
   player_id: string;
   display_name: string;
   source: SourceType;
+  song_unlocks: SongUnlockSettings;
   connected: boolean;
   ready: boolean;
   role: PlayerRole;
@@ -62,6 +65,7 @@ export interface JoinPlayerInput {
   player_id: string;
   display_name: string;
   source: SourceType;
+  song_unlocks?: SongUnlockSettings;
   now: Date;
 }
 
@@ -189,6 +193,7 @@ interface PersistedPlayer {
   player_id: string;
   display_name: string;
   source: SourceType;
+  song_unlocks?: SongUnlockSettings;
   connected: boolean;
   ready: boolean;
   role: PlayerRole;
@@ -230,6 +235,7 @@ export interface RoomStatePersistenceRecord {
   frozen_rounds: FrozenRound[];
   current_round: CurrentRoundSnapshot | null;
   match_player_ids: string[];
+  match_song_unlock_filter?: MatchSongUnlockFilter | null;
   result_ready_payload: ResultReadyPayload | null;
   result_key_mismatch_detected?: boolean;
   force_advanced_round_indices?: number[];
@@ -294,6 +300,75 @@ function computePickingDeadline(startedAt: Date): Date {
 
 function computeRejoinUntil(now: Date): Date {
   return new Date(now.getTime() + REJOIN_COOLDOWN_SECONDS * 1_000);
+}
+
+function normalizeOwnedPackIds(ownedPackIds: number[] | undefined): number[] {
+  if (!Array.isArray(ownedPackIds)) {
+    return [];
+  }
+
+  const deduped = new Set<number>();
+  for (const value of ownedPackIds) {
+    if (!Number.isInteger(value) || value <= 0) {
+      continue;
+    }
+    deduped.add(value);
+  }
+
+  return Array.from(deduped).sort((left, right) => left - right);
+}
+
+function normalizeSongUnlockSettings(value: SongUnlockSettings | undefined): SongUnlockSettings {
+  return {
+    bit_unlocked: value?.bit_unlocked === true,
+    djp_unlocked: value?.djp_unlocked === true,
+    owned_pack_ids: normalizeOwnedPackIds(value?.owned_pack_ids),
+  };
+}
+
+function cloneSongUnlockSettings(value: SongUnlockSettings): SongUnlockSettings {
+  return {
+    bit_unlocked: value.bit_unlocked,
+    djp_unlocked: value.djp_unlocked,
+    owned_pack_ids: [...value.owned_pack_ids],
+  };
+}
+
+function cloneMatchSongUnlockFilter(value: MatchSongUnlockFilter): MatchSongUnlockFilter {
+  return {
+    include_bit: value.include_bit,
+    include_djp: value.include_djp,
+    common_pack_ids: [...value.common_pack_ids],
+  };
+}
+
+function computeMatchSongUnlockFilter(players: InternalPlayer[]): MatchSongUnlockFilter {
+  if (players.length === 0) {
+    return {
+      include_bit: false,
+      include_djp: false,
+      common_pack_ids: [],
+    };
+  }
+
+  const includeBit = players.every((player) => player.song_unlocks.bit_unlocked);
+  const includeDjp = players.every((player) => player.song_unlocks.djp_unlocked);
+
+  const commonPackIds = players
+    .map((player) => new Set(player.song_unlocks.owned_pack_ids))
+    .reduce<Set<number>>((intersection, currentSet, index) => {
+      if (index === 0) {
+        return new Set(currentSet);
+      }
+
+      return new Set(Array.from(intersection).filter((packId) => currentSet.has(packId)));
+    }, new Set<number>());
+
+  return {
+    include_bit: includeBit,
+    include_djp: includeDjp,
+    common_pack_ids: Array.from(commonPackIds).sort((left, right) => left - right),
+  };
 }
 
 function canNewPlayerJoin(roomState: RoomState): roomState is "LOBBY" {
@@ -417,6 +492,7 @@ export class RoomLobbyState {
   private frozenRounds: FrozenRound[] = [];
   private currentRound: CurrentRoundSnapshot | null = null;
   private matchPlayerIds: string[] = [];
+  private matchSongUnlockFilter: MatchSongUnlockFilter | null = null;
   private resultReadyPayload: ResultReadyPayload | null = null;
   private resultKeyMismatchDetected = false;
   private readonly forceAdvancedRoundIndices = new Set<number>();
@@ -443,6 +519,7 @@ export class RoomLobbyState {
     this.roomState = "LOBBY";
     this.readyCheckDeadline = computeReadyCheckDeadline(createdAt);
     this.matchDeadline = null;
+    this.matchSongUnlockFilter = null;
   }
 
   isInitialized(): boolean {
@@ -487,6 +564,7 @@ export class RoomLobbyState {
   }
 
   joinPlayer(input: JoinPlayerInput): JoinPlayerResult {
+    const normalizedSongUnlocks = normalizeSongUnlockSettings(input.song_unlocks);
     const existing = this.players.get(input.player_id);
     if (this.roomState === "CLOSED" && !existing) {
       return { ok: false, reason: "ROOM_CLOSED" };
@@ -515,6 +593,7 @@ export class RoomLobbyState {
 
       existing.display_name = input.display_name;
       existing.source = input.source;
+      existing.song_unlocks = normalizedSongUnlocks;
       existing.connected = true;
       existing.left_at = null;
       existing.rejoin_until = null;
@@ -531,6 +610,7 @@ export class RoomLobbyState {
       player_id: input.player_id,
       display_name: input.display_name,
       source: input.source,
+      song_unlocks: normalizedSongUnlocks,
       connected: true,
       ready: false,
       role,
@@ -633,6 +713,10 @@ export class RoomLobbyState {
     this.closedAt = null;
     this.closeReason = null;
     this.matchPlayerIds = this.getPlayersInJoinOrder().map((player) => player.player_id);
+    const matchPlayers = this.matchPlayerIds
+      .map((matchPlayerId) => this.players.get(matchPlayerId))
+      .filter((player): player is InternalPlayer => player !== undefined);
+    this.matchSongUnlockFilter = computeMatchSongUnlockFilter(matchPlayers);
     this.picks.length = 0;
     this.roundConfirmations.clear();
     this.frozenRounds = [];
@@ -674,16 +758,32 @@ export class RoomLobbyState {
       return { ok: false, reason: "PLAYER_ALREADY_PICKED" };
     }
 
+    const resolvedChartWithoutFilter = this.chartMaster.resolvePickChartKey(
+      pickChartKey,
+      this.settings.play_style,
+      this.settings.level_filter,
+    );
+    if (resolvedChartWithoutFilter === null) {
+      return { ok: false, reason: "INVALID_PICK_CHART_KEY" };
+    }
+
     const resolvedChart = this.chartMaster.resolvePickChartKey(
       pickChartKey,
       this.settings.play_style,
       this.settings.level_filter,
+      this.matchSongUnlockFilter ?? undefined,
     );
     if (resolvedChart === null) {
       return { ok: false, reason: "INVALID_PICK_CHART_KEY" };
     }
 
-    const resolvedPick = this.resolveDuplicatePick(playerId, pickChartKey.trim(), resolvedChart, now);
+    const resolvedPick = this.resolveDuplicatePick(
+      playerId,
+      pickChartKey.trim(),
+      resolvedChart,
+      now,
+      this.matchSongUnlockFilter ?? undefined,
+    );
     if (resolvedPick === null) {
       return { ok: false, reason: "INVALID_STATE" };
     }
@@ -966,6 +1066,19 @@ export class RoomLobbyState {
     return this.resultReadyPayload;
   }
 
+  getMatchSongUnlockFilter(): MatchSongUnlockFilter | null {
+    return this.matchSongUnlockFilter === null ? null : cloneMatchSongUnlockFilter(this.matchSongUnlockFilter);
+  }
+
+  searchCharts(options: SearchChartsOptions) {
+    return this.chartMaster.searchCharts({
+      ...options,
+      ...(this.matchSongUnlockFilter === null
+        ? {}
+        : { unlock_filter: this.matchSongUnlockFilter }),
+    });
+  }
+
   getReadyCheckDeadline(): Date | null {
     return this.readyCheckDeadline;
   }
@@ -991,6 +1104,9 @@ export class RoomLobbyState {
         play_style: this.settings.play_style,
         level_filter: this.settings.level_filter,
         used_chart_keys: usedChartKeys,
+        ...(this.matchSongUnlockFilter === null
+          ? {}
+          : { unlock_filter: this.matchSongUnlockFilter }),
         seed: `${this.roomId}:auto-pick:${playerId}:${acceptedAt.toISOString()}`,
       });
       if (autoPick === null) {
@@ -1128,6 +1244,7 @@ export class RoomLobbyState {
       player_id: player.player_id,
       display_name: player.display_name,
       source: player.source,
+      song_unlocks: cloneSongUnlockSettings(player.song_unlocks),
       connected: player.connected,
       ready: player.ready,
       role: player.role,
@@ -1142,6 +1259,8 @@ export class RoomLobbyState {
       settings: this.settings,
       host_player_id: this.hostPlayerId ?? "",
       players,
+      match_song_unlock_filter:
+        this.matchSongUnlockFilter === null ? null : cloneMatchSongUnlockFilter(this.matchSongUnlockFilter),
       picks: this.picks.map((pick) => ({
         player_id: pick.player_id,
         pick_chart_key: pick.pick_chart_key,
@@ -1190,6 +1309,7 @@ export class RoomLobbyState {
         player_id: player.player_id,
         display_name: player.display_name,
         source: player.source,
+        song_unlocks: cloneSongUnlockSettings(player.song_unlocks),
         connected: player.connected,
         ready: player.ready,
         role: player.role,
@@ -1223,6 +1343,8 @@ export class RoomLobbyState {
               confirmed: this.currentRound.confirmed.map((entry) => ({ ...entry })),
             },
       match_player_ids: [...this.matchPlayerIds],
+      match_song_unlock_filter:
+        this.matchSongUnlockFilter === null ? null : cloneMatchSongUnlockFilter(this.matchSongUnlockFilter),
       result_ready_payload: this.resultReadyPayload,
       result_key_mismatch_detected: this.resultKeyMismatchDetected,
       force_advanced_round_indices: Array.from(this.forceAdvancedRoundIndices).sort((left, right) => left - right),
@@ -1255,6 +1377,7 @@ export class RoomLobbyState {
         player_id: player.player_id,
         display_name: player.display_name,
         source: player.source,
+        song_unlocks: normalizeSongUnlockSettings(player.song_unlocks),
         connected: player.connected,
         ready: player.ready,
         role: player.role,
@@ -1295,6 +1418,10 @@ export class RoomLobbyState {
             confirmed: record.current_round.confirmed.map((entry) => ({ ...entry })),
           };
     this.matchPlayerIds = [...record.match_player_ids];
+    this.matchSongUnlockFilter =
+      record.match_song_unlock_filter === undefined || record.match_song_unlock_filter === null
+        ? null
+        : cloneMatchSongUnlockFilter(record.match_song_unlock_filter);
     this.resultReadyPayload = record.result_ready_payload;
     this.resultKeyMismatchDetected = record.result_key_mismatch_detected === true;
     this.forceAdvancedRoundIndices.clear();
@@ -1504,6 +1631,7 @@ export class RoomLobbyState {
     this.frozenRounds = [];
     this.currentRound = null;
     this.matchPlayerIds = [];
+    this.matchSongUnlockFilter = null;
     this.resultReadyPayload = null;
     this.resultKeyMismatchDetected = false;
     this.forceAdvancedRoundIndices.clear();
@@ -1544,6 +1672,7 @@ export class RoomLobbyState {
     requestedPickChartKey: string,
     resolvedChart: ResolvedMasterChart,
     acceptedAt: Date,
+    unlockFilter: MatchSongUnlockFilter | undefined,
   ): InternalPick | null {
     const usedKeys = new Set(this.picks.map((pick) => pick.pick_chart_key));
     let selectedChart = resolvedChart;
@@ -1553,6 +1682,7 @@ export class RoomLobbyState {
         play_style: this.settings.play_style,
         level_filter: this.settings.level_filter,
         used_chart_keys: usedKeys,
+        ...(unlockFilter === undefined ? {} : { unlock_filter: unlockFilter }),
         seed: `${this.roomId}:${playerId}:${requestedPickChartKey}:${acceptedAt.toISOString()}`,
         preferred_difficulty: selectedChart.expected_key.difficulty,
         preferred_level: selectedChart.display.level,
@@ -1633,6 +1763,9 @@ export class RoomLobbyState {
       play_style: this.settings.play_style,
       level_filter: this.settings.level_filter,
       used_chart_keys: usedKeys,
+      ...(this.matchSongUnlockFilter === null
+        ? {}
+        : { unlock_filter: this.matchSongUnlockFilter }),
       preferred_level_min: levelMin,
       preferred_level_max: levelMax,
       enforce_level_range: true,

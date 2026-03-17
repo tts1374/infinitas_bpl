@@ -48,6 +48,8 @@ def build_payload(sqlite_path: Path, release_tag: str, manifest: dict) -> dict:
             "artist": row["artist"] or "",
             "genre": row["genre"] or "",
             "title_search_key": row["title_search_key"],
+            "inf_unlock_type": row["inf_unlock_type"] or "initial",
+            "inf_pack_id": row["inf_pack_id"],
         }
         for row in cursor.execute(
             """
@@ -59,7 +61,9 @@ def build_payload(sqlite_path: Path, release_tag: str, manifest: dict) -> dict:
               m.title_qualifier,
               m.artist,
               m.genre,
-              m.title_search_key
+              m.title_search_key,
+              m.inf_unlock_type,
+              m.inf_pack_id
             FROM chart c
             JOIN music m ON m.music_id = c.music_id
             WHERE c.is_active = 1
@@ -97,6 +101,30 @@ def build_payload(sqlite_path: Path, release_tag: str, manifest: dict) -> dict:
         )
     }
 
+    song_packs = [
+        {
+            "inf_pack_id": row["inf_pack_id"],
+            "pack_code": row["pack_code"],
+            "pack_name": row["pack_name"],
+            "display_order": row["display_order"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+        }
+        for row in cursor.execute(
+            """
+            SELECT
+              inf_pack_id,
+              pack_code,
+              pack_name,
+              display_order,
+              created_at,
+              updated_at
+            FROM inf_pack
+            ORDER BY display_order DESC, inf_pack_id ASC
+            """
+        )
+    ]
+
     connection.close()
 
     return {
@@ -113,6 +141,7 @@ def build_payload(sqlite_path: Path, release_tag: str, manifest: dict) -> dict:
         },
         "charts": unique_charts,
         "aliases": aliases,
+        "song_packs": song_packs,
     }
 
 
@@ -152,22 +181,24 @@ def main() -> None:
     if sqlite_asset is None:
         raise SystemExit(f"SQLite asset '{manifest['file_name']}' was not found in the latest release.")
 
-    with tempfile.TemporaryDirectory() as temp_dir:
-        sqlite_path = Path(temp_dir) / manifest["file_name"]
-        download_file(sqlite_asset["browser_download_url"], sqlite_path)
+    work_dir = Path(".tmp/build-worker-chart-master")
+    work_dir.mkdir(parents=True, exist_ok=True)
+    sqlite_path = work_dir / manifest["file_name"]
 
-        actual_size = sqlite_path.stat().st_size
-        if actual_size != manifest["byte_size"]:
-            raise SystemExit(
-                f"SQLite byte size mismatch: expected {manifest['byte_size']}, got {actual_size}."
-            )
+    download_file(sqlite_asset["browser_download_url"], sqlite_path)
 
-        actual_hash = sha256_file(sqlite_path)
-        if actual_hash != manifest["sha256"]:
-            raise SystemExit("SQLite sha256 mismatch against latest.json.")
+    actual_size = sqlite_path.stat().st_size
+    if actual_size != manifest["byte_size"]:
+        raise SystemExit(
+            f"SQLite byte size mismatch: expected {manifest['byte_size']}, got {actual_size}."
+        )
 
-        payload = build_payload(sqlite_path, release_tag, manifest)
-        atomic_write_json(Path(args.output), payload)
+    actual_hash = sha256_file(sqlite_path)
+    if actual_hash != manifest["sha256"]:
+        raise SystemExit("SQLite sha256 mismatch against latest.json.")
+
+    payload = build_payload(sqlite_path, release_tag, manifest)
+    atomic_write_json(Path(args.output), payload)
 
 
 if __name__ == "__main__":

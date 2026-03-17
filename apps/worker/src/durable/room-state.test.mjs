@@ -2,9 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { RoomLobbyState } from "./room-state.ts";
 
-function buildChart(chartKey, titleSearchKey, title, level) {
+function buildChart(chartKey, titleSearchKey, title, level, options = {}) {
   return {
     chart_key: chartKey,
+    inf_unlock_type: options.inf_unlock_type ?? "initial",
+    inf_pack_id: options.inf_pack_id ?? null,
     expected_key: {
       play_style: "SP",
       difficulty: "HYPER",
@@ -22,20 +24,46 @@ function createChartMaster() {
     buildChart("chart-1", "chart-one", "Chart One", 11),
     buildChart("chart-2", "chart-two", "Chart Two", 8),
     buildChart("chart-3", "chart-three", "Chart Three", 10),
+    buildChart("chart-bit", "chart-bit", "Chart Bit", 10, { inf_unlock_type: "bit" }),
+    buildChart("chart-djp", "chart-djp", "Chart Djp", 10, { inf_unlock_type: "djp" }),
+    buildChart("chart-pack-2", "chart-pack-2", "Chart Pack 2", 10, { inf_unlock_type: "pack", inf_pack_id: 2 }),
   ];
   const chartsByKey = new Map(charts.map((chart) => [chart.chart_key, chart]));
 
+  const canUseByUnlockFilter = (chart, unlockFilter) => {
+    if (!unlockFilter) {
+      return true;
+    }
+
+    switch (chart.inf_unlock_type) {
+      case "initial":
+        return true;
+      case "bit":
+        return unlockFilter.include_bit;
+      case "djp":
+        return unlockFilter.include_djp;
+      case "pack":
+        return Number.isInteger(chart.inf_pack_id) && unlockFilter.common_pack_ids.includes(chart.inf_pack_id);
+      default:
+        return false;
+    }
+  };
+
   return {
-    resolvePickChartKey(pickChartKey) {
-      return chartsByKey.get(pickChartKey) ?? null;
+    resolvePickChartKey(pickChartKey, _playStyle, _levelFilter, unlockFilter) {
+      const chart = chartsByKey.get(pickChartKey) ?? null;
+      return chart && canUseByUnlockFilter(chart, unlockFilter) ? chart : null;
     },
     pickRandomUnusedChart({
       used_chart_keys,
+      unlock_filter,
       preferred_level_min,
       preferred_level_max,
       enforce_level_range,
     }) {
-      const unusedCharts = charts.filter((chart) => !used_chart_keys.has(chart.chart_key));
+      const unusedCharts = charts.filter(
+        (chart) => !used_chart_keys.has(chart.chart_key) && canUseByUnlockFilter(chart, unlock_filter),
+      );
       const hasLevelRange =
         typeof preferred_level_min === "number" && typeof preferred_level_max === "number";
       if (!hasLevelRange) {
@@ -74,7 +102,7 @@ function createChartMaster() {
   };
 }
 
-function createState(settingsOverride = {}) {
+function createState(settingsOverride = {}, playerUnlocks = {}) {
   const state = new RoomLobbyState(createChartMaster());
   state.initialize({
     room_id: "room-1",
@@ -98,6 +126,7 @@ function createState(settingsOverride = {}) {
       player_id: "host",
       display_name: "Host",
       source: "inf-notebook",
+      song_unlocks: playerUnlocks.host,
       now: joinedAt,
     }).ok,
     true,
@@ -107,6 +136,7 @@ function createState(settingsOverride = {}) {
       player_id: "guest",
       display_name: "Guest",
       source: "inf_daken_counter",
+      song_unlocks: playerUnlocks.guest,
       now: new Date("2026-03-08T00:00:02.000Z"),
     }).ok,
     true,
@@ -174,6 +204,39 @@ function playCurrentRound(state, roundIndex, hostMetric, guestMetric, nowBase) {
   );
   assert.equal(guestResult.ok, true);
 }
+
+test("START_MATCH snapshot filter allows only shared unlock conditions", () => {
+  const state = createState({}, {
+    host: {
+      bit_unlocked: true,
+      djp_unlocked: false,
+      owned_pack_ids: [2, 3],
+    },
+    guest: {
+      bit_unlocked: true,
+      djp_unlocked: true,
+      owned_pack_ids: [2],
+    },
+  });
+
+  assert.equal(state.setPlayerReady("host", true).ok, true);
+  assert.equal(state.setPlayerReady("guest", true).ok, true);
+  assert.deepEqual(state.startMatch("host", new Date("2026-03-08T00:01:00.000Z")), { ok: true });
+
+  const pickingSnapshot = state.toSnapshot();
+  assert.deepEqual(pickingSnapshot.match_song_unlock_filter, {
+    include_bit: true,
+    include_djp: false,
+    common_pack_ids: [2],
+  });
+
+  assert.equal(state.submitPick("host", "chart-bit", new Date("2026-03-08T00:01:10.000Z")).ok, true);
+  assert.deepEqual(
+    state.submitPick("guest", "chart-djp", new Date("2026-03-08T00:01:11.000Z")),
+    { ok: false, reason: "INVALID_PICK_CHART_KEY" },
+  );
+  assert.equal(state.submitPick("guest", "chart-pack-2", new Date("2026-03-08T00:01:12.000Z")).ok, true);
+});
 
 test("RESULT -> LOBBY clears ready and match transient state without auto-start", () => {
   const state = createState();

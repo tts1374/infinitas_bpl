@@ -23,6 +23,8 @@ function createSnapshot() {
         artist: "Unit A",
         genre: "TRANCE",
         title_search_key: "blue fire",
+        inf_unlock_type: "bit",
+        inf_pack_id: null,
       },
       {
         play_style: "SP",
@@ -33,6 +35,8 @@ function createSnapshot() {
         artist: "Unit A",
         genre: "TRANCE",
         title_search_key: "blue fire",
+        inf_unlock_type: "djp",
+        inf_pack_id: null,
       },
       {
         play_style: "SP",
@@ -43,6 +47,8 @@ function createSnapshot() {
         artist: "Unit B",
         genre: "HOUSE",
         title_search_key: "night sky",
+        inf_unlock_type: "initial",
+        inf_pack_id: null,
       },
       {
         play_style: "DP",
@@ -53,12 +59,24 @@ function createSnapshot() {
         artist: "Unit A",
         genre: "TRANCE",
         title_search_key: "blue fire",
+        inf_unlock_type: "pack",
+        inf_pack_id: 2,
       },
     ],
     aliases: {
       "Blue Fire (Alias)": "blue fire",
       "NightSky": "night sky",
     },
+    song_packs: [
+      {
+        inf_pack_id: 2,
+        pack_code: "pack_2",
+        pack_name: "Pack 2",
+        display_order: 2,
+        created_at: "2026-03-11T00:00:00.000Z",
+        updated_at: "2026-03-11T00:00:00.000Z",
+      },
+    ],
   };
 }
 
@@ -176,4 +194,46 @@ test("pickRandomUnusedChart respects preferred options and used chart keys", () 
     seed: "seed-exhausted",
   });
   assert.equal(exhausted, null);
+});
+
+test("unlock filter applies to search and resolve", () => {
+  const master = createRoomChartMaster(createSnapshot());
+
+  const filteredSearch = master.searchCharts({
+    play_style: "SP",
+    level_filter: "ANY",
+    unlock_filter: {
+      include_bit: true,
+      include_djp: false,
+      common_pack_ids: [],
+    },
+  });
+  assert.deepEqual(
+    filteredSearch.charts.map((chart) => chart.chart_key).sort(),
+    ["SP::HYPER::blue fire", "SP::NORMAL::night sky"].sort(),
+  );
+
+  const allowed = master.resolvePickChartKey(
+    "SP::HYPER::blue fire",
+    "SP",
+    "ANY",
+    {
+      include_bit: true,
+      include_djp: false,
+      common_pack_ids: [],
+    },
+  );
+  assert.equal(allowed?.chart_key, "SP::HYPER::blue fire");
+
+  const rejected = master.resolvePickChartKey(
+    "SP::ANOTHER::blue fire",
+    "SP",
+    "ANY",
+    {
+      include_bit: true,
+      include_djp: false,
+      common_pack_ids: [],
+    },
+  );
+  assert.equal(rejected, null);
 });

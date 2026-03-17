@@ -75,6 +75,9 @@ const BASE_SETTINGS: Omit<ClientSettings, "playerId" | "displayName" | "source" 
   voiceEnabled: true,
   voiceVolume: 80,
   voiceMuted: false,
+  bitUnlockEnabled: false,
+  djpUnlockEnabled: false,
+  ownedPackIds: [],
 };
 
 const VISUAL_CHARTS: ChartSearchEntry[] = [

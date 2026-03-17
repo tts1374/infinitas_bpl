@@ -1,4 +1,4 @@
-import type { ChartSearchEntry, ChartSearchQuery, LobbyListResponse, RoomSettings } from "@infinitas/shared";
+import type { ChartSearchEntry, ChartSearchQuery, LobbyListResponse, RoomSettings, SongPack } from "@infinitas/shared";
 
 export interface CreateRoomResponse {
   room_id: string;
@@ -12,6 +12,10 @@ export type ListLobbyResponse = LobbyListResponse;
 export interface ChartSearchResponse {
   charts: ChartSearchEntry[];
   next_cursor: string | null;
+}
+
+export interface SongPackListResponse {
+  song_packs: SongPack[];
 }
 
 export type FeedbackCategory = "bug" | "feature" | "other";
@@ -156,6 +160,31 @@ export async function listCharts(baseUrl: string, query: ChartSearchQuery): Prom
 
   const url = `${normalizedBaseUrl}/api/charts?${searchParams}`;
   return requestJson<ChartSearchResponse>(url, { method: "GET" });
+}
+
+export async function listRoomCharts(baseUrl: string, roomId: string, query: ChartSearchQuery): Promise<ChartSearchResponse> {
+  const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
+  const searchParams = new URLSearchParams();
+
+  appendQueryParam(searchParams, "cursor", query.cursor);
+  appendQueryParam(searchParams, "play_style", query.play_style);
+  appendQueryParam(searchParams, "level_filter", query.level_filter);
+  appendQueryParam(searchParams, "difficulty", query.difficulty);
+  appendQueryParam(searchParams, "keyword", query.keyword);
+  if (typeof query.level === "number") {
+    searchParams.set("level", String(query.level));
+  }
+  if (typeof query.limit === "number") {
+    searchParams.set("limit", String(query.limit));
+  }
+
+  const url = `${normalizedBaseUrl}/api/rooms/${encodeURIComponent(roomId)}/charts?${searchParams}`;
+  return requestJson<ChartSearchResponse>(url, { method: "GET" });
+}
+
+export async function listSongPacks(baseUrl: string): Promise<SongPackListResponse> {
+  const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
+  return requestJson<SongPackListResponse>(`${normalizedBaseUrl}/api/song-packs`, { method: "GET" });
 }
 
 export async function sendFeedback(baseUrl: string, payload: FeedbackRequest): Promise<FeedbackResponse> {

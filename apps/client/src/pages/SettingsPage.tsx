@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronLeft, Database, FolderOpen, MessageSquare, Save, Settings as SettingsIcon, User, Volume2, VolumeX } from "lucide-react";
+import { ChevronLeft, Database, FolderOpen, MessageSquare, Save, Package, CheckSquare, Square, Check, Settings as SettingsIcon, User, Volume2, VolumeX } from "lucide-react";
 import { pickDirectory, validateSourceDirectory } from "../services/tauri-bridge";
-import { sendFeedback, type FeedbackRequest } from "../services/worker-api-client";
+import type { SongPack } from "@infinitas/shared";
+import { listSongPacks, sendFeedback, type FeedbackRequest } from "../services/worker-api-client";
 import { sourceStore } from "../stores/source-store";
 import {
   getActiveSourceDirectory,
@@ -76,15 +77,65 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
   const [feedbackMessage, setFeedbackMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [feedbackValidationError, setFeedbackValidationError] = useState<string | null>(null);
   const [isFeedbackSubmitting, setIsFeedbackSubmitting] = useState(false);
+  const [songPacks, setSongPacks] = useState<SongPack[]>([]);
+  const [songPackDialogMessage, setSongPackDialogMessage] = useState<string | null>(null);
+  const [isSongPackLoading, setIsSongPackLoading] = useState(false);
 
   const activeDirectory = getActiveSourceDirectory(draft);
   const activeOption = getSourceOption(draft.source);
 
+  const togglePack = (packId: number) => {
+    const currentOwnedPackIds = draft.ownedPackIds;
+    const nextOwnedPackIds = currentOwnedPackIds.includes(packId)
+      ? currentOwnedPackIds.filter((currentPackId) => currentPackId !== packId)
+      : [...currentOwnedPackIds, packId].sort((left, right) => left - right);
+    settingsStore.update("ownedPackIds", nextOwnedPackIds);
+  };
+  
   useEffect(() => {
     settingsStore.restoreDraftFromSaved();
     setDisplayNameError(null);
     setValidationMessage(null);
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setIsSongPackLoading(true);
+
+    void listSongPacks(draft.apiBaseUrl)
+      .then((response) => {
+        if (cancelled) {
+          return;
+        }
+
+        const sortedPacks = [...response.song_packs].sort((left, right) => {
+          if (left.display_order !== right.display_order) {
+            return right.display_order - left.display_order;
+          }
+          return left.inf_pack_id - right.inf_pack_id;
+        });
+        setSongPacks(sortedPacks);
+      })
+      .catch((error) => {
+        if (cancelled) {
+          return;
+        }
+        setSongPacks([]);
+        setSongPackDialogMessage(
+          formatUnknownError(error, "楽曲パック一覧の取得に失敗しました。APIの状態を確認してください。"),
+        );
+      })
+      .finally(() => {
+        if (cancelled) {
+          return;
+        }
+        setIsSongPackLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [draft.apiBaseUrl]);
 
   useEffect(() => {
     return () => {
@@ -345,6 +396,128 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
 
         </section>
 
+        {/* --- 所持パック・解禁状況設定 --- */}
+        <section className="space-y-6">
+          <div className="flex items-center gap-3 border-b border-white/5 pb-4">
+            <Package size={20} className="text-cyan-400" />
+            <div className="flex flex-wrap items-center gap-3">
+              <h2 className="text-sm font-black uppercase tracking-widest text-gray-400">Song Packs & Unlocks</h2>
+              <span
+                className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] ${
+                  roomJoined ? "bg-amber-500/20 text-amber-300" : "bg-cyan-500/10 text-cyan-300"
+                }`}
+              >
+                {roomJoined ? "Locked In Room" : "Ready"}
+              </span>
+            </div>
+          </div>
+
+          <div className="space-y-6 rounded-2xl border border-white/5 bg-[#252526] p-6">
+            <div className="flex gap-4 border-b border-white/5 pb-6">
+              <button
+                type="button"
+                disabled={roomJoined}
+                onClick={() => {
+                  settingsStore.update("bitUnlockEnabled", !draft.bitUnlockEnabled);
+                }}
+                className={`flex flex-1 items-center justify-between rounded-xl border p-4 transition-all ${
+                  draft.bitUnlockEnabled
+                    ? "border-cyan-500 bg-cyan-500/10 text-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.15)]"
+                    : "border-white/5 bg-[#1e1e1e] text-gray-400 hover:border-white/20"
+                } ${roomJoined ? "cursor-not-allowed opacity-70" : ""}`}
+              >
+                <span className="font-bold">BIT解禁曲</span>
+                {draft.bitUnlockEnabled ? <CheckSquare size={20} /> : <Square size={20} />}
+              </button>
+              <button
+                type="button"
+                disabled={roomJoined}
+                onClick={() => {
+                  settingsStore.update("djpUnlockEnabled", !draft.djpUnlockEnabled);
+                }}
+                className={`flex flex-1 items-center justify-between rounded-xl border p-4 transition-all ${
+                  draft.djpUnlockEnabled
+                    ? "border-cyan-500 bg-cyan-500/10 text-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.15)]"
+                    : "border-white/5 bg-[#1e1e1e] text-gray-400 hover:border-white/20"
+                } ${roomJoined ? "cursor-not-allowed opacity-70" : ""}`}
+              >
+                <span className="font-bold">DJP解禁曲</span>
+                {draft.djpUnlockEnabled ? <CheckSquare size={20} /> : <Square size={20} />}
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex items-end justify-between">
+                <label className="text-[10px] font-black uppercase text-gray-500">Owned Song Packs</label>
+                <div className="space-x-4">
+                  <button
+                    type="button"
+                    disabled={roomJoined || songPacks.length === 0}
+                    onClick={() => {
+                      const allPackIds = Array.from(new Set(songPacks.map((pack) => pack.inf_pack_id))).sort(
+                        (left, right) => left - right,
+                      );
+                      settingsStore.update("ownedPackIds", allPackIds);
+                    }}
+                    className="text-xs font-bold text-cyan-400 hover:underline disabled:cursor-not-allowed disabled:text-gray-600 disabled:no-underline"
+                  >
+                    Select All
+                  </button>
+                  <button
+                    type="button"
+                    disabled={roomJoined || draft.ownedPackIds.length === 0}
+                    onClick={() => {
+                      settingsStore.update("ownedPackIds", []);
+                    }}
+                    className="text-xs font-bold text-gray-500 hover:underline disabled:cursor-not-allowed disabled:text-gray-600 disabled:no-underline"
+                  >
+                    Clear All
+                  </button>
+                </div>
+              </div>
+
+              {isSongPackLoading ? (
+                <p className="text-xs font-semibold text-cyan-300">楽曲パック一覧を取得中です...</p>
+              ) : null}
+
+              <div className="grid max-h-96 grid-cols-1 gap-2 overflow-y-auto pr-2 custom-scrollbar lg:grid-cols-2">
+                {songPacks.map((pack) => {
+                  const isOwned = draft.ownedPackIds.includes(pack.inf_pack_id);
+                  return (
+                    <button
+                      key={pack.inf_pack_id}
+                      type="button"
+                      disabled={roomJoined}
+                      onClick={() => {
+                        togglePack(pack.inf_pack_id);
+                      }}
+                      className={`flex items-center gap-3 rounded-lg border p-3 text-left transition-all ${
+                        isOwned
+                          ? "border-cyan-500/50 bg-cyan-500/10 text-white"
+                          : "border-white/5 bg-[#1e1e1e] text-gray-400 hover:border-white/20"
+                      } ${roomJoined ? "cursor-not-allowed opacity-70" : ""}`}
+                    >
+                      <div
+                        className={`h-5 w-5 shrink-0 rounded border flex items-center justify-center transition-colors ${
+                          isOwned
+                            ? "border-cyan-500 bg-cyan-500 text-black"
+                            : "border-white/20 bg-black/50"
+                        }`}
+                      >
+                        {isOwned ? <Check size={14} strokeWidth={4} /> : null}
+                      </div>
+                      <span className="truncate text-sm font-bold leading-relaxed">{pack.pack_name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {!isSongPackLoading && songPacks.length === 0 ? (
+                <p className="text-xs font-semibold text-gray-500">楽曲パック一覧を取得できませんでした。</p>
+              ) : null}
+            </div>
+          </div>
+        </section>
+
         <section className="space-y-6">
           <div className="flex items-center gap-3 border-b border-white/5 pb-4">
             <Volume2 size={20} className="text-cyan-400" />
@@ -555,6 +728,30 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
                     {isFeedbackSubmitting ? "送信中..." : "送信"}
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {songPackDialogMessage ? (
+        <div className="fixed inset-0 z-[1250]">
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-[2px]" />
+          <div className="relative flex min-h-full items-center justify-center p-4">
+            <div className="w-full max-w-lg rounded-2xl border border-amber-500/25 bg-[#252526] p-7 shadow-[0_25px_70px_rgba(0,0,0,0.8)]">
+              <p className="text-[10px] font-black uppercase tracking-[0.25em] text-amber-300">Song Packs</p>
+              <h2 className="mt-2 text-xl font-black text-white">楽曲パック一覧の取得に失敗しました</h2>
+              <p className="mt-4 text-sm font-semibold leading-relaxed text-gray-300">{songPackDialogMessage}</p>
+              <div className="mt-6 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSongPackDialogMessage(null);
+                  }}
+                  className="rounded-xl bg-cyan-500 px-6 py-3 text-sm font-black text-black transition-all hover:bg-cyan-400"
+                >
+                  閉じる
+                </button>
               </div>
             </div>
           </div>

@@ -4,12 +4,14 @@ import type { ExpectedKey } from "./expected-key";
 import type { FrozenRound } from "./frozen-round";
 import type { RoomPick } from "./room-pick";
 import type { RoomSettings } from "./room-settings";
+import type { MatchSongUnlockFilter, SongUnlockSettings } from "./song-unlock";
 import type { SubmissionReason } from "./submission";
 
 export interface RoomPlayerSnapshot {
   player_id: string;
   display_name: string;
   source: SourceType;
+  song_unlocks?: SongUnlockSettings;
   connected: boolean;
   ready: boolean;
   role?: PlayerRole;
@@ -49,6 +51,7 @@ export interface RoomStateSnapshot {
   settings: RoomSettings;
   host_player_id: string;
   players: RoomPlayerSnapshot[];
+  match_song_unlock_filter?: MatchSongUnlockFilter | null;
   picks: RoomPick[];
   frozen_rounds: FrozenRound[];
   current_round: CurrentRoundSnapshot | null;

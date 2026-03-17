@@ -133,6 +133,9 @@ export function LobbyPage() {
         playerId: savedSettings.playerId,
         displayName: savedSettings.displayName,
         source: savedSettings.source,
+        bitUnlockEnabled: savedSettings.bitUnlockEnabled,
+        djpUnlockEnabled: savedSettings.djpUnlockEnabled,
+        ownedPackIds: savedSettings.ownedPackIds,
       },
     );
   }

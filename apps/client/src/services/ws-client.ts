@@ -15,6 +15,9 @@ interface RoomSocketClientOptions {
   playerId: string;
   displayName: string;
   source: SourceType;
+  bitUnlockEnabled: boolean;
+  djpUnlockEnabled: boolean;
+  ownedPackIds: number[];
   joinCode?: string | null;
   onMessage: (message: ServerMessage) => void;
   onStateChange?: (state: SocketConnectionState, detail: string) => void;
@@ -59,6 +62,13 @@ export class RoomSocketClient {
       this.send("ROOM_JOIN", {
         display_name: this.options.displayName,
         source: this.options.source,
+        client_capabilities: {
+          song_unlocks: {
+            bit_unlocked: this.options.bitUnlockEnabled,
+            djp_unlocked: this.options.djpUnlockEnabled,
+            owned_pack_ids: this.options.ownedPackIds,
+          },
+        },
         ...(this.options.joinCode?.trim()
           ? { join_code: this.options.joinCode.trim() }
           : {}),

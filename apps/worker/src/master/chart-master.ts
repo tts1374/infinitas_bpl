@@ -7,7 +7,9 @@ import {
   type ExpectedKey,
   type FrozenRound,
   type LevelFilter,
+  type MatchSongUnlockFilter,
   type PlayStyle,
+  type SongPack,
 } from "@infinitas/shared";
 import masterSnapshotJson from "./generated/iidx-song-master.json";
 
@@ -32,12 +34,15 @@ interface WorkerChartMasterChart {
   artist: string;
   genre: string;
   title_search_key: string;
+  inf_unlock_type?: string | null;
+  inf_pack_id?: number | null;
 }
 
 interface WorkerChartMasterSnapshot {
   metadata: WorkerChartMasterMetadata;
   charts: WorkerChartMasterChart[];
   aliases: Record<string, string>;
+  song_packs?: SongPack[];
 }
 
 interface ParsedPickChartKey {
@@ -62,6 +67,7 @@ export interface RandomUnusedChartOptions {
   play_style: PlayStyle;
   level_filter: LevelFilter;
   used_chart_keys: ReadonlySet<string>;
+  unlock_filter?: MatchSongUnlockFilter;
   seed: string;
   preferred_difficulty?: ChartDifficulty;
   preferred_level?: number | null;
@@ -73,6 +79,7 @@ export interface RandomUnusedChartOptions {
 export interface SearchChartsOptions {
   play_style: PlayStyle;
   level_filter: LevelFilter;
+  unlock_filter?: MatchSongUnlockFilter;
   difficulty?: ChartDifficulty;
   level?: number;
   keyword?: string;
@@ -85,9 +92,11 @@ export interface RoomChartMaster {
     pickChartKey: string,
     playStyle: PlayStyle,
     levelFilter: LevelFilter,
+    unlockFilter?: MatchSongUnlockFilter,
   ): ResolvedMasterChart | null;
   pickRandomUnusedChart(options: RandomUnusedChartOptions): ResolvedMasterChart | null;
   searchCharts(options: SearchChartsOptions): ChartSearchResponse;
+  getSongPacks(): SongPack[];
   getMetadata(): WorkerChartMasterMetadata;
 }
 
@@ -137,6 +146,54 @@ function matchesLevelFilter(level: number, levelFilter: LevelFilter): boolean {
       return level === 11;
     case "LV12":
       return level === 12;
+  }
+}
+
+type NormalizedUnlockType = "initial" | "bit" | "djp" | "pack" | "unknown";
+
+function normalizeUnlockType(value: string | null | undefined): NormalizedUnlockType {
+  const normalized = value?.trim().toLowerCase() ?? "initial";
+  if (normalized.length === 0 || normalized === "initial") {
+    return "initial";
+  }
+  if (normalized === "bit") {
+    return "bit";
+  }
+  if (normalized === "djp") {
+    return "djp";
+  }
+  if (normalized === "pack") {
+    return "pack";
+  }
+
+  return "unknown";
+}
+
+function canUseChartByUnlockFilter(
+  chart: WorkerChartMasterChart,
+  unlockFilter: MatchSongUnlockFilter | undefined,
+): boolean {
+  if (unlockFilter === undefined) {
+    return true;
+  }
+
+  switch (normalizeUnlockType(chart.inf_unlock_type)) {
+    case "initial":
+      return true;
+    case "bit":
+      return unlockFilter.include_bit;
+    case "djp":
+      return unlockFilter.include_djp;
+    case "pack": {
+      const packId = chart.inf_pack_id;
+      if (typeof packId !== "number" || !Number.isInteger(packId) || packId <= 0) {
+        return false;
+      }
+
+      return unlockFilter.common_pack_ids.includes(packId);
+    }
+    default:
+      return false;
   }
 }
 
@@ -309,9 +366,16 @@ export function createRoomChartMaster(snapshotInput: WorkerChartMasterSnapshot):
   const snapshot = snapshotInput;
   const chartKeyCounts = new Map<string, number>();
   const chartByKey = new Map<string, ResolvedMasterChart>();
+  const rawChartByKey = new Map<string, WorkerChartMasterChart>();
   const poolByFilter = new Map<string, ResolvedMasterChart[]>();
   const aliasToTitleSearchKey = new Map<string, string>();
-  const searchableCharts: Array<{ chart: ChartSearchEntry; keyword_index: string }> = [];
+  const searchableCharts: Array<{ chart: ChartSearchEntry; keyword_index: string; source: WorkerChartMasterChart }> = [];
+  const songPacks = [...(snapshot.song_packs ?? [])].sort((left, right) => {
+    if (left.display_order !== right.display_order) {
+      return right.display_order - left.display_order;
+    }
+    return left.inf_pack_id - right.inf_pack_id;
+  });
 
   for (const [alias, titleSearchKey] of Object.entries(snapshot.aliases)) {
     aliasToTitleSearchKey.set(normalizeLookupKey(alias), titleSearchKey);
@@ -333,8 +397,10 @@ export function createRoomChartMaster(snapshotInput: WorkerChartMasterSnapshot):
       keyword_index: normalizeLookupKey(
         [chart.title, chart.title_qualifier, chart.artist, chart.genre].filter((value) => value.length > 0).join(" "),
       ),
+      source: chart,
     });
     chartByKey.set(resolvedChart.chart_key, resolvedChart);
+    rawChartByKey.set(resolvedChart.chart_key, chart);
 
     for (const levelFilter of ["ANY", "LV8_10", "LV10", "LV11", "LV12"] as const) {
       if (!matchesLevelFilter(chart.level, levelFilter)) {
@@ -354,6 +420,7 @@ export function createRoomChartMaster(snapshotInput: WorkerChartMasterSnapshot):
   const resolveByLookup = (
     parsedPick: ParsedPickChartKey,
     levelFilter: LevelFilter,
+    unlockFilter: MatchSongUnlockFilter | undefined,
   ): ResolvedMasterChart | null => {
     if (parsedPick.play_style !== "SP" && parsedPick.play_style !== "DP") {
       return null;
@@ -365,10 +432,13 @@ export function createRoomChartMaster(snapshotInput: WorkerChartMasterSnapshot):
         : buildChartKey(parsedPick.play_style, parsedPick.difficulty, parsedPick.title_search_key);
 
     const directChart = directLookupKey === null ? undefined : chartByKey.get(directLookupKey);
+    const directSource = directLookupKey === null ? undefined : rawChartByKey.get(directLookupKey);
     if (
       directChart !== undefined &&
+      directSource !== undefined &&
       typeof directChart.display.level === "number" &&
-      matchesLevelFilter(directChart.display.level, levelFilter)
+      matchesLevelFilter(directChart.display.level, levelFilter) &&
+      canUseChartByUnlockFilter(directSource, unlockFilter)
     ) {
       return directChart;
     }
@@ -386,10 +456,13 @@ export function createRoomChartMaster(snapshotInput: WorkerChartMasterSnapshot):
 
       const chartKey = buildChartKey(parsedPick.play_style, parsedPick.difficulty, canonicalTitleSearchKey);
       const chart = chartByKey.get(chartKey);
+      const sourceChart = rawChartByKey.get(chartKey);
       if (
         chart !== undefined &&
+        sourceChart !== undefined &&
         typeof chart.display.level === "number" &&
-        matchesLevelFilter(chart.display.level, levelFilter)
+        matchesLevelFilter(chart.display.level, levelFilter) &&
+        canUseChartByUnlockFilter(sourceChart, unlockFilter)
       ) {
         return chart;
       }
@@ -399,19 +472,20 @@ export function createRoomChartMaster(snapshotInput: WorkerChartMasterSnapshot):
   };
 
   return {
-    resolvePickChartKey(pickChartKey, playStyle, levelFilter) {
+    resolvePickChartKey(pickChartKey, playStyle, levelFilter, unlockFilter) {
       const parsedPick = parsePickChartKey(pickChartKey, playStyle);
       if (parsedPick === null || parsedPick.play_style !== playStyle) {
         return null;
       }
 
-      return resolveByLookup(parsedPick, levelFilter);
+      return resolveByLookup(parsedPick, levelFilter, unlockFilter);
     },
 
     pickRandomUnusedChart({
       play_style,
       level_filter,
       used_chart_keys,
+      unlock_filter,
       seed,
       preferred_difficulty,
       preferred_level,
@@ -421,7 +495,14 @@ export function createRoomChartMaster(snapshotInput: WorkerChartMasterSnapshot):
     }) {
       const poolKey = `${play_style}::${level_filter}`;
       const pool = poolByFilter.get(poolKey) ?? [];
-      if (pool.length === 0) {
+      const unlockedPool =
+        unlock_filter === undefined
+          ? pool
+          : pool.filter((chart) => {
+              const sourceChart = rawChartByKey.get(chart.chart_key);
+              return sourceChart !== undefined && canUseChartByUnlockFilter(sourceChart, unlock_filter);
+            });
+      if (unlockedPool.length === 0) {
         return null;
       }
 
@@ -440,7 +521,7 @@ export function createRoomChartMaster(snapshotInput: WorkerChartMasterSnapshot):
       const candidateGroups: ResolvedMasterChart[][] = [];
       if (preferred_difficulty && typeof preferred_level === "number") {
         candidateGroups.push(
-          pool.filter(
+          unlockedPool.filter(
             (chart) =>
               chart.expected_key.difficulty === preferred_difficulty &&
               chart.display.level === preferred_level,
@@ -450,7 +531,7 @@ export function createRoomChartMaster(snapshotInput: WorkerChartMasterSnapshot):
 
       if (preferred_difficulty && hasLevelRange) {
         candidateGroups.push(
-          pool.filter(
+          unlockedPool.filter(
             (chart) =>
               chart.expected_key.difficulty === preferred_difficulty &&
               typeof chart.display.level === "number" &&
@@ -462,7 +543,7 @@ export function createRoomChartMaster(snapshotInput: WorkerChartMasterSnapshot):
 
       if (hasLevelRange) {
         candidateGroups.push(
-          pool.filter(
+          unlockedPool.filter(
             (chart) =>
               typeof chart.display.level === "number" &&
               chart.display.level >= (levelRange?.min ?? Number.NEGATIVE_INFINITY) &&
@@ -473,12 +554,12 @@ export function createRoomChartMaster(snapshotInput: WorkerChartMasterSnapshot):
 
       if (preferred_difficulty && !(enforce_level_range && hasLevelRange)) {
         candidateGroups.push(
-          pool.filter((chart) => chart.expected_key.difficulty === preferred_difficulty),
+          unlockedPool.filter((chart) => chart.expected_key.difficulty === preferred_difficulty),
         );
       }
 
       if (!(enforce_level_range && hasLevelRange)) {
-        candidateGroups.push(pool);
+        candidateGroups.push(unlockedPool);
       }
 
       for (const candidates of candidateGroups) {
@@ -497,6 +578,7 @@ export function createRoomChartMaster(snapshotInput: WorkerChartMasterSnapshot):
     searchCharts({
       play_style,
       level_filter,
+      unlock_filter,
       difficulty,
       level,
       keyword,
@@ -506,11 +588,14 @@ export function createRoomChartMaster(snapshotInput: WorkerChartMasterSnapshot):
       const offset = parseCursorOffset(cursor);
       const normalizedKeyword = keyword?.trim() ? normalizeLookupKey(keyword) : "";
       const pageSize = Math.max(1, Math.min(limit ?? CHART_SEARCH_PAGE_SIZE, CHART_SEARCH_PAGE_SIZE));
-      const filteredCharts = searchableCharts.filter(({ chart, keyword_index }) => {
+      const filteredCharts = searchableCharts.filter(({ chart, keyword_index, source }) => {
         if (chart.play_style !== play_style) {
           return false;
         }
         if (!matchesLevelFilter(chart.level, level_filter)) {
+          return false;
+        }
+        if (!canUseChartByUnlockFilter(source, unlock_filter)) {
           return false;
         }
         if (difficulty !== undefined && chart.difficulty !== difficulty) {
@@ -533,6 +618,10 @@ export function createRoomChartMaster(snapshotInput: WorkerChartMasterSnapshot):
         charts,
         next_cursor: nextOffset < filteredCharts.length ? String(nextOffset) : null,
       };
+    },
+
+    getSongPacks() {
+      return songPacks.map((pack) => ({ ...pack }));
     },
 
     getMetadata() {

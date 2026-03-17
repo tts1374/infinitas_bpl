@@ -8,4 +8,6 @@ export * from "./room-listing";
 export * from "./room-pick";
 export * from "./room-settings";
 export * from "./room-state-snapshot";
+export * from "./song-pack";
+export * from "./song-unlock";
 export * from "./submission";
