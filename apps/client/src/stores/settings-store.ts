@@ -28,6 +28,9 @@ export interface ClientSettings {
   voiceEnabled: boolean;
   voiceVolume: number;
   voiceMuted: boolean;
+  bitUnlockEnabled: boolean;
+  djpUnlockEnabled: boolean;
+  ownedPackIds: number[];
 }
 
 export interface SettingsStoreState {
@@ -47,6 +50,9 @@ interface PartialClientSettings {
   voiceEnabled?: boolean;
   voiceVolume?: number;
   voiceMuted?: boolean;
+  bitUnlockEnabled?: boolean;
+  djpUnlockEnabled?: boolean;
+  ownedPackIds?: number[];
 }
 
 function createDefaultSourcePaths(): SourcePaths {
@@ -192,6 +198,22 @@ function normalizeVoiceSettings(rawSettings: PartialClientSettings | null): Pick
   };
 }
 
+function normalizeOwnedPackIds(rawOwnedPackIds: number[] | undefined): number[] {
+  if (!Array.isArray(rawOwnedPackIds)) {
+    return [];
+  }
+
+  const deduped = new Set<number>();
+  for (const value of rawOwnedPackIds) {
+    if (!Number.isInteger(value) || value <= 0) {
+      continue;
+    }
+    deduped.add(value);
+  }
+
+  return Array.from(deduped).sort((left, right) => left - right);
+}
+
 function createDefaultSettings(): ClientSettings {
   const runtimePaths: SourcePaths = {
     dakenTodayUpdateXml: runtimeConfig.settingsDefaults.sourcePaths.dakenTodayUpdateXml ?? "",
@@ -218,6 +240,9 @@ function createDefaultSettings(): ClientSettings {
     voiceEnabled: true,
     voiceVolume: DEFAULT_VOICE_VOLUME,
     voiceMuted: false,
+    bitUnlockEnabled: false,
+    djpUnlockEnabled: false,
+    ownedPackIds: [],
   };
 }
 
@@ -245,6 +270,7 @@ function normalizeSettings(rawSettings: PartialClientSettings | null): ClientSet
     ...deriveSourcePaths(sourceDirectories),
   };
   const voiceSettings = normalizeVoiceSettings(rawSettings);
+  const ownedPackIds = normalizeOwnedPackIds(rawSettings?.ownedPackIds);
 
   return {
     apiBaseUrl: resolveApiBaseUrl(rawSettings, defaults.apiBaseUrl),
@@ -254,6 +280,9 @@ function normalizeSettings(rawSettings: PartialClientSettings | null): ClientSet
     sourcePaths,
     sourceDirectories,
     ...voiceSettings,
+    bitUnlockEnabled: rawSettings?.bitUnlockEnabled === true,
+    djpUnlockEnabled: rawSettings?.djpUnlockEnabled === true,
+    ownedPackIds,
   };
 }
 

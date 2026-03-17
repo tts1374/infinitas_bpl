@@ -1,4 +1,6 @@
 import {
+  CHART_DIFFICULTIES,
+  CHART_SEARCH_PAGE_SIZE,
   LEVEL_FILTERS,
   MATCH_TTL_MS,
   MAX_PLAYERS_OPTIONS,
@@ -17,6 +19,7 @@ import {
   type RoomJoinPayload,
   type RoomSettings,
   type RoomStateSnapshot,
+  type SongUnlockSettings,
   type SkipReason,
   type ServerMessagePayloadMap,
   type ServerMessageType,
@@ -24,7 +27,7 @@ import {
 import { normalizeJoinCode } from "../services/join-code";
 import { removeLobbyDirectoryRoom, upsertLobbyDirectoryRoom } from "../services/lobby-directory";
 import type { WorkerEnv } from "../types/env";
-import { asEnumValue, asOptionalString, isRecord } from "../utils/validation";
+import { asEnumValue, asOptionalString, isRecord, parsePositiveInt } from "../utils/validation";
 import { createServerEnvelope, decodeClientMessage } from "./ws-codec";
 import {
   RoomLobbyState,
@@ -251,6 +254,15 @@ function jsonResponse(status: number, payload: unknown): Response {
   });
 }
 
+function parseChartSearchLimit(rawLimit: string | null): number {
+  const parsed = parsePositiveInt(rawLimit);
+  if (parsed === undefined) {
+    return CHART_SEARCH_PAGE_SIZE;
+  }
+
+  return Math.min(parsed, CHART_SEARCH_PAGE_SIZE);
+}
+
 function normalizeVisibility(value: unknown): RoomSettings["visibility"] | undefined {
   const parsed = asEnumValue(value, ["PUBLIC", "PRIVATE", "UNLISTED"] as const);
   if (parsed === "UNLISTED") {
@@ -326,7 +338,52 @@ function parseInitializationInput(payload: unknown): RoomInitializationInput | n
   };
 }
 
-function parseRoomJoinPayload(payload: unknown): RoomJoinPayload | null {
+interface ParsedRoomJoinPayload extends RoomJoinPayload {
+  song_unlocks: SongUnlockSettings;
+}
+
+function normalizeOwnedPackIds(rawOwnedPackIds: unknown): number[] {
+  if (!Array.isArray(rawOwnedPackIds)) {
+    return [];
+  }
+
+  const deduped = new Set<number>();
+  for (const value of rawOwnedPackIds) {
+    if (!Number.isInteger(value) || value <= 0) {
+      continue;
+    }
+    deduped.add(value);
+  }
+
+  return Array.from(deduped).sort((left, right) => left - right);
+}
+
+function parseSongUnlockSettings(rawClientCapabilities: unknown): SongUnlockSettings {
+  if (!isRecord(rawClientCapabilities)) {
+    return {
+      bit_unlocked: false,
+      djp_unlocked: false,
+      owned_pack_ids: [],
+    };
+  }
+
+  const rawSongUnlocks = rawClientCapabilities.song_unlocks;
+  if (!isRecord(rawSongUnlocks)) {
+    return {
+      bit_unlocked: false,
+      djp_unlocked: false,
+      owned_pack_ids: [],
+    };
+  }
+
+  return {
+    bit_unlocked: rawSongUnlocks.bit_unlocked === true,
+    djp_unlocked: rawSongUnlocks.djp_unlocked === true,
+    owned_pack_ids: normalizeOwnedPackIds(rawSongUnlocks.owned_pack_ids),
+  };
+}
+
+function parseRoomJoinPayload(payload: unknown): ParsedRoomJoinPayload | null {
   if (!isRecord(payload)) {
     return null;
   }
@@ -343,6 +400,7 @@ function parseRoomJoinPayload(payload: unknown): RoomJoinPayload | null {
   return {
     display_name: displayName,
     source,
+    song_unlocks: parseSongUnlockSettings(payload.client_capabilities),
     ...(joinCode === undefined ? {} : { join_code: joinCode }),
   };
 }
@@ -666,6 +724,12 @@ export class RoomDurableObject {
     if (url.pathname === "/internal/init" && request.method === "POST") {
       return this.handleInternalInitialize(request);
     }
+    if (url.pathname === "/charts") {
+      if (request.method !== "GET") {
+        return jsonResponse(405, { error: "Method not allowed." });
+      }
+      return this.handleInternalChartSearch(url);
+    }
     if (!isWebSocketUpgradeRequest(request)) {
       return new Response("Expected websocket upgrade request.", { status: 426 });
     }
@@ -726,6 +790,41 @@ export class RoomDurableObject {
       ok: true,
       room_id: this.roomState.getRoomId(),
     });
+  }
+
+  private handleInternalChartSearch(url: URL): Response {
+    if (!this.roomState.isInitialized()) {
+      return jsonResponse(404, { error: "ROOM_STATE_LOST" });
+    }
+
+    const roomState = this.roomState.getRoomState();
+    if (roomState !== "PICKING") {
+      return jsonResponse(409, { error: "CHART_SEARCH_UNAVAILABLE_IN_CURRENT_STATE" });
+    }
+
+    const playStyle = asEnumValue(url.searchParams.get("play_style"), PLAY_STYLES);
+    const levelFilter = asEnumValue(url.searchParams.get("level_filter"), LEVEL_FILTERS);
+    if (playStyle === undefined || levelFilter === undefined) {
+      return jsonResponse(400, { error: "play_style and level_filter are required." });
+    }
+
+    const difficulty = asEnumValue(url.searchParams.get("difficulty"), CHART_DIFFICULTIES);
+    const level = parsePositiveInt(url.searchParams.get("level"));
+    const keywordRaw = url.searchParams.get("keyword");
+    const cursorRaw = url.searchParams.get("cursor");
+    const cursor = cursorRaw !== null && cursorRaw.trim().length > 0 ? cursorRaw : undefined;
+
+    const response = this.roomState.searchCharts({
+      play_style: playStyle,
+      level_filter: levelFilter,
+      ...(difficulty === undefined ? {} : { difficulty }),
+      ...(level === undefined ? {} : { level }),
+      ...(keywordRaw === null ? {} : { keyword: keywordRaw }),
+      ...(cursor === undefined ? {} : { cursor }),
+      limit: parseChartSearchLimit(url.searchParams.get("limit")),
+    });
+
+    return jsonResponse(200, response);
   }
 
   async webSocketMessage(
@@ -1209,6 +1308,7 @@ export class RoomDurableObject {
       player_id: message.player_id,
       display_name: payload.display_name,
       source: payload.source,
+      song_unlocks: payload.song_unlocks,
       now,
     });
     if (!joinResult.ok) {
@@ -1435,6 +1535,7 @@ export class RoomDurableObject {
     await this.persistRoomRecord();
     await this.syncAlarm();
     await this.syncLobbyDirectory();
+    const matchSongUnlockFilter = this.roomState.getMatchSongUnlockFilter();
     this.broadcast("ROOM_NOTIFICATION", {
       kind: "match_found",
       event_id: this.nextEventId("match_found"),
@@ -1445,6 +1546,15 @@ export class RoomDurableObject {
       outcome: "ok",
       detail: {
         trigger: "start_match",
+        ...(matchSongUnlockFilter === null
+          ? {}
+          : {
+              match_song_unlock_filter: {
+                include_bit: matchSongUnlockFilter.include_bit,
+                include_djp: matchSongUnlockFilter.include_djp,
+                common_pack_ids: matchSongUnlockFilter.common_pack_ids,
+              },
+            }),
       },
     }));
     this.broadcastRoomUpdated();
