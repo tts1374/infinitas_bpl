@@ -175,15 +175,15 @@ jobs:
           $workerSubdomain = "${{ vars.CLOUDFLARE_WORKERS_SUBDOMAIN }}".Trim()
           $workerApiBaseUrl = "https://infinitas-arena.$workerSubdomain.workers.dev"
           $updaterEndpoint = "$publicR2BaseUrl/channels/stable/latest.json"
-          $tauriConfig = Get-Content -Raw apps/client/src-tauri/tauri.conf.json | ConvertFrom-Json
-
-          $updaterPluginConfig = @{
-            endpoints = @($updaterEndpoint)
-            pubkey = $tauriConfig.plugins.updater.pubkey
-            windows = $tauriConfig.plugins.updater.windows
+          $tauriConfigOverride = @{
+            plugins = @{
+              updater = @{
+                endpoints = @($updaterEndpoint)
+              }
+            }
           } | ConvertTo-Json -Compress -Depth 8
 
-          $env:TAURI_UPDATER_PLUGIN_CONFIG = $updaterPluginConfig
+          $env:TAURI_CONFIG = $tauriConfigOverride
           $env:VITE_WORKER_API_BASE_URL = $workerApiBaseUrl
           npm --workspace @infinitas/client run tauri:build
 
