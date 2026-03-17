@@ -76,6 +76,12 @@ export interface SourceResolvedPartialDialog extends SourceUnresolvedDialogBase 
   chart: SourceDialogChartInfo;
 }
 
+export interface SourceCatalogUnresolvedAliasDialog extends SourceUnresolvedDialogBase {
+  kind: "unresolved_alias_catalog";
+  chart: SourceDialogChartInfo;
+  errorCode: "NB-UNRESOLVED-ALIAS";
+}
+
 export interface SourceAmbiguousRecentDialog extends SourceUnresolvedDialogBase {
   kind: "ambiguous_recent";
   chart: SourceDialogChartInfo;
@@ -86,6 +92,7 @@ export interface SourceAmbiguousRecentDialog extends SourceUnresolvedDialogBase 
 export type SourceUnresolvedDialog =
   | SourceUnresolvedAliasDialog
   | SourceResolvedPartialDialog
+  | SourceCatalogUnresolvedAliasDialog
   | SourceAmbiguousRecentDialog;
 
 interface StartOptions {
@@ -201,6 +208,18 @@ function buildUnresolvedDialogsFromParserOutput(
   const unresolvedCases = parserOutput.unresolvedCases ?? [];
   const dialogs: SourceUnresolvedDialog[] = [];
   for (const unresolvedCase of unresolvedCases) {
+    if (unresolvedCase.kind === "unresolved_alias") {
+      dialogs.push({
+        id: nextUnresolvedDialogId(),
+        kind: "unresolved_alias_catalog",
+        source: parserOutput.source,
+        originLabel: parserOutput.source,
+        chart: buildDialogChartInfo(unresolvedCase, metricContext),
+        errorCode: "NB-UNRESOLVED-ALIAS",
+      });
+      continue;
+    }
+
     if (unresolvedCase.kind === "resolved_partial") {
       dialogs.push({
         id: nextUnresolvedDialogId(),
@@ -434,6 +453,10 @@ export const sourceStore = {
     } else if (activeDialog.kind === "resolved_partial") {
       roomStore.noteLocalEvent(
         "Source auto-submit skipped: inf-notebook resolved_partial requires re-registration.",
+      );
+    } else if (activeDialog.kind === "unresolved_alias_catalog") {
+      roomStore.noteLocalEvent(
+        `Source auto-submit skipped: ${activeDialog.errorCode} (unresolved alias).`,
       );
     } else {
       roomStore.noteLocalEvent(

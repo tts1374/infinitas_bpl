@@ -128,6 +128,49 @@ export function SourceUnresolvedDialog({ dialog, onAction }: SourceUnresolvedDia
     );
   }
 
+  if (dialog.kind === "unresolved_alias_catalog") {
+    return (
+      <div
+        className="fixed inset-0 z-[2900] flex items-center justify-center bg-black/90 p-4 backdrop-blur-md"
+        role="presentation"
+      >
+        <div
+          className="w-full max-w-[560px] overflow-hidden rounded-3xl border border-amber-500/20 bg-[#18181b] shadow-[0_30px_90px_rgba(0,0,0,0.9)]"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="source-unresolved-title"
+        >
+          <div className="p-6 text-center">
+            <p className="mb-3 text-[10px] font-black uppercase tracking-[0.35em] text-amber-300">inf-notebook</p>
+            <h2 id="source-unresolved-title" className="text-2xl font-black tracking-tight text-white">
+              譜面を特定できませんでした
+            </h2>
+            <p className="mt-3 text-sm text-gray-300">受信した曲情報から title_search_key を解決できませんでした。</p>
+            <p className="mt-1 text-sm text-gray-300">今回の登録は行いません。曲名aliasの見直しをお願いします。</p>
+            <p className="mt-3 text-xs font-black uppercase tracking-[0.2em] text-amber-300">
+              エラーコード: {dialog.errorCode}
+            </p>
+          </div>
+
+          <div className="px-6 pb-4">
+            {renderChartInfoBlock("受信内容", dialog.chart)}
+          </div>
+
+          <div className="px-6 pb-6">
+            <button
+              type="button"
+              autoFocus
+              onClick={() => onAction("close")}
+              className="w-full rounded-2xl bg-amber-300 py-4 text-xs font-black uppercase tracking-[0.2em] text-black transition-all hover:bg-amber-200"
+            >
+              閉じる
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className="fixed inset-0 z-[2900] flex items-center justify-center bg-black/90 p-4 backdrop-blur-md"

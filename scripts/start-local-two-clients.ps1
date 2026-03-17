@@ -89,8 +89,15 @@ function Start-LoggedPowerShell(
     "& { $commandLiteral } 2>&1 | Tee-Object -FilePath '$logLiteral'"
   )
 
+  # Ensure downstream checks can find the log path immediately after startup.
+  if (-not (Test-Path -LiteralPath $LogPath)) {
+    Write-Utf8NoBomFile $LogPath ""
+  }
+
   Write-Utf8NoBomFile $launcherPath (($scriptLines -join "`n") + "`n")
-  Start-Process powershell -ArgumentList "-NoExit", "-ExecutionPolicy", "Bypass", "-File", $launcherPath | Out-Null
+  $pwshCommand = Get-Command pwsh -ErrorAction SilentlyContinue
+  $shellExe = if ($pwshCommand) { $pwshCommand.Source } else { "powershell" }
+  Start-Process -FilePath $shellExe -ArgumentList "-NoExit", "-ExecutionPolicy", "Bypass", "-File", $launcherPath | Out-Null
 }
 
 function New-ClientSpec([int]$Index, [string]$RuntimeRoot, [string]$ConfigRoot, [string]$LogRoot) {
@@ -209,7 +216,7 @@ foreach ($client in $clients) {
   Start-LoggedPowerShell `
     -Title $client.WindowTitle `
     -WorkingDirectory $clientRoot `
-    -Command "npm exec -- tauri dev --config '$($client.ConfigPath)' --no-dev-server-wait" `
+    -Command "npm exec -- tauri dev --config `"$($client.ConfigPath)`" --no-dev-server-wait" `
     -LogPath $client.LogPath `
     -EnvVars @{
       INFINITAS_INSTANCE_ID = $client.Id
