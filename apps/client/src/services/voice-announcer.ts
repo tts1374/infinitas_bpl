@@ -15,6 +15,26 @@ import { roomStore, type RoomAudioEvent } from "../stores/room-store";
 import { getVoicePlaybackVolume, isVoicePlaybackEnabled, settingsStore } from "../stores/settings-store";
 
 const RECENT_CUE_GRACE_MS = 3_000;
+const LOBBY_NOTIFICATION_SOUND_KEYS = ["room_join", "all_ready"] as const;
+
+export type LobbyNotificationSoundEffectKey = (typeof LOBBY_NOTIFICATION_SOUND_KEYS)[number];
+
+const LOBBY_NOTIFICATION_SOUND_PROFILES: Record<
+  LobbyNotificationSoundEffectKey,
+  {
+    url: string;
+    volumeMultiplier: number;
+  }
+> = {
+  room_join: {
+    url: "/se/room_join.mp3",
+    volumeMultiplier: 0.5,
+  },
+  all_ready: {
+    url: "/se/all_ready.mp3",
+    volumeMultiplier: 0.7,
+  },
+};
 
 const SOUND_EFFECT_URLS: Record<SoundEffectKey, string> = {
   round_intro: "/se/round_intro.mp3",
@@ -73,10 +93,19 @@ const activeBufferSources = new Set<ActiveBufferSource>();
 const lastPlayedAtByKind = new Map<SoundEffectKey, number>();
 const decodedBuffers = new Map<SoundEffectKey, AudioBuffer>();
 const loadingBuffers = new Map<SoundEffectKey, Promise<AudioBuffer>>();
+const preloadedLobbyAudios = new Map<LobbyNotificationSoundEffectKey, HTMLAudioElement>();
 let sharedAudioContext: AudioContext | null = null;
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+function getMasterVolume(): number {
+  return getVoicePlaybackVolume(settingsStore.getState().saved);
+}
+
+function getEffectiveVolume(volumeMultiplier: number): number {
+  return Math.max(0, Math.min(1, getMasterVolume() * volumeMultiplier));
 }
 
 function setVoiceState(partialState: Partial<VoicePlaybackState>): void {
@@ -93,6 +122,11 @@ function stopAllAudio(): void {
     audio.currentTime = 0;
   }
   activeAudios.clear();
+
+  for (const audio of preloadedLobbyAudios.values()) {
+    audio.pause();
+    audio.currentTime = 0;
+  }
 
   for (const activeSource of [...activeBufferSources]) {
     activeBufferSources.delete(activeSource);
@@ -199,7 +233,7 @@ async function playCueWithWebAudio(cue: ScheduledCue): Promise<boolean> {
   const buffer = await getDecodedBuffer(cue.kind);
   const source = context.createBufferSource();
   const gainNode = context.createGain();
-  gainNode.gain.value = getVoicePlaybackVolume(settingsStore.getState().saved);
+  gainNode.gain.value = getMasterVolume();
 
   source.buffer = buffer;
   source.connect(gainNode);
@@ -219,7 +253,7 @@ async function playCueWithWebAudio(cue: ScheduledCue): Promise<boolean> {
 
 async function playCueWithHtmlAudio(cue: ScheduledCue): Promise<void> {
   const audio = new Audio(SOUND_EFFECT_URLS[cue.kind]);
-  audio.volume = getVoicePlaybackVolume(settingsStore.getState().saved);
+  audio.volume = getMasterVolume();
   activeAudios.add(audio);
   const cleanup = () => {
     activeAudios.delete(audio);
@@ -228,6 +262,54 @@ async function playCueWithHtmlAudio(cue: ScheduledCue): Promise<void> {
   audio.addEventListener("pause", cleanup, { once: true });
 
   await audio.play();
+}
+
+function ensurePreloadedLobbyAudio(kind: LobbyNotificationSoundEffectKey): HTMLAudioElement {
+  const cachedAudio = preloadedLobbyAudios.get(kind);
+  if (cachedAudio !== undefined) {
+    return cachedAudio;
+  }
+
+  const audio = new Audio(LOBBY_NOTIFICATION_SOUND_PROFILES[kind].url);
+  audio.preload = "auto";
+  audio.load();
+  preloadedLobbyAudios.set(kind, audio);
+  return audio;
+}
+
+function preloadLobbyNotificationSounds(): void {
+  for (const kind of LOBBY_NOTIFICATION_SOUND_KEYS) {
+    try {
+      ensurePreloadedLobbyAudio(kind);
+    } catch {
+      // no-op: browser environment may block eager preload
+    }
+  }
+}
+
+export async function playLobbyNotificationSound(kind: LobbyNotificationSoundEffectKey): Promise<void> {
+  if (!isVoicePlaybackEnabled(settingsStore.getState().saved)) {
+    return;
+  }
+
+  const profile = LOBBY_NOTIFICATION_SOUND_PROFILES[kind];
+  const volume = getEffectiveVolume(profile.volumeMultiplier);
+  if (volume <= 0) {
+    return;
+  }
+
+  try {
+    const audio = ensurePreloadedLobbyAudio(kind);
+    audio.pause();
+    audio.currentTime = 0;
+    audio.volume = volume;
+    await audio.play();
+  } catch (error) {
+    console.debug("[voice-announcer] Failed to play lobby notification sound.", {
+      kind,
+      error,
+    });
+  }
 }
 
 function clearPlayback(nextPhase: VoicePlaybackPhase, detail: string, enabled: boolean): void {
@@ -487,6 +569,7 @@ export const voiceAnnouncerService = {
       return;
     }
 
+    preloadLobbyNotificationSounds();
     unsubscribeRoomStore = roomStore.subscribe(syncVoicePlayback);
     unsubscribeSettingsStore = settingsStore.subscribe(syncVoicePlayback);
     syncVoicePlayback();
