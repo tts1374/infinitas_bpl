@@ -53,7 +53,7 @@ Notes:
   - `apps/client/package.json`
   - `apps/client/src-tauri/tauri.conf.json`
   - `apps/client/src-tauri/Cargo.toml`
-  - 現状メモ: root / client / worker / update-worker / shared / Tauri / Cargo の version を `1.0.0` に統一済み
+  - 現状メモ: root / client / worker / update-worker / shared / Tauri / Cargo の version を `1.0.1` に統一済み
 
 ---
 
