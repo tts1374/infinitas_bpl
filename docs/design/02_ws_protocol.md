@@ -114,10 +114,11 @@
 
 ### 4.5 RESULT
 - `RESULT_READY`
-  - payload: `{ summary: { mode, win_metric, total_rounds, completed_rounds, winner_player_ids, is_draw, is_rated, rated_block_reason, rating_before, rating_after, rating_delta }, per_round: object, per_player: object }`
+  - payload: `{ summary: { match_id, mode, win_metric, total_rounds, completed_rounds, winner_player_ids, is_draw, is_rated, rated_block_reason, rating_before, rating_after, rating_delta }, per_round: object, per_player: object }`
   - 備考: `per_round.rounds[].results[]` には `status / metric_value / reason / submitted_at / submitted_by / source_meta?` を含めてもよい
   - 備考: `rated_block_reason` は最低限 `missing_submission | mismatch_observed_key | incomplete_match | skip_occurred | timeout_occurred | force_advanced | result_conflict` を扱う
   - 備考: v1 では `RESULT_READY.summary.is_rated` がレート適用可否の権威情報
+  - 備考: v1 では `RESULT_READY.summary.match_id` を統計識別子の正本とし、欠落時のみ `room_id` fallback を許容
   - 備考: 通常フローでは `PLAYING -> RESULT` 遷移時に配信し、`RESULT -> LOBBY` 復帰まで保持して表示する
 
 ### 4.6 同期/エラー

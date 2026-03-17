@@ -92,6 +92,7 @@ export type RatedBlockReason =
   | "result_conflict";
 
 export interface ResultReadySummary {
+  match_id: string;
   mode: "ARENA" | "BPL";
   win_metric: "SCORE" | "MISSCOUNT";
   total_rounds: number;
