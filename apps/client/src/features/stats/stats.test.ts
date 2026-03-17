@@ -91,6 +91,7 @@ function makeRound(
 
 function makeSession(input: {
   roomId: string;
+  matchId?: string;
   battleType: StatsBattleType;
   playMode: PlayStyle;
   playerIds: string[];
@@ -100,6 +101,7 @@ function makeSession(input: {
 }): RoomStatsSession {
   return {
     room_id: input.roomId,
+    match_id: input.matchId ?? input.roomId,
     settings: {
       visibility: input.battleType === "PRIVATE" ? "PRIVATE" : "PUBLIC",
       join_code: null,
@@ -173,6 +175,7 @@ function makeResultReady(input: {
 
   return {
     summary: {
+      match_id: input.session.match_id,
       mode: input.session.settings.mode,
       win_metric: input.session.settings.win_metric,
       total_rounds: input.totalRounds ?? input.session.rounds.length,
@@ -599,6 +602,137 @@ runCase("DO-provided unrated decision blocks local rating updates", () => {
   assert.equal(archive.matches[0]?.invalid_reason, "mismatch_observed_key");
   assert.equal(archive.matches[0]?.rating_after, null);
   assert.equal(getCurrentRating(archive, "BPL", "SP"), null);
+});
+
+runCase("server-authoritative match_id separates rematches and fallback keeps room_id", () => {
+  let archive = createEmptyStatsArchive();
+  const roomId = "same-room";
+  const transitionSession = makeSession({
+    roomId: "transition-room",
+    battleType: "BPL",
+    playMode: "SP",
+    playerIds: [MY_PLAYER_ID, "opponent"],
+    mode: "BPL",
+    rounds: [
+      makeRound(0, "SP", [
+        makeResult({ playerId: MY_PLAYER_ID, metricValue: 2200, submittedAt: iso(2), bp: 10 }),
+        makeResult({ playerId: "opponent", metricValue: 2000, submittedAt: iso(3), bp: 14 }),
+      ]),
+      makeRound(1, "SP", [
+        makeResult({ playerId: MY_PLAYER_ID, metricValue: 2100, submittedAt: iso(4), bp: 11 }),
+        makeResult({ playerId: "opponent", metricValue: 2050, submittedAt: iso(5), bp: 12 }),
+      ]),
+    ],
+  });
+  const withProvisionalIds = reduceArchiveWithSession(archive, {
+    session: transitionSession,
+    myPlayerId: MY_PLAYER_ID,
+    processedAt: iso(6),
+  });
+  const withAuthoritativeIds = reduceArchiveWithSession(withProvisionalIds, {
+    session: {
+      ...transitionSession,
+      match_id: "transition-match-1",
+    },
+    myPlayerId: MY_PLAYER_ID,
+    processedAt: iso(7),
+  });
+  assert.equal(withAuthoritativeIds.match_games.some((entry) => entry.match_id === "transition-room"), false);
+  assert.equal(withAuthoritativeIds.play_results.some((entry) => entry.source_match_id === "transition-room"), false);
+  assert.equal(withAuthoritativeIds.match_games.filter((entry) => entry.match_id === "transition-match-1").length, 2);
+  assert.equal(
+    withAuthoritativeIds.play_results.filter((entry) => entry.source_match_id === "transition-match-1").length,
+    2,
+  );
+  archive = withAuthoritativeIds;
+
+  const firstSession = makeSession({
+    roomId,
+    matchId: "match-alpha",
+    battleType: "ARENA",
+    playMode: "SP",
+    playerIds: [MY_PLAYER_ID, "opponent"],
+    mode: "ARENA",
+    rounds: [
+      makeRound(0, "SP", [
+        makeResult({ playerId: MY_PLAYER_ID, metricValue: 2100, submittedAt: iso(6), bp: 11 }),
+        makeResult({ playerId: "opponent", metricValue: 2000, submittedAt: iso(7), bp: 15 }),
+      ]),
+      makeRound(1, "SP", [
+        makeResult({ playerId: MY_PLAYER_ID, metricValue: 2050, submittedAt: iso(8), bp: 12 }),
+        makeResult({ playerId: "opponent", metricValue: 1900, submittedAt: iso(9), bp: 16 }),
+      ]),
+    ],
+  });
+  archive = recordClosedMatch(
+    archive,
+    firstSession,
+    makeResultReady({
+      session: firstSession,
+      isRated: true,
+      ratedBlockReason: null,
+      winnerPlayerIds: [MY_PLAYER_ID],
+    }),
+  );
+
+  const secondSession = makeSession({
+    roomId,
+    matchId: "match-beta",
+    battleType: "ARENA",
+    playMode: "SP",
+    playerIds: [MY_PLAYER_ID, "opponent"],
+    mode: "ARENA",
+    rounds: [
+      makeRound(0, "SP", [
+        makeResult({ playerId: MY_PLAYER_ID, metricValue: 1800, submittedAt: iso(16), bp: 20 }),
+        makeResult({ playerId: "opponent", metricValue: 1900, submittedAt: iso(17), bp: 18 }),
+      ]),
+    ],
+  });
+  archive = recordClosedMatch(
+    archive,
+    secondSession,
+    makeResultReady({
+      session: secondSession,
+      isRated: true,
+      ratedBlockReason: null,
+      winnerPlayerIds: ["opponent"],
+    }),
+  );
+
+  assert.equal(archive.matches.some((entry) => entry.match_id === "match-alpha"), true);
+  assert.equal(archive.matches.some((entry) => entry.match_id === "match-beta"), true);
+  assert.equal(archive.match_games.filter((entry) => entry.match_id === "match-alpha").length, 2);
+  assert.equal(archive.match_games.filter((entry) => entry.match_id === "match-beta").length, 1);
+  assert.equal(archive.play_results.filter((entry) => entry.source_match_id === "match-alpha").length, 2);
+  assert.equal(archive.play_results.filter((entry) => entry.source_match_id === "match-beta").length, 1);
+
+  const fallbackSession = makeSession({
+    roomId: "legacy-room",
+    battleType: "BPL",
+    playMode: "SP",
+    playerIds: [MY_PLAYER_ID, "opponent"],
+    mode: "BPL",
+    rounds: [
+      makeRound(0, "SP", [
+        makeResult({ playerId: MY_PLAYER_ID, metricValue: 2000, submittedAt: iso(30), bp: 10 }),
+        makeResult({ playerId: "opponent", metricValue: 1900, submittedAt: iso(31), bp: 13 }),
+      ]),
+      makeRound(1, "SP", [
+        makeResult({ playerId: MY_PLAYER_ID, metricValue: 2050, submittedAt: iso(32), bp: 9 }),
+        makeResult({ playerId: "opponent", metricValue: 1800, submittedAt: iso(33), bp: 16 }),
+      ]),
+      makeRound(2, "SP", [
+        makeResult({ playerId: MY_PLAYER_ID, metricValue: 2100, submittedAt: iso(34), bp: 8 }),
+        makeResult({ playerId: "opponent", metricValue: 1700, submittedAt: iso(35), bp: 19 }),
+      ]),
+    ],
+  });
+  archive = recordClosedMatch(archive, fallbackSession, null);
+
+  assert.equal(archive.matches.some((entry) => entry.match_id === "legacy-room"), true);
+  assert.equal(archive.match_games.some((entry) => entry.match_id === "legacy-room"), true);
+  assert.equal(archive.play_results.some((entry) => entry.source_match_id === "legacy-room"), true);
 });
 
 runCase("chart rankings require three matches and stay separated by chart id, rule, and mode", () => {
