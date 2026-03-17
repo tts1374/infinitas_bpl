@@ -1,0 +1,28 @@
+# .github/CODEOWNERS
+
+* @tts1374
+
+/.github/ @tts1374
+/.github/workflows/ @tts1374
+
+/docs/ @tts1374
+/tasks/ @tts1374
+*.md @tts1374
+
+/apps/client/ @tts1374
+/apps/worker/ @tts1374
+
+/packages/ @tts1374
+
+/db/ @tts1374
+/migrations/ @tts1374
+*.sql @tts1374
+
+/scripts/ @tts1374
+/release/ @tts1374
+
+package.json @tts1374
+pnpm-lock.yaml @tts1374
+tsconfig*.json @tts1374
+vite.config.* @tts1374
+wrangler*.toml @tts1374
