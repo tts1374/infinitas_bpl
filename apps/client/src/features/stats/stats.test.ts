@@ -24,6 +24,7 @@ import {
   type StatsBattleType,
 } from "./models";
 import {
+  captureRoomStatsSession,
   getChartRankings,
   getCurrentRating,
   getDetailedMatchHistory,
@@ -733,6 +734,135 @@ runCase("server-authoritative match_id separates rematches and fallback keeps ro
   assert.equal(archive.matches.some((entry) => entry.match_id === "legacy-room"), true);
   assert.equal(archive.match_games.some((entry) => entry.match_id === "legacy-room"), true);
   assert.equal(archive.play_results.some((entry) => entry.source_match_id === "legacy-room"), true);
+});
+
+runCase("match_id fallback resets to room_id after returning to LOBBY", () => {
+  const roomId = "same-room";
+  const previousSession = makeSession({
+    roomId,
+    matchId: "match-alpha",
+    battleType: "ARENA",
+    playMode: "SP",
+    playerIds: [MY_PLAYER_ID, "opponent"],
+    mode: "ARENA",
+    rounds: [
+      makeRound(0, "SP", [
+        makeResult({ playerId: MY_PLAYER_ID, metricValue: 2200, submittedAt: iso(40), bp: 9 }),
+        makeResult({ playerId: "opponent", metricValue: 2100, submittedAt: iso(41), bp: 12 }),
+      ]),
+    ],
+  });
+  const staleResultReady = makeResultReady({
+    session: previousSession,
+    isRated: true,
+    ratedBlockReason: null,
+    winnerPlayerIds: [MY_PLAYER_ID],
+  });
+  const lobbySnapshot: RoomStateSnapshot = {
+    room_id: roomId,
+    room_state: "LOBBY",
+    settings: previousSession.settings,
+    host_player_id: previousSession.players[0]?.player_id ?? MY_PLAYER_ID,
+    players: previousSession.players,
+    picks: [],
+    frozen_rounds: [],
+    current_round: null,
+    timers: {
+      ready_check_deadline: null,
+      picking_deadline: null,
+      match_deadline: null,
+      result_deadline: null,
+    },
+    result_ready: false,
+    created_at: iso(42),
+    closed_at: null,
+    close_reason: null,
+  };
+
+  const nextSession = captureRoomStatsSession(previousSession, lobbySnapshot, staleResultReady);
+
+  assert.equal(nextSession.match_id, roomId);
+  assert.equal(nextSession.rounds.length, 0);
+});
+
+runCase("closed match without confirmed games does not create an empty match record", () => {
+  const session = makeSession({
+    roomId: "incomplete-close",
+    battleType: "BPL",
+    playMode: "SP",
+    playerIds: [MY_PLAYER_ID, "opponent"],
+    mode: "BPL",
+    rounds: [makeRound(0, "SP", [])],
+  });
+  const archive = recordClosedMatch(createEmptyStatsArchive(), session, null);
+
+  assert.equal(archive.match_games.length, 0);
+  assert.equal(archive.matches.some((entry) => entry.match_id === session.match_id), false);
+});
+
+runCase("authoritative match_id promotion keeps rounds and rewrites provisional ids", () => {
+  const roomId = "promotion-room";
+  const provisionalSession = makeSession({
+    roomId,
+    battleType: "BPL",
+    playMode: "SP",
+    playerIds: [MY_PLAYER_ID, "opponent"],
+    mode: "BPL",
+    rounds: [
+      makeRound(0, "SP", [
+        makeResult({ playerId: MY_PLAYER_ID, metricValue: 2050, submittedAt: iso(43), bp: 11 }),
+        makeResult({ playerId: "opponent", metricValue: 1950, submittedAt: iso(44), bp: 14 }),
+      ]),
+      makeRound(1, "SP", [
+        makeResult({ playerId: MY_PLAYER_ID, metricValue: 2100, submittedAt: iso(45), bp: 10 }),
+        makeResult({ playerId: "opponent", metricValue: 2000, submittedAt: iso(46), bp: 13 }),
+      ]),
+    ],
+  });
+  const withProvisionalIds = reduceArchiveWithSession(createEmptyStatsArchive(), {
+    session: provisionalSession,
+    myPlayerId: MY_PLAYER_ID,
+    processedAt: iso(47),
+  });
+  assert.equal(withProvisionalIds.match_games.filter((entry) => entry.match_id === roomId).length, 2);
+
+  const baseResultReady = makeResultReady({
+    session: provisionalSession,
+    isRated: true,
+    ratedBlockReason: null,
+    winnerPlayerIds: [MY_PLAYER_ID],
+  });
+  const authoritativeMatchId = "promotion-match-1";
+  const authoritativeResultReady: ResultReadyPayload = {
+    ...baseResultReady,
+    summary: {
+      ...baseResultReady.summary,
+      match_id: authoritativeMatchId,
+    },
+  };
+  const promotedSession = captureRoomStatsSession(
+    provisionalSession,
+    makeSnapshot(provisionalSession),
+    authoritativeResultReady,
+  );
+  assert.equal(promotedSession.match_id, authoritativeMatchId);
+  assert.equal(promotedSession.rounds.length, provisionalSession.rounds.length);
+
+  const withAuthoritativeIds = reduceArchiveWithSession(withProvisionalIds, {
+    session: promotedSession,
+    myPlayerId: MY_PLAYER_ID,
+    processedAt: iso(48),
+  });
+  assert.equal(withAuthoritativeIds.match_games.some((entry) => entry.match_id === roomId), false);
+  assert.equal(withAuthoritativeIds.play_results.some((entry) => entry.source_match_id === roomId), false);
+  assert.equal(
+    withAuthoritativeIds.match_games.filter((entry) => entry.match_id === authoritativeMatchId).length,
+    2,
+  );
+  assert.equal(
+    withAuthoritativeIds.play_results.filter((entry) => entry.source_match_id === authoritativeMatchId).length,
+    2,
+  );
 });
 
 runCase("chart rankings require three matches and stay separated by chart id, rule, and mode", () => {

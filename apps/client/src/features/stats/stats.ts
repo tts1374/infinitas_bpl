@@ -378,6 +378,10 @@ function resolveSessionMatchId(input: {
   snapshot: RoomStateSnapshot;
   resultReady: ResultReadyPayload | null;
 }): string {
+  if (input.snapshot.room_state === "LOBBY") {
+    return input.snapshot.room_id;
+  }
+
   const summaryRecord = input.resultReady === null ? null : asRecord(input.resultReady.summary);
   const resultReadyMatchId = asString(summaryRecord?.match_id);
   if (resultReadyMatchId !== null) {
@@ -401,11 +405,14 @@ export function captureRoomStatsSession(
     snapshot,
     resultReady,
   });
+  const canReusePreviousRounds =
+    snapshot.room_state !== "LOBBY" &&
+    previousSession?.room_id === snapshot.room_id &&
+    (previousSession.match_id === sessionMatchId ||
+      (previousSession.match_id === snapshot.room_id && sessionMatchId !== snapshot.room_id));
   const frozenRoundByIndex = new Map(snapshot.frozen_rounds.map((round) => [round.round_index, round]));
   const roundsByIndex = new Map(
-    previousSession?.room_id === snapshot.room_id && previousSession.match_id === sessionMatchId
-      ? previousSession.rounds.map((round) => [round.round_index, round])
-      : [],
+    canReusePreviousRounds ? previousSession.rounds.map((round) => [round.round_index, round]) : [],
   );
 
   if (snapshot.current_round !== null) {
@@ -980,7 +987,9 @@ export function reduceArchiveWithSession(
   const provisionalPlayResultIdPrefix = `${session.room_id}:`;
   const provisionalPlayResultIdSuffix = `:${input.myPlayerId}`;
   const provisionalMatchGameIdPrefix = `${session.room_id}:`;
-  const basePlayResults = hasAuthoritativeMatchId
+  const shouldReplaceProvisionalPlayResults = hasAuthoritativeMatchId && nextPlayResults.length > 0;
+  const shouldReplaceProvisionalMatchGames = hasAuthoritativeMatchId && nextMatchGames.length > 0;
+  const basePlayResults = shouldReplaceProvisionalPlayResults
     ? archive.play_results.filter(
         (entry) =>
           !(
@@ -990,7 +999,7 @@ export function reduceArchiveWithSession(
           ),
       )
     : archive.play_results;
-  const baseMatchGames = hasAuthoritativeMatchId
+  const baseMatchGames = shouldReplaceProvisionalMatchGames
     ? archive.match_games.filter(
         (entry) =>
           !(
@@ -1033,6 +1042,9 @@ export function reduceArchiveWithClosedMatch(
   const matchGames = archive.match_games
     .filter((entry) => entry.match_id === session.match_id)
     .sort((left, right) => left.game_index - right.game_index);
+  if (matchGames.length === 0) {
+    return archive;
+  }
   const nextMatch =
     session.settings.mode === "ARENA"
       ? deriveArenaMatchRecord(session, input.snapshot, input.resultReady, input.myPlayerId)

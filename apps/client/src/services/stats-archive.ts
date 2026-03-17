@@ -58,15 +58,56 @@ function syncSession(snapshot: RoomStateSnapshot | null): void {
 function syncFromRoomStore(): void {
   const snapshot = roomStore.getState().snapshot;
   const resultReady = roomStore.getState().resultReady;
-  syncSession(snapshot);
+  const previousSession = currentSession;
 
   if (snapshot === null) {
+    currentSession = null;
     lastClosedRoomKey = null;
     return;
   }
 
   const myPlayerId = settingsStore.getState().saved.playerId;
   const processedAt = new Date().toISOString();
+  const shouldFinalizeOnLobbyRemake =
+    snapshot.room_state === "LOBBY" &&
+    resultReady === null &&
+    previousSession !== null &&
+    previousSession.room_id === snapshot.room_id &&
+    previousSession.rounds.length > 0;
+
+  if (shouldFinalizeOnLobbyRemake) {
+    const roundSignature = previousSession.rounds
+      .map((round) => `${round.round_index}:${round.round_started_at ?? ""}`)
+      .join("|");
+    const closedRoomKey = `${snapshot.room_id}:lobby:${roundSignature}`;
+
+    if (closedRoomKey !== lastClosedRoomKey) {
+      const afterSessionFlushFromLobby = reduceArchiveWithSession(internalStore.getState().archive, {
+        session: previousSession,
+        myPlayerId,
+        processedAt,
+      });
+      setArchiveIfChanged(afterSessionFlushFromLobby);
+
+      lastClosedRoomKey = closedRoomKey;
+      const afterMatchCloseFromLobby = reduceArchiveWithClosedMatch(afterSessionFlushFromLobby, {
+        session: previousSession,
+        snapshot: {
+          ...snapshot,
+          room_state: "CLOSED",
+          close_reason: "ALL_ROUNDS_COMPLETED",
+          closed_at: snapshot.closed_at ?? processedAt,
+        },
+        resultReady: null,
+        myPlayerId,
+        processedAt,
+      });
+      setArchiveIfChanged(afterMatchCloseFromLobby);
+      currentSession = null;
+    }
+  }
+
+  syncSession(snapshot);
   const afterSessionFlush = reduceArchiveWithSession(internalStore.getState().archive, {
     session: currentSession,
     myPlayerId,
