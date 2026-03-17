@@ -117,7 +117,7 @@ async function createRoomObject() {
   return roomObject;
 }
 
-function createJoinMessage(playerId, clientMessageId) {
+function createJoinMessage(playerId, clientMessageId, clientVersion = "1.0.1") {
   return {
     type: "ROOM_JOIN",
     client_msg_id: clientMessageId,
@@ -126,14 +126,14 @@ function createJoinMessage(playerId, clientMessageId) {
     payload: {
       display_name: playerId.toUpperCase(),
       source: "inf-notebook",
-      client_version: "1.0.1",
+      ...(clientVersion === null ? {} : { client_version: clientVersion }),
     },
   };
 }
 
-async function joinPlayer(roomObject, socket, playerId, clientMessageId) {
+async function joinPlayer(roomObject, socket, playerId, clientMessageId, clientVersion = "1.0.1") {
   const session = roomObject.registerSocketSession(socket);
-  await roomObject.handleRoomJoin(session, createJoinMessage(playerId, clientMessageId));
+  await roomObject.handleRoomJoin(session, createJoinMessage(playerId, clientMessageId, clientVersion));
   return session;
 }
 
@@ -199,4 +199,31 @@ test("MATCH_TTL_EXPIRED closes sockets and clears sessions", async () => {
   assert.equal(guestSocket.closeCalls.length, 1);
   assert.equal(hostSocket.closeCalls[0]?.code, 4000);
   assert.equal(guestSocket.closeCalls[0]?.code, 4000);
+});
+
+test("ROOM_JOIN rejects client_version below min supported version", async () => {
+  const roomObject = await createRoomObject();
+  const socket = new TestSocket();
+  const session = roomObject.registerSocketSession(socket);
+
+  await roomObject.handleRoomJoin(session, createJoinMessage("host", "msg-old", "1.0.0"));
+
+  assert.equal(socket.sent.length, 1);
+  assert.equal(socket.sent[0]?.type, "ROOM_JOIN_REJECTED");
+  assert.equal(
+    typeof socket.sent[0]?.payload?.reason === "string" &&
+      socket.sent[0].payload.reason.startsWith("CLIENT_VERSION_UNSUPPORTED:"),
+    true,
+  );
+});
+
+test("ROOM_JOIN allows legacy client without client_version", async () => {
+  const roomObject = await createRoomObject();
+  const socket = new TestSocket();
+  const session = roomObject.registerSocketSession(socket);
+
+  await roomObject.handleRoomJoin(session, createJoinMessage("host", "msg-legacy", null));
+
+  assert.equal(socket.sent.length > 0, true);
+  assert.equal(socket.sent[0]?.type, "ROOM_JOIN_ACCEPTED");
 });

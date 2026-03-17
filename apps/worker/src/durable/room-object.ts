@@ -1361,25 +1361,38 @@ export class RoomDurableObject {
       return;
     }
 
-    const parsedClientVersion =
-      payload.client_version === undefined ? null : parseClientVersion(payload.client_version);
-    if (
-      parsedClientVersion === null ||
-      compareClientVersions(parsedClientVersion, this.minSupportedClientVersion) < 0
-    ) {
-      this.sendJoinRejected(
-        session.socket,
-        buildUnsupportedClientVersionReason(this.minSupportedClientVersion),
-        this.buildMessageLogInput(message, {
-          source: payload.source,
-          detail: {
-            validation: "client_version_unsupported",
-            client_version: payload.client_version ?? null,
-            min_supported_client_version: formatClientVersion(this.minSupportedClientVersion),
-          },
-        }),
-      );
-      return;
+    if (payload.client_version !== undefined) {
+      const parsedClientVersion = parseClientVersion(payload.client_version);
+      if (
+        parsedClientVersion === null ||
+        compareClientVersions(parsedClientVersion, this.minSupportedClientVersion) < 0
+      ) {
+        this.sendJoinRejected(
+          session.socket,
+          buildUnsupportedClientVersionReason(this.minSupportedClientVersion),
+          this.buildMessageLogInput(message, {
+            source: payload.source,
+            detail: {
+              validation: "client_version_unsupported",
+              client_version: payload.client_version,
+              min_supported_client_version: formatClientVersion(this.minSupportedClientVersion),
+            },
+          }),
+        );
+        return;
+      }
+    }
+
+    if (payload.client_version === undefined) {
+      this.logRoomEvent(this.buildMessageLogInput(message, {
+        level: "WARN",
+        event: "ws.legacy_client_version_missing",
+        source: payload.source,
+        outcome: "ok",
+        detail: {
+          min_supported_client_version: formatClientVersion(this.minSupportedClientVersion),
+        },
+      }));
     }
 
     const settings = this.roomState.getSettings();

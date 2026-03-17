@@ -56,7 +56,8 @@ Ph1で固定するタイマー値、制約値、表示/運用上の定数を整�
 
 ## 2.3 クライアント version gate
 - `MIN_SUPPORTED_CLIENT_VERSION = "1.0.1"`
-  - `ROOM_JOIN` 時に `client_version` がこの値未満、または未送信の場合は参加拒否
+  - `ROOM_JOIN` 時に `client_version` が送信されている場合、この値未満なら参加拒否
+  - `client_version` 未送信は移行互換のため当面許容
 - `CLIENT_VERSION_UNSUPPORTED`
   - `ROOM_JOIN_REJECTED.reason` の先頭識別子として利用（更新案内文を後続に含める）
 
