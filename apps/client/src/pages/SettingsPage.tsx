@@ -3,7 +3,6 @@ import { ChevronLeft, Database, FolderOpen, MessageSquare, Save, Package, CheckS
 import { pickDirectory, validateSourceDirectory } from "../services/tauri-bridge";
 import type { SongPack } from "@infinitas/shared";
 import { listSongPacks, sendFeedback, type FeedbackRequest } from "../services/worker-api-client";
-import { runtimeConfig } from "../runtime/runtime-config";
 import { sourceStore } from "../stores/source-store";
 import {
   getActiveSourceDirectory,
@@ -13,7 +12,6 @@ import {
   useSettingsStore,
 } from "../stores/settings-store";
 import clientPackageJson from "../../package.json";
-import { MOCK_SONG_PACKS } from "./songPacks";
 
 interface SettingsPageProps {
   roomJoined: boolean;
@@ -79,8 +77,8 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
   const [feedbackMessage, setFeedbackMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [feedbackValidationError, setFeedbackValidationError] = useState<string | null>(null);
   const [isFeedbackSubmitting, setIsFeedbackSubmitting] = useState(false);
-  const [songPacks, setSongPacks] = useState<SongPack[]>(MOCK_SONG_PACKS);
-  const [songPackLoadError, setSongPackLoadError] = useState<string | null>(null);
+  const [songPacks, setSongPacks] = useState<SongPack[]>([]);
+  const [songPackDialogMessage, setSongPackDialogMessage] = useState<string | null>(null);
   const [isSongPackLoading, setIsSongPackLoading] = useState(false);
 
   const activeDirectory = getActiveSourceDirectory(draft);
@@ -101,16 +99,8 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
   }, []);
 
   useEffect(() => {
-    if (runtimeConfig.mockScenarioId !== null) {
-      setSongPacks(MOCK_SONG_PACKS);
-      setSongPackLoadError(null);
-      setIsSongPackLoading(false);
-      return;
-    }
-
     let cancelled = false;
     setIsSongPackLoading(true);
-    setSongPackLoadError(null);
 
     void listSongPacks(draft.apiBaseUrl)
       .then((response) => {
@@ -130,8 +120,10 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
         if (cancelled) {
           return;
         }
-        setSongPacks(MOCK_SONG_PACKS);
-        setSongPackLoadError(formatUnknownError(error, "楽曲パック一覧の取得に失敗しました。Mockを表示しています。"));
+        setSongPacks([]);
+        setSongPackDialogMessage(
+          formatUnknownError(error, "楽曲パック一覧の取得に失敗しました。APIの状態を確認してください。"),
+        );
       })
       .finally(() => {
         if (cancelled) {
@@ -487,9 +479,6 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
               {isSongPackLoading ? (
                 <p className="text-xs font-semibold text-cyan-300">楽曲パック一覧を取得中です...</p>
               ) : null}
-              {songPackLoadError ? (
-                <p className="text-xs font-semibold text-amber-300">{songPackLoadError}</p>
-              ) : null}
 
               <div className="grid max-h-96 grid-cols-1 gap-2 overflow-y-auto pr-2 custom-scrollbar lg:grid-cols-2">
                 {songPacks.map((pack) => {
@@ -522,6 +511,9 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
                   );
                 })}
               </div>
+              {!isSongPackLoading && songPacks.length === 0 ? (
+                <p className="text-xs font-semibold text-gray-500">楽曲パック一覧を取得できませんでした。</p>
+              ) : null}
             </div>
           </div>
         </section>
@@ -736,6 +728,30 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
                     {isFeedbackSubmitting ? "送信中..." : "送信"}
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {songPackDialogMessage ? (
+        <div className="fixed inset-0 z-[1250]">
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-[2px]" />
+          <div className="relative flex min-h-full items-center justify-center p-4">
+            <div className="w-full max-w-lg rounded-2xl border border-amber-500/25 bg-[#252526] p-7 shadow-[0_25px_70px_rgba(0,0,0,0.8)]">
+              <p className="text-[10px] font-black uppercase tracking-[0.25em] text-amber-300">Song Packs</p>
+              <h2 className="mt-2 text-xl font-black text-white">楽曲パック一覧の取得に失敗しました</h2>
+              <p className="mt-4 text-sm font-semibold leading-relaxed text-gray-300">{songPackDialogMessage}</p>
+              <div className="mt-6 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSongPackDialogMessage(null);
+                  }}
+                  className="rounded-xl bg-cyan-500 px-6 py-3 text-sm font-black text-black transition-all hover:bg-cyan-400"
+                >
+                  閉じる
+                </button>
               </div>
             </div>
           </div>
