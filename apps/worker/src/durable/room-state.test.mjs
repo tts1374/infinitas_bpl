@@ -175,6 +175,8 @@ function submitCurrentRoundResult(state, playerId, roundIndex, metricValue, nowA
 function getResultSummary(state) {
   const payload = state.getResultReadyPayload();
   assert.ok(payload, "result ready payload should exist");
+  assert.equal(typeof payload.summary.match_id, "string");
+  assert.ok(payload.summary.match_id.length > 0);
   return payload.summary;
 }
 
@@ -580,4 +582,47 @@ test("MATCH_TTL expires in RESULT and closes room", () => {
   assert.ok(transition);
   assert.equal(state.getRoomState(), "CLOSED");
   assert.equal(state.toSnapshot().close_reason, "MATCH_TTL_EXPIRED");
+});
+
+test("RESULT_READY summary uses server-authoritative match_id and rematch rotates it", () => {
+  const state = createState();
+  prepareMatch(state);
+
+  playCurrentRound(state, 0, 2200, 2100, "2026-03-08T00:02");
+  playCurrentRound(state, 1, 2300, 2000, "2026-03-08T00:03");
+
+  const firstSummary = getResultSummary(state);
+  assert.notEqual(firstSummary.match_id, "room-1");
+
+  assert.deepEqual(state.returnToLobby("host", new Date("2026-03-08T00:04:00.000Z")), { ok: true });
+  assert.equal(state.setPlayerReady("host", true).ok, true);
+  assert.equal(state.setPlayerReady("guest", true).ok, true);
+  assert.deepEqual(state.startMatch("host", new Date("2026-03-08T00:05:00.000Z")), { ok: true });
+  assert.equal(state.submitPick("host", "chart-1", new Date("2026-03-08T00:05:10.000Z")).ok, true);
+  assert.equal(state.submitPick("guest", "chart-2", new Date("2026-03-08T00:05:11.000Z")).ok, true);
+
+  playCurrentRound(state, 0, 2400, 2300, "2026-03-08T00:06");
+  playCurrentRound(state, 1, 2500, 2400, "2026-03-08T00:07");
+
+  const secondSummary = getResultSummary(state);
+  assert.notEqual(secondSummary.match_id, firstSummary.match_id);
+});
+
+test("hydrate legacy RESULT_READY payload without match_id falls back to room_id", () => {
+  const state = createState();
+  prepareMatch(state);
+
+  playCurrentRound(state, 0, 2200, 2100, "2026-03-08T00:02");
+  playCurrentRound(state, 1, 2300, 2000, "2026-03-08T00:03");
+
+  const record = state.toPersistenceRecord();
+  const legacyRecord = JSON.parse(JSON.stringify(record));
+  delete legacyRecord.current_match_id;
+  delete legacyRecord.result_ready_payload.summary.match_id;
+
+  const restored = new RoomLobbyState(createChartMaster());
+  restored.hydrate(legacyRecord);
+
+  const restoredSummary = getResultSummary(restored);
+  assert.equal(restoredSummary.match_id, "room-1");
 });
