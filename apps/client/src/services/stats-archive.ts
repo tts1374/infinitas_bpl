@@ -80,6 +80,18 @@ function syncFromRoomStore(): void {
       .map((round) => `${round.round_index}:${round.round_started_at ?? ""}`)
       .join("|");
     const closedRoomKey = `${snapshot.room_id}:lobby:${roundSignature}`;
+    const plannedFrozenRounds =
+      snapshot.frozen_rounds.length > 0
+        ? snapshot.frozen_rounds
+        : [...previousSession.rounds]
+            .sort((left, right) => left.round_index - right.round_index)
+            .map((round) => ({
+              round_index: round.round_index,
+              expected_key: round.expected_key,
+              display: round.display,
+              started_at: round.round_started_at,
+              soft_ttl_seconds: 300,
+            }));
 
     if (closedRoomKey !== lastClosedRoomKey) {
       const afterSessionFlushFromLobby = reduceArchiveWithSession(internalStore.getState().archive, {
@@ -97,6 +109,7 @@ function syncFromRoomStore(): void {
           room_state: "CLOSED",
           close_reason: "ALL_ROUNDS_COMPLETED",
           closed_at: snapshot.closed_at ?? processedAt,
+          frozen_rounds: plannedFrozenRounds,
         },
         resultReady: null,
         myPlayerId,
