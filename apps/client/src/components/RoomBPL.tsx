@@ -78,6 +78,7 @@ export interface RoomBPLControlledState {
     finalWinningPlayerName?: string;
     isHost: boolean;
     players: RoomBPLPlayer[];
+    roundPickerNames?: Array<string | null>;
     selfPlayerId?: string;
     disablePrimaryAction?: boolean;
     disableLeave?: boolean;
@@ -406,8 +407,10 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
     const _currentSong = picks[0]; // TODO: 本来はラウンドに応じた曲を表示
     const leftPlayer = players[0] ?? { id: '1', name: 'HOST', isReady: false, isHost: true, side: 'LEFT' as const };
     const rightPlayer = players[1] ?? { id: '2', name: 'GUEST', isReady: false, isHost: false, side: 'RIGHT' as const };
-    const leftPickLabel = leftPlayer.name ? `${leftPlayer.name}'S PICK` : '1ST PICK';
-    const rightPickLabel = rightPlayer.name ? `${rightPlayer.name}'S PICK` : '2ND PICK';
+    const roundPickerNames = controlled?.roundPickerNames ?? [leftPlayer.name, rightPlayer.name, 'System Random'];
+    const currentRoundPickerName = roundPickerNames[roundCount - 1] ?? null;
+    const leftPickLabel = roundPickerNames[0] ? `${roundPickerNames[0]}'S PICK` : '1ST PICK';
+    const rightPickLabel = roundPickerNames[1] ? `${roundPickerNames[1]}'S PICK` : '2ND PICK';
 
     return (
         <div className="flex h-screen w-screen bg-[#0f0f10] text-white font-sans overflow-hidden">
@@ -698,6 +701,9 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
                                         <span className={`${getDifficultyBadgeClass(currentPlayingSongDifficulty)} px-3 py-1 rounded-full text-xs font-black italic tracking-[0.2em]`}>{getDifficultyBadgeLabel(currentPlayingSongDifficulty)}</span>
                                         <span className="text-3xl font-black italic tracking-tighter text-cyan-500">Lv{currentPlayingSongLevel}</span>
                                     </div>
+                                    <p className="mt-2 text-xs font-bold text-gray-400 uppercase tracking-widest">
+                                        Selected By {currentRoundPickerName ?? '-'}
+                                    </p>
                                 </div>
                             </div>
 

@@ -94,6 +94,7 @@ export interface RoomArenaControlledState {
     finalResultPlayers?: Record<string, RoomArenaFinalResultPlayerSummary>;
     isHost: boolean;
     allPlayers: RoomArenaPlayer[];
+    selectedByName?: string | null;
     selfPlayerId?: string;
     searchModal?: ReactNode;
     disablePrimaryAction?: boolean;
@@ -471,6 +472,7 @@ export default function RoomArena({ onNavigate, initialStatus, controlled }: Roo
         setRoomStatus('RESULT');
     };
     const currentRoundPlayer = players[roundCount - 1] ?? players[0];
+    const selectedByName = controlled?.selectedByName ?? currentRoundPlayer?.name ?? 'PLAYER_ONE';
     const currentRoundSong = currentRoundPlayer ? playerPicks[currentRoundPlayer.id] ?? null : null;
     const currentRoundTitle = currentRoundSong?.title ?? 'Unknown Track';
     const currentRoundPlayStyle = currentRoundSong?.playStyle ?? '-';
@@ -556,7 +558,7 @@ export default function RoomArena({ onNavigate, initialStatus, controlled }: Roo
                                     <span className={`${getDifficultyBadgeClass(currentRoundDifficulty)} rounded-full px-3 py-1 text-[11px] tracking-[0.2em]`}>{getDifficultyBadgeLabel(currentRoundDifficulty)}</span>
                                     <span className="text-cyan-500">Lv{currentRoundLevel}</span>
                                 </div>
-                                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Selected By {currentRoundPlayer?.name ?? 'PLAYER_ONE'}</p>
+                                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Selected By {selectedByName}</p>
                             </div>
 
                             <div className="flex items-center gap-4">

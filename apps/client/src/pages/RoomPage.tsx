@@ -86,6 +86,7 @@ type ParsedResultRound = {
 
 const BPL_PICK_CUTIN_SECONDS = 3;
 const BPL_RESULT_PHASE_SECONDS = 10;
+const ARENA_RESULT_PHASE_SECONDS = 10;
 function getArchiveTone(status: string): string {
   if (status === "READY") {
     return "ok";
@@ -629,10 +630,13 @@ export function RoomPage() {
   const [ownPickCutInChart, setOwnPickCutInChart] = useState<ChartSearchEntry | null>(null);
   const [resolvedChartsByExpectedKey, setResolvedChartsByExpectedKey] = useState<Record<string, ChartSearchEntry | null>>({});
   const [resolvedChartsByPickKey, setResolvedChartsByPickKey] = useState<Record<string, ChartSearchEntry | null>>({});
+  const [matchResultStartedAtMs, setMatchResultStartedAtMs] = useState<number | null>(null);
   const chartRequestIdRef = useRef(0);
   const cutInTimeoutRef = useRef<number | null>(null);
   const arenaLobbyLogSequenceRef = useRef(0);
   const previousArenaLobbySnapshotRef = useRef<RoomStateSnapshot | null>(null);
+  const previousRoomStateRef = useRef<RoomStateSnapshot["room_state"] | null>(null);
+  const previousRoomIdRef = useRef<string | null>(null);
   const pickerModalVisibleRef = useRef(false);
   const mySubmittedPick = snapshot?.picks.find((pick) => pick.player_id === activePlayerId) ?? null;
   const showPickerModal = snapshot?.room_state === "PICKING" && mySubmittedPick === null;
@@ -951,6 +955,28 @@ export function RoomPage() {
     snapshot?.timers.ready_check_deadline,
     snapshot?.timers.result_deadline,
   ]);
+
+  useEffect(() => {
+    if (snapshot === null) {
+      setMatchResultStartedAtMs(null);
+      previousRoomStateRef.current = null;
+      previousRoomIdRef.current = null;
+      return;
+    }
+
+    const previousRoomState = previousRoomStateRef.current;
+    const previousRoomId = previousRoomIdRef.current;
+    if (snapshot.room_state === "RESULT") {
+      if (previousRoomState !== "RESULT" || previousRoomId !== snapshot.room_id) {
+        setMatchResultStartedAtMs(clockNowMs);
+      }
+    } else if (matchResultStartedAtMs !== null) {
+      setMatchResultStartedAtMs(null);
+    }
+
+    previousRoomStateRef.current = snapshot.room_state;
+    previousRoomIdRef.current = snapshot.room_id;
+  }, [clockNowMs, matchResultStartedAtMs, snapshot]);
 
   useEffect(() => {
     const roomHost =
@@ -1298,7 +1324,27 @@ export function RoomPage() {
       return rounds;
     }, []);
   })();
-  const picksByPlayerId = new Map(snapshot.picks.map((pick) => [pick.player_id, pick]));
+  const playersById = new Map(snapshot.players.map((player) => [player.player_id, player]));
+  const picksByAcceptedOrder = [...snapshot.picks].sort((left, right) => {
+    const leftAcceptedAtMs = getIsoTimeMs(left.accepted_at) ?? Number.MAX_SAFE_INTEGER;
+    const rightAcceptedAtMs = getIsoTimeMs(right.accepted_at) ?? Number.MAX_SAFE_INTEGER;
+    if (leftAcceptedAtMs !== rightAcceptedAtMs) {
+      return leftAcceptedAtMs - rightAcceptedAtMs;
+    }
+
+    return left.player_id.localeCompare(right.player_id);
+  });
+  const roundPickByIndex = new Map(picksByAcceptedOrder.map((pick, index) => [index, pick]));
+  const roundPickerNameByIndex = new Map(
+    picksByAcceptedOrder.map((pick, index) => [index, playersById.get(pick.player_id)?.display_name ?? pick.player_id]),
+  );
+  const bplRoundPickerNames: Array<string | null> = [
+    roundPickerNameByIndex.get(0) ?? null,
+    roundPickerNameByIndex.get(1) ?? null,
+    "System Random",
+  ];
+  const arenaCurrentRoundPickerName =
+    currentRound === null ? null : roundPickerNameByIndex.get(currentRound.round_index) ?? null;
   const roomIdLabel = snapshot.room_id;
   const joinCodeLabel = snapshot.settings.join_code ?? "";
   const currentExpectedKey = currentRound?.expected_key ?? null;
@@ -1342,13 +1388,32 @@ export function RoomPage() {
     !isBpl && snapshot.room_state === "PLAYING" && currentRound !== null && arenaLeadInSeconds > 0 && currentRound.round_index > 0
       ? "RESULT_PHASE"
       : null;
-  const bplPreviousRound =
-    isBpl && currentRound !== null && currentRound.round_index > 0
-      ? historyRounds.find((round) => round.roundIndex === currentRound.round_index - 1) ?? null
-      : null;
-  const arenaPreviousRound =
-    !isBpl && currentRound !== null && currentRound.round_index > 0
-      ? historyRounds.find((round) => round.roundIndex === currentRound.round_index - 1) ?? null
+  const latestHistoryRound = historyRounds.reduce<ParsedResultRound | null>((latestRound, round) => {
+    if (latestRound === null || round.roundIndex > latestRound.roundIndex) {
+      return round;
+    }
+
+    return latestRound;
+  }, null);
+  const bplResultRound =
+    isBpl && snapshot.room_state === "RESULT"
+      ? latestHistoryRound
+      : isBpl && currentRound !== null && currentRound.round_index > 0
+        ? historyRounds.find((round) => round.roundIndex === currentRound.round_index - 1) ?? null
+        : null;
+  const arenaResultRound =
+    !isBpl && snapshot.room_state === "RESULT"
+      ? latestHistoryRound
+      : !isBpl && currentRound !== null && currentRound.round_index > 0
+        ? historyRounds.find((round) => round.roundIndex === currentRound.round_index - 1) ?? null
+        : null;
+  const finalMatchResultCountdownSeconds =
+    snapshot.room_state === "RESULT"
+      ? Math.max(
+          0,
+          BPL_RESULT_PHASE_SECONDS -
+          Math.floor((clockNowMs - (matchResultStartedAtMs ?? clockNowMs)) / 1_000),
+        )
       : null;
   const ownPickCutInTitle =
     ownPickCutInChart?.title.trim().length
@@ -1628,7 +1693,7 @@ export function RoomPage() {
       const revealActualSong =
         endedRoundIndices.includes(index) ||
         currentRound?.round_index === index ||
-        bplPreviousRound?.roundIndex === index;
+        bplResultRound?.roundIndex === index;
       return {
         title: revealActualSong ? roundSong.playingTitle : roundSong.selectionTitle,
         artist: roundSong.artist,
@@ -1639,8 +1704,7 @@ export function RoomPage() {
     }
 
     if (index < 2) {
-      const slotPlayer = slots[index];
-      const playerPick = slotPlayer ? picksByPlayerId.get(slotPlayer.player_id) ?? null : null;
+      const playerPick = roundPickByIndex.get(index) ?? null;
       if (playerPick) {
         const parsedPickChartKey = parsePickChartKey(playerPick.pick_chart_key);
         const resolvedPickChart = getResolvedPickChart(playerPick.pick_chart_key);
@@ -1733,12 +1797,12 @@ export function RoomPage() {
     outcome: "WINNER" | "LOSER" | "DRAW";
   }>>((accumulator, player, index) => {
     const actualPlayer = slots[index];
-    if (!actualPlayer || !bplPreviousRound) {
+    if (!actualPlayer || !bplResultRound) {
       return accumulator;
     }
 
-    const currentRoundResult = bplPreviousRound.results.find((result) => result.playerId === actualPlayer.player_id) ?? null;
-    const cumulativeRounds = historyRounds.filter((round) => round.roundIndex <= bplPreviousRound.roundIndex);
+    const currentRoundResult = bplResultRound.results.find((result) => result.playerId === actualPlayer.player_id) ?? null;
+    const cumulativeRounds = historyRounds.filter((round) => round.roundIndex <= bplResultRound.roundIndex);
     const totalPoints = cumulativeRounds.reduce((sum, round) => {
       const leftResult = round.results[0];
       const rightResult = round.results[1];
@@ -1766,8 +1830,8 @@ export function RoomPage() {
       return actualPlayer.player_id === winnerPlayerId ? sum + 1 : sum;
     }, 0);
 
-    const leftResult = bplPreviousRound.results[0];
-    const rightResult = bplPreviousRound.results[1];
+    const leftResult = bplResultRound.results[0];
+    const rightResult = bplResultRound.results[1];
     let outcome: "WINNER" | "LOSER" | "DRAW" = "LOSER";
     let stagePoints = 0;
     if (
@@ -1898,11 +1962,11 @@ export function RoomPage() {
     return accumulator;
   }, {});
   const arenaMetricLabel = snapshot.settings.win_metric === "MISSCOUNT" ? "MISS COUNT" : "EX SCORE";
-  const arenaResultSong = arenaPreviousRound ? buildHistorySong(arenaPreviousRound) : null;
-  const arenaPreviousRoundResultsByPlayerId = new Map(
-    (arenaPreviousRound?.results ?? []).map((result) => [result.playerId, result]),
+  const arenaResultSong = arenaResultRound ? buildHistorySong(arenaResultRound) : null;
+  const arenaResultRoundResultsByPlayerId = new Map(
+    (arenaResultRound?.results ?? []).map((result) => [result.playerId, result]),
   );
-  const rankedArenaPreviousRoundResults = (arenaPreviousRound?.results ?? [])
+  const rankedArenaResultRoundResults = (arenaResultRound?.results ?? [])
     .filter((result): result is ParsedResultRound["results"][number] & { metricValue: number } => result.metricValue !== null)
     .sort((left, right) => {
       const comparison = compareMetricValues(
@@ -1916,8 +1980,8 @@ export function RoomPage() {
 
       return left.playerId.localeCompare(right.playerId);
     });
-  const arenaPreviousRoundRankByPlayerId = rankedArenaPreviousRoundResults.reduce<Map<string, number>>((accumulator, result, resultIndex) => {
-    const previousResult = resultIndex > 0 ? rankedArenaPreviousRoundResults[resultIndex - 1] : null;
+  const arenaResultRoundRankByPlayerId = rankedArenaResultRoundResults.reduce<Map<string, number>>((accumulator, result, resultIndex) => {
+    const previousResult = resultIndex > 0 ? rankedArenaResultRoundResults[resultIndex - 1] : null;
     const previousRank = previousResult ? accumulator.get(previousResult.playerId) ?? resultIndex : 0;
     accumulator.set(
       result.playerId,
@@ -1927,12 +1991,12 @@ export function RoomPage() {
   }, new Map<string, number>());
   const arenaResultPlayers = arenaPlayers.reduce<Record<string, RoomArenaResultPhasePlayerSummary>>((accumulator, player, index) => {
     const actualPlayer = orderedPlayers[index] ?? null;
-    if (!actualPlayer || !arenaPreviousRound) {
+    if (!actualPlayer || !arenaResultRound) {
       return accumulator;
     }
 
-    const actualResult = arenaPreviousRoundResultsByPlayerId.get(actualPlayer.player_id);
-    const rank = arenaPreviousRoundRankByPlayerId.get(actualPlayer.player_id) ?? null;
+    const actualResult = arenaResultRoundResultsByPlayerId.get(actualPlayer.player_id);
+    const rank = arenaResultRoundRankByPlayerId.get(actualPlayer.player_id) ?? null;
     accumulator[player.id] = {
       rank,
       stagePoints:
@@ -2104,14 +2168,18 @@ export function RoomPage() {
           ? "WAITING"
           : snapshot.room_state === "PICKING"
             ? "SELECTING"
-            : snapshot.room_state === "PLAYING" && bplPrestartPhase === "RESULT_PHASE" && bplPreviousRound
+            : snapshot.room_state === "PLAYING" && bplPrestartPhase === "RESULT_PHASE" && bplResultRound
               ? "RESULT"
             : snapshot.room_state === "PLAYING"
                 ? "PLAYING"
+                : snapshot.room_state === "RESULT" && bplResultRound
+                  ? (finalMatchResultCountdownSeconds ?? BPL_RESULT_PHASE_SECONDS) > 0
+                    ? "RESULT"
+                    : "CLOSED"
                 : "CLOSED";
       const bplRoundCount =
         bplRoomStatus === "RESULT"
-          ? (bplPreviousRound?.roundIndex ?? 0) + 1
+          ? (bplResultRound?.roundIndex ?? 0) + 1
           : currentRound
             ? currentRound.round_index + 1
             : historyRounds.length > 0
@@ -2121,7 +2189,12 @@ export function RoomPage() {
         roomStatus: bplRoomStatus,
         isReady: isHost ? true : me?.ready ?? false,
         closeReason: snapshot.close_reason ?? "ALL_ROUNDS_COMPLETED",
-        resultTimer: bplRoomStatus === "RESULT" ? bplLeadInSeconds : resultCountdown ?? BPL_RESULT_PHASE_SECONDS,
+        resultTimer:
+          bplRoomStatus === "RESULT"
+            ? snapshot.room_state === "RESULT"
+              ? finalMatchResultCountdownSeconds ?? BPL_RESULT_PHASE_SECONDS
+              : bplLeadInSeconds
+            : resultCountdown ?? BPL_RESULT_PHASE_SECONDS,
         currentTurn: activeBplPickIndex ?? 0,
         roundCount: bplRoundCount,
         picks: bplPicks,
@@ -2147,6 +2220,7 @@ export function RoomPage() {
         finalWinningPlayerName: bplWinningPlayerName,
         isHost,
         players: bplPlayers,
+        roundPickerNames: bplRoundPickerNames,
         selfPlayerId: selfMockPlayerId ?? (isHost ? "1" : "2"),
         disablePrimaryAction: snapshot.room_state !== "LOBBY" || (isHost && lobbyStartIssues.length > 0),
         disableLeave: leaveRoomDisabled,
@@ -2172,14 +2246,18 @@ export function RoomPage() {
         ? "WAITING"
         : snapshot.room_state === "PICKING"
           ? "SELECTING"
-          : snapshot.room_state === "PLAYING" && arenaPrestartPhase === "RESULT_PHASE" && arenaPreviousRound
+          : snapshot.room_state === "PLAYING" && arenaPrestartPhase === "RESULT_PHASE" && arenaResultRound
             ? "RESULT"
             : snapshot.room_state === "PLAYING"
               ? "PLAYING"
+              : snapshot.room_state === "RESULT" && arenaResultRound
+                ? (finalMatchResultCountdownSeconds ?? ARENA_RESULT_PHASE_SECONDS) > 0
+                  ? "RESULT"
+                  : "CLOSED"
               : "CLOSED";
     const arenaRoundCount =
       arenaRoomStatus === "RESULT"
-        ? (arenaPreviousRound?.roundIndex ?? 0) + 1
+        ? (arenaResultRound?.roundIndex ?? 0) + 1
         : currentRound
           ? currentRound.round_index + 1
           : historyRounds.length > 0
@@ -2189,7 +2267,12 @@ export function RoomPage() {
       roomStatus: arenaRoomStatus,
       isReady: isHost ? true : me?.ready ?? false,
       closeReason: snapshot.close_reason ?? "ALL_ROUNDS_COMPLETED",
-      resultTimer: arenaRoomStatus === "RESULT" ? arenaLeadInSeconds : resultCountdown ?? 10,
+      resultTimer:
+        arenaRoomStatus === "RESULT"
+          ? snapshot.room_state === "RESULT"
+            ? finalMatchResultCountdownSeconds ?? ARENA_RESULT_PHASE_SECONDS
+            : arenaLeadInSeconds
+          : resultCountdown ?? ARENA_RESULT_PHASE_SECONDS,
       roundCount: arenaRoundCount,
       history: arenaHistory,
       playerPicks: arenaPicks,
@@ -2223,6 +2306,7 @@ export function RoomPage() {
       totalRounds: arenaTotalRounds,
       isHost,
       allPlayers: arenaPlayers,
+      selectedByName: arenaCurrentRoundPickerName,
       selfPlayerId: selfMockPlayerId ?? (isHost ? "1" : "2"),
       searchModal: pickerModal,
       disablePrimaryAction: snapshot.room_state !== "LOBBY" || (isHost && lobbyStartIssues.length > 0),
