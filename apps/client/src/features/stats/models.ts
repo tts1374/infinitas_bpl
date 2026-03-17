@@ -58,6 +58,7 @@ export interface SessionRound {
 
 export interface RoomStatsSession {
   room_id: string;
+  match_id: string;
   settings: RoomSettings;
   players: RoomPlayerSnapshot[];
   rounds: SessionRound[];

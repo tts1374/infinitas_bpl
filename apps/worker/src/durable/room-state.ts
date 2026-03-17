@@ -235,6 +235,7 @@ export interface RoomStatePersistenceRecord {
   frozen_rounds: FrozenRound[];
   current_round: CurrentRoundSnapshot | null;
   match_player_ids: string[];
+  current_match_id?: string | null;
   match_song_unlock_filter?: MatchSongUnlockFilter | null;
   result_ready_payload: ResultReadyPayload | null;
   result_key_mismatch_detected?: boolean;
@@ -284,6 +285,37 @@ function parseRequiredDate(value: string): Date {
   }
 
   return parsed;
+}
+
+function generateMatchId(): string {
+  return crypto.randomUUID();
+}
+
+function extractResultReadySummaryMatchId(payload: ResultReadyPayload | null): string | null {
+  if (payload === null) {
+    return null;
+  }
+
+  const summaryRecord = payload.summary as unknown as Record<string, unknown>;
+  const matchId = summaryRecord.match_id;
+  return typeof matchId === "string" && matchId.length > 0 ? matchId : null;
+}
+
+function ensureResultReadyPayloadMatchId(
+  payload: ResultReadyPayload | null,
+  fallbackMatchId: string,
+): ResultReadyPayload | null {
+  if (payload === null) {
+    return null;
+  }
+
+  return {
+    ...payload,
+    summary: {
+      ...payload.summary,
+      match_id: extractResultReadySummaryMatchId(payload) ?? fallbackMatchId,
+    },
+  };
 }
 
 function computeMatchDeadline(createdAt: Date): Date {
@@ -492,6 +524,7 @@ export class RoomLobbyState {
   private frozenRounds: FrozenRound[] = [];
   private currentRound: CurrentRoundSnapshot | null = null;
   private matchPlayerIds: string[] = [];
+  private currentMatchId: string | null = null;
   private matchSongUnlockFilter: MatchSongUnlockFilter | null = null;
   private resultReadyPayload: ResultReadyPayload | null = null;
   private resultKeyMismatchDetected = false;
@@ -713,6 +746,7 @@ export class RoomLobbyState {
     this.closedAt = null;
     this.closeReason = null;
     this.matchPlayerIds = this.getPlayersInJoinOrder().map((player) => player.player_id);
+    this.currentMatchId = generateMatchId();
     const matchPlayers = this.matchPlayerIds
       .map((matchPlayerId) => this.players.get(matchPlayerId))
       .filter((player): player is InternalPlayer => player !== undefined);
@@ -1343,9 +1377,13 @@ export class RoomLobbyState {
               confirmed: this.currentRound.confirmed.map((entry) => ({ ...entry })),
             },
       match_player_ids: [...this.matchPlayerIds],
+      current_match_id: this.currentMatchId,
       match_song_unlock_filter:
         this.matchSongUnlockFilter === null ? null : cloneMatchSongUnlockFilter(this.matchSongUnlockFilter),
-      result_ready_payload: this.resultReadyPayload,
+      result_ready_payload: ensureResultReadyPayloadMatchId(
+        this.resultReadyPayload,
+        this.currentMatchId ?? this.roomId,
+      ),
       result_key_mismatch_detected: this.resultKeyMismatchDetected,
       force_advanced_round_indices: Array.from(this.forceAdvancedRoundIndices).sort((left, right) => left - right),
     };
@@ -1418,11 +1456,22 @@ export class RoomLobbyState {
             confirmed: record.current_round.confirmed.map((entry) => ({ ...entry })),
           };
     this.matchPlayerIds = [...record.match_player_ids];
+    const persistedCurrentMatchId =
+      typeof record.current_match_id === "string" && record.current_match_id.length > 0
+        ? record.current_match_id
+        : null;
+    this.currentMatchId = persistedCurrentMatchId ?? extractResultReadySummaryMatchId(record.result_ready_payload);
     this.matchSongUnlockFilter =
       record.match_song_unlock_filter === undefined || record.match_song_unlock_filter === null
         ? null
         : cloneMatchSongUnlockFilter(record.match_song_unlock_filter);
-    this.resultReadyPayload = record.result_ready_payload;
+    this.resultReadyPayload = ensureResultReadyPayloadMatchId(
+      record.result_ready_payload,
+      this.currentMatchId ?? this.roomId,
+    );
+    if (this.currentMatchId === null) {
+      this.currentMatchId = extractResultReadySummaryMatchId(this.resultReadyPayload);
+    }
     this.resultKeyMismatchDetected = record.result_key_mismatch_detected === true;
     this.forceAdvancedRoundIndices.clear();
     for (const roundIndex of record.force_advanced_round_indices ?? []) {
@@ -1631,6 +1680,7 @@ export class RoomLobbyState {
     this.frozenRounds = [];
     this.currentRound = null;
     this.matchPlayerIds = [];
+    this.currentMatchId = null;
     this.matchSongUnlockFilter = null;
     this.resultReadyPayload = null;
     this.resultKeyMismatchDetected = false;
@@ -1948,6 +1998,7 @@ export class RoomLobbyState {
   }
 
   private buildResultReadyPayload(): ResultReadyPayload {
+    const matchId = this.currentMatchId ?? this.roomId;
     const perPlayerRounds = new Map<string, Array<Record<string, unknown>>>();
     for (const playerId of this.matchPlayerIds) {
       perPlayerRounds.set(playerId, []);
@@ -2085,6 +2136,7 @@ export class RoomLobbyState {
 
       return {
         summary: {
+          match_id: matchId,
           mode: this.settings.mode,
           win_metric: this.settings.win_metric,
           total_rounds: this.frozenRounds.length,
@@ -2166,6 +2218,7 @@ export class RoomLobbyState {
 
     return {
       summary: {
+        match_id: matchId,
         mode: this.settings.mode,
         win_metric: this.settings.win_metric,
         total_rounds: this.frozenRounds.length,

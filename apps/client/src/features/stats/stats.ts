@@ -373,14 +373,37 @@ function resolveMatchRatingDecision(input: {
   };
 }
 
+function resolveSessionMatchId(input: {
+  previousSession: RoomStatsSession | null;
+  snapshot: RoomStateSnapshot;
+  resultReady: ResultReadyPayload | null;
+}): string {
+  const summaryRecord = input.resultReady === null ? null : asRecord(input.resultReady.summary);
+  const resultReadyMatchId = asString(summaryRecord?.match_id);
+  if (resultReadyMatchId !== null) {
+    return resultReadyMatchId;
+  }
+
+  if (input.previousSession !== null && input.previousSession.room_id === input.snapshot.room_id) {
+    return input.previousSession.match_id;
+  }
+
+  return input.snapshot.room_id;
+}
+
 export function captureRoomStatsSession(
   previousSession: RoomStatsSession | null,
   snapshot: RoomStateSnapshot,
   resultReady: ResultReadyPayload | null,
 ): RoomStatsSession {
+  const sessionMatchId = resolveSessionMatchId({
+    previousSession,
+    snapshot,
+    resultReady,
+  });
   const frozenRoundByIndex = new Map(snapshot.frozen_rounds.map((round) => [round.round_index, round]));
   const roundsByIndex = new Map(
-    previousSession?.room_id === snapshot.room_id
+    previousSession?.room_id === snapshot.room_id && previousSession.match_id === sessionMatchId
       ? previousSession.rounds.map((round) => [round.round_index, round])
       : [],
   );
@@ -422,6 +445,7 @@ export function captureRoomStatsSession(
 
   return {
     room_id: snapshot.room_id,
+    match_id: sessionMatchId,
     settings: snapshot.settings,
     players: snapshot.players,
     rounds: Array.from(roundsByIndex.values()).sort((left, right) => left.round_index - right.round_index),
@@ -568,7 +592,7 @@ function derivePlayResult(
   }
 
   return {
-    play_result_id: `${session.room_id}:${round.round_index}:${myPlayerId}`,
+    play_result_id: `${session.match_id}:${round.round_index}:${myPlayerId}`,
     played_at: myResult.submitted_at,
     battle_type: getBattleType(session.settings),
     play_mode: session.settings.play_style,
@@ -578,7 +602,7 @@ function derivePlayResult(
     chart_level: round.display.level,
     my_ex_score: metrics.exScore,
     my_bp: metrics.bp,
-    source_match_id: session.room_id,
+    source_match_id: session.match_id,
   };
 }
 
@@ -634,8 +658,8 @@ function deriveMatchGame(
   }
 
   return {
-    match_game_id: `${session.room_id}:${round.round_index}`,
-    match_id: session.room_id,
+    match_game_id: `${session.match_id}:${round.round_index}`,
+    match_id: session.match_id,
     played_at: round.round_started_at ?? confirmedAt,
     game_index: round.round_index,
     chart_id: buildChartId(round.expected_key),
@@ -848,7 +872,7 @@ function deriveArenaMatchRecord(
   });
 
   return {
-    match_id: session.room_id,
+    match_id: session.match_id,
     started_at: startedAt,
     ended_at:
       snapshot.closed_at ??
@@ -909,7 +933,7 @@ function deriveBplMatchRecord(
   });
 
   return {
-    match_id: session.room_id,
+    match_id: session.match_id,
     started_at: startedAt,
     ended_at: snapshot.closed_at ?? sortByTimeAscending(matchGames).at(-1)?.result_confirmed_at ?? startedAt,
     battle_type: getBattleType(session.settings),
@@ -945,14 +969,38 @@ export function reduceArchiveWithSession(
     return archive;
   }
 
-  const nextPlayResults = input.session.rounds
-    .map((round) => derivePlayResult(input.session as RoomStatsSession, round, input.myPlayerId))
+  const session = input.session;
+  const nextPlayResults = session.rounds
+    .map((round) => derivePlayResult(session, round, input.myPlayerId))
     .filter((entry): entry is PlayResult => entry !== null);
-  const nextMatchGames = input.session.rounds
-    .map((round) => deriveMatchGame(input.session as RoomStatsSession, round, input.myPlayerId))
+  const nextMatchGames = session.rounds
+    .map((round) => deriveMatchGame(session, round, input.myPlayerId))
     .filter((entry): entry is MatchGame => entry !== null);
-  const playResults = upsertPlayResults(archive.play_results, nextPlayResults);
-  const matchGames = upsertMatchGames(archive.match_games, nextMatchGames);
+  const hasAuthoritativeMatchId = session.match_id !== session.room_id;
+  const provisionalPlayResultIdPrefix = `${session.room_id}:`;
+  const provisionalPlayResultIdSuffix = `:${input.myPlayerId}`;
+  const provisionalMatchGameIdPrefix = `${session.room_id}:`;
+  const basePlayResults = hasAuthoritativeMatchId
+    ? archive.play_results.filter(
+        (entry) =>
+          !(
+            entry.source_match_id === session.room_id &&
+            entry.play_result_id.startsWith(provisionalPlayResultIdPrefix) &&
+            entry.play_result_id.endsWith(provisionalPlayResultIdSuffix)
+          ),
+      )
+    : archive.play_results;
+  const baseMatchGames = hasAuthoritativeMatchId
+    ? archive.match_games.filter(
+        (entry) =>
+          !(
+            entry.match_id === session.room_id &&
+            entry.match_game_id.startsWith(provisionalMatchGameIdPrefix)
+          ),
+      )
+    : archive.match_games;
+  const playResults = upsertPlayResults(basePlayResults, nextPlayResults);
+  const matchGames = upsertMatchGames(baseMatchGames, nextMatchGames);
 
   if (playResults === archive.play_results && matchGames === archive.match_games) {
     return archive;
@@ -983,7 +1031,7 @@ export function reduceArchiveWithClosedMatch(
   const session = input.session;
 
   const matchGames = archive.match_games
-    .filter((entry) => entry.match_id === session.room_id)
+    .filter((entry) => entry.match_id === session.match_id)
     .sort((left, right) => left.game_index - right.game_index);
   const nextMatch =
     session.settings.mode === "ARENA"

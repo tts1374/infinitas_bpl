@@ -2,12 +2,6 @@ name: Deploy infinitas-arena Worker
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - v1
-    paths:
-      - "apps/worker/**"
-      - ".github/workflows/deploy-worker.yml"
 
 permissions:
   contents: read
