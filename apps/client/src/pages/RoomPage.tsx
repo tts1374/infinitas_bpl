@@ -645,6 +645,7 @@ export function RoomPage() {
   const arenaLobbyLogSequenceRef = useRef(0);
   const previousArenaLobbySnapshotRef = useRef<RoomStateSnapshot | null>(null);
   const previousLobbySoundSnapshotRef = useRef<RoomStateSnapshot | null>(null);
+  const skipLobbySoundDiffRef = useRef(true);
   const previousRoomStateRef = useRef<RoomStateSnapshot["room_state"] | null>(null);
   const previousRoomIdRef = useRef<string | null>(null);
   const pickerModalVisibleRef = useRef(false);
@@ -1046,10 +1047,26 @@ export function RoomPage() {
   useEffect(() => {
     if (snapshot === null) {
       previousLobbySoundSnapshotRef.current = null;
+      skipLobbySoundDiffRef.current = true;
+      return;
+    }
+
+    if (connectionStatus !== "CONNECTED") {
+      previousLobbySoundSnapshotRef.current = snapshot;
+      skipLobbySoundDiffRef.current = true;
       return;
     }
 
     const previousSnapshot = previousLobbySoundSnapshotRef.current;
+    if (skipLobbySoundDiffRef.current) {
+      // After reconnect, keep the first authoritative snapshot as baseline only.
+      if (previousSnapshot === null || previousSnapshot !== snapshot) {
+        previousLobbySoundSnapshotRef.current = snapshot;
+        skipLobbySoundDiffRef.current = false;
+      }
+      return;
+    }
+
     if (previousSnapshot === null || previousSnapshot.room_id !== snapshot.room_id) {
       previousLobbySoundSnapshotRef.current = snapshot;
       return;
@@ -1073,7 +1090,7 @@ export function RoomPage() {
     }
 
     previousLobbySoundSnapshotRef.current = snapshot;
-  }, [activePlayerId, snapshot]);
+  }, [activePlayerId, connectionStatus, snapshot]);
 
   useEffect(() => {
     if (snapshot === null || snapshot.settings.mode !== "ARENA") {
