@@ -2,10 +2,8 @@ import argparse
 import hashlib
 import json
 import os
-import re
 import sqlite3
 import tempfile
-import unicodedata
 import urllib.request
 from collections import Counter
 from pathlib import Path
@@ -14,14 +12,6 @@ GITHUB_API_BASE = "https://api.github.com"
 MASTER_REPO = "tts1374/iidx_all_songs_master"
 DEFAULT_OUTPUT_PATH = Path("apps/worker/src/master/generated/iidx-song-master.json")
 USER_AGENT = "Codex"
-
-
-def normalize_lookup_key(value: str) -> str:
-    normalized = unicodedata.normalize("NFKC", value).strip()
-    normalized = re.sub(r"\s+\(", "(", normalized)
-    normalized = re.sub(r"\s+", " ", normalized)
-    return normalized.lower()
-
 
 def fetch_json(url: str) -> dict:
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
@@ -94,7 +84,7 @@ def build_payload(sqlite_path: Path, release_tag: str, manifest: dict) -> dict:
         for row in cursor.execute(
             """
             SELECT DISTINCT
-              lower(trim(a.alias)) AS alias,
+              trim(a.alias) AS alias,
               m.title_search_key
             FROM music_title_alias a
             JOIN music m ON m.textage_id = a.textage_id
@@ -109,8 +99,6 @@ def build_payload(sqlite_path: Path, release_tag: str, manifest: dict) -> dict:
 
     connection.close()
 
-    normalized_aliases = {normalize_lookup_key(alias): title_key for alias, title_key in aliases.items()}
-
     return {
         "metadata": {
             "source_repo": MASTER_REPO,
@@ -124,7 +112,7 @@ def build_payload(sqlite_path: Path, release_tag: str, manifest: dict) -> dict:
             "excluded_ambiguous_chart_count": len(charts) - len(unique_charts),
         },
         "charts": unique_charts,
-        "aliases": normalized_aliases,
+        "aliases": aliases,
     }
 
 
