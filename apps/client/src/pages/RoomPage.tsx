@@ -43,7 +43,7 @@ import {
 import { runtimeConfig } from "../runtime/runtime-config";
 import { useLocalResultArchiveStore } from "../services/result-archive";
 import { listCharts, listRoomCharts } from "../services/worker-api-client";
-import { useVoicePlaybackStore } from "../services/voice-announcer";
+import { playLobbyNotificationSound, useVoicePlaybackStore } from "../services/voice-announcer";
 import { roomStore, useRoomStore, type RoomConnectionStatus } from "../stores/room-store";
 import { isVoicePlaybackEnabled, useSettingsStore } from "../stores/settings-store";
 import { formatDateTime, stringifyJson } from "../utils/format";
@@ -341,6 +341,15 @@ function getLobbyStartIssues(snapshot: RoomStateSnapshot): string[] {
   return issues;
 }
 
+function isLobbyAllReady(snapshot: RoomStateSnapshot): boolean {
+  return (
+    snapshot.players.length >= 2 &&
+    snapshot.players
+      .filter((player) => player.player_id !== snapshot.host_player_id)
+      .every((player) => player.ready)
+  );
+}
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -635,6 +644,8 @@ export function RoomPage() {
   const cutInTimeoutRef = useRef<number | null>(null);
   const arenaLobbyLogSequenceRef = useRef(0);
   const previousArenaLobbySnapshotRef = useRef<RoomStateSnapshot | null>(null);
+  const previousLobbySoundSnapshotRef = useRef<RoomStateSnapshot | null>(null);
+  const skipLobbySoundDiffRef = useRef(true);
   const previousRoomStateRef = useRef<RoomStateSnapshot["room_state"] | null>(null);
   const previousRoomIdRef = useRef<string | null>(null);
   const pickerModalVisibleRef = useRef(false);
@@ -1034,6 +1045,54 @@ export function RoomPage() {
   }, [mySubmittedPick?.pick_chart_key, pendingOwnPickCutIn]);
 
   useEffect(() => {
+    if (snapshot === null) {
+      previousLobbySoundSnapshotRef.current = null;
+      skipLobbySoundDiffRef.current = true;
+      return;
+    }
+
+    if (connectionStatus !== "CONNECTED") {
+      previousLobbySoundSnapshotRef.current = snapshot;
+      skipLobbySoundDiffRef.current = true;
+      return;
+    }
+
+    const previousSnapshot = previousLobbySoundSnapshotRef.current;
+    if (skipLobbySoundDiffRef.current) {
+      // After reconnect, keep the first authoritative snapshot as baseline only.
+      if (previousSnapshot === null || previousSnapshot !== snapshot) {
+        previousLobbySoundSnapshotRef.current = snapshot;
+        skipLobbySoundDiffRef.current = false;
+      }
+      return;
+    }
+
+    if (previousSnapshot === null || previousSnapshot.room_id !== snapshot.room_id) {
+      previousLobbySoundSnapshotRef.current = snapshot;
+      return;
+    }
+
+    if (previousSnapshot.room_state !== "LOBBY" || snapshot.room_state !== "LOBBY") {
+      previousLobbySoundSnapshotRef.current = snapshot;
+      return;
+    }
+
+    const previousPlayersById = new Map(previousSnapshot.players.map((player) => [player.player_id, player]));
+    const joinedByOtherPlayer = snapshot.players.some(
+      (player) => player.player_id !== activePlayerId && !previousPlayersById.has(player.player_id),
+    );
+    if (joinedByOtherPlayer) {
+      void playLobbyNotificationSound("room_join");
+    }
+
+    if (!isLobbyAllReady(previousSnapshot) && isLobbyAllReady(snapshot)) {
+      void playLobbyNotificationSound("all_ready");
+    }
+
+    previousLobbySoundSnapshotRef.current = snapshot;
+  }, [activePlayerId, connectionStatus, snapshot]);
+
+  useEffect(() => {
     if (snapshot === null || snapshot.settings.mode !== "ARENA") {
       previousArenaLobbySnapshotRef.current = snapshot;
       setArenaLobbyLogs([]);
@@ -1114,17 +1173,7 @@ export function RoomPage() {
       );
     });
 
-    const previousAllReady =
-      previousSnapshot.players.length >= 2 &&
-      previousSnapshot.players
-        .filter((player) => player.player_id !== previousSnapshot.host_player_id)
-        .every((player) => player.ready);
-    const currentAllReady =
-      snapshot.players.length >= 2 &&
-      snapshot.players
-        .filter((player) => player.player_id !== snapshot.host_player_id)
-        .every((player) => player.ready);
-    if (!previousAllReady && currentAllReady) {
+    if (!isLobbyAllReady(previousSnapshot) && isLobbyAllReady(snapshot)) {
       nextLogs.push(createLogEntry("System: 全員が準備完了になりました", "accent"));
     }
 
