@@ -94,6 +94,78 @@ jobs:
           Add-Content -Path $env:GITHUB_OUTPUT -Value "r2_bucket=$bucket"
           Add-Content -Path $env:GITHUB_OUTPUT -Value "r2_object_prefix=$r2ObjectPrefix"
 
+      - name: Guard release version progression
+        env:
+          PUBLIC_R2_BASE_URL: ${{ vars.PUBLIC_R2_BASE_URL }}
+          RELEASE_VERSION: ${{ steps.release_meta.outputs.app_version }}
+        run: |
+          $publicR2BaseUrl = $env:PUBLIC_R2_BASE_URL.Trim().TrimEnd("/")
+          $releaseVersionRaw = $env:RELEASE_VERSION
+
+          if ([string]::IsNullOrWhiteSpace($releaseVersionRaw)) {
+            throw "Release version is empty."
+          }
+
+          $latestUrl = "$publicR2BaseUrl/channels/stable/latest.json"
+          Write-Host "Checking published latest version: $latestUrl"
+
+          try {
+            $latestResponse = Invoke-WebRequest -Uri $latestUrl -UseBasicParsing -ErrorAction Stop
+          } catch {
+            throw "Failed to fetch published latest.json from $latestUrl"
+          }
+
+          if ($latestResponse.Content -is [byte[]]) {
+            $latestRaw = [System.Text.Encoding]::UTF8.GetString($latestResponse.Content)
+          } else {
+            $latestRaw = [string]$latestResponse.Content
+          }
+
+          if ([string]::IsNullOrWhiteSpace($latestRaw)) {
+            throw "Published latest.json is empty: $latestUrl"
+          }
+
+          try {
+            $latest = $latestRaw | ConvertFrom-Json
+          } catch {
+            throw "Published latest.json is not valid JSON: $latestUrl"
+          }
+
+          $publishedVersionRaw = "$($latest.version)".Trim()
+          if ([string]::IsNullOrWhiteSpace($publishedVersionRaw)) {
+            throw "Published latest.json does not include version: $latestUrl"
+          }
+
+          $normalize = {
+            param([string]$value)
+            $normalized = $value.Trim()
+            if ($normalized.StartsWith("v")) {
+              $normalized = $normalized.Substring(1)
+            }
+            return $normalized
+          }
+
+          $releaseVersion = & $normalize $releaseVersionRaw
+          $publishedVersion = & $normalize $publishedVersionRaw
+
+          $comparable = $true
+          try {
+            $releaseVersionObj = [Version]$releaseVersion
+            $publishedVersionObj = [Version]$publishedVersion
+          } catch {
+            $comparable = $false
+          }
+
+          if ($comparable) {
+            if ($releaseVersionObj -le $publishedVersionObj) {
+              throw "Release version '$releaseVersionRaw' is not newer than published latest '$publishedVersionRaw'. Auto-update requires a newer version."
+            }
+          } elseif ($releaseVersion -eq $publishedVersion) {
+            throw "Release version '$releaseVersionRaw' matches published latest '$publishedVersionRaw'. Auto-update requires a newer version."
+          }
+
+          Write-Host "Release version progression check passed. release=$releaseVersionRaw published_latest=$publishedVersionRaw"
+
       - name: Build signed Windows updater artifacts
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
