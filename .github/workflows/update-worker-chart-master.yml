@@ -6,8 +6,7 @@ on:
     - cron: "10 18 * * *"
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 concurrency:
   group: update-worker-chart-master
@@ -16,11 +15,19 @@ concurrency:
 jobs:
   update:
     runs-on: ubuntu-latest
+
     steps:
+      - name: Generate GitHub App installation token
+        id: app_token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
       - name: Check out repository
         uses: actions/checkout@v4
         with:
           ref: v1
+          token: ${{ steps.app_token.outputs.token }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -34,9 +41,9 @@ jobs:
         id: create_pr
         uses: peter-evans/create-pull-request@v6
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ steps.app_token.outputs.token }}
           base: v1
-          branch: codex/auto-update-worker-chart-master
+          branch: bot/update-worker-chart-master
           delete-branch: true
           commit-message: "chore(worker): update generated iidx song master"
           title: "chore(worker): update generated iidx song master"
@@ -54,8 +61,10 @@ jobs:
       - name: Enable auto-merge for update PR
         if: steps.create_pr.outputs.pull-request-number != ''
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app_token.outputs.token }}
         run: |
+          set -euo pipefail
+
           pr_number="${{ steps.create_pr.outputs.pull-request-number }}"
           repo_auto_merge_enabled="$(gh api repos/${{ github.repository }} --jq '.allow_auto_merge')"
 
