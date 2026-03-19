@@ -358,7 +358,14 @@ fn parse_latest_record(raw_json: &str) -> Result<LatestRecord, String> {
     } else {
         title.as_str()
     };
-    let secondary_fingerprint = format!("{title_for_fingerprint}::{diff}::{score}::{bad}::{poor}");
+    let timestamp_for_fingerprint = if timestamp.trim().is_empty() {
+        "-"
+    } else {
+        timestamp.as_str()
+    };
+    let secondary_fingerprint = format!(
+        "{timestamp_for_fingerprint}::{title_for_fingerprint}::{diff}::{score}::{bad}::{poor}"
+    );
 
     Ok(LatestRecord {
         timestamp,
@@ -460,6 +467,21 @@ fn map_diff_to_chart(diff: &str) -> Option<(&'static str, &'static str)> {
         "DPH" => Some(("DP", "HYPER")),
         "DPA" => Some(("DP", "ANOTHER")),
         "DPL" => Some(("DP", "LEGGENDARIA")),
+        _ => None,
+    }
+}
+
+fn normalize_chart_difficulty(raw_difficulty: &str) -> Option<&'static str> {
+    let normalized = raw_difficulty
+        .trim()
+        .to_ascii_uppercase()
+        .replace([' ', '-', '_'], "");
+    match normalized.as_str() {
+        "B" | "BEGINNER" | "SPB" | "DPB" => Some("BEGINNER"),
+        "N" | "NORMAL" | "NOVICE" | "SPN" | "DPN" => Some("NORMAL"),
+        "H" | "HYPER" | "SPH" | "DPH" => Some("HYPER"),
+        "A" | "ANOTHER" | "SPA" | "DPA" => Some("ANOTHER"),
+        "L" | "LEGGENDARIA" | "SPL" | "DPL" => Some("LEGGENDARIA"),
         _ => None,
     }
 }
@@ -567,7 +589,7 @@ fn load_alias_catalog() -> AliasCatalog {
         let Some(play_style) = normalize_play_style(chart.play_style.as_str()) else {
             continue;
         };
-        let Some((_, difficulty)) = map_diff_to_chart(chart.difficulty.as_str()) else {
+        let Some(difficulty) = normalize_chart_difficulty(chart.difficulty.as_str()) else {
             continue;
         };
         let title_search_key = chart.title_search_key.trim();
@@ -974,6 +996,52 @@ mod tests {
     }
 
     #[test]
+    fn reflux_parser_allows_same_tuple_when_timestamp_changes() {
+        let temp_dir = create_temp_dir("reflux-dedupe-timestamp");
+        let latest_path = temp_dir.join("latest.json");
+        let tracker_path = temp_dir.join("tracker.tsv");
+
+        write_file(
+            &tracker_path,
+            "title\tDPL Lamp\tDPL EX Score\tDPL Miss Count\n",
+        );
+        write_file(
+            &latest_path,
+            r#"{"timestamp":"20260320-100000","title":"Song A","title2":"Song A Alt","diff":"DPL","exscore":"2000","bad":"5","poor":"6","assist":"OFF","lamp":"AC","playtype":"DP","gaugepercent":"88"}"#,
+        );
+
+        let mut parser = RefluxParser::new_with_catalog(
+            &SourcePathsConfig {
+                reflux_latest_json: latest_path.to_string_lossy().into_owned(),
+                reflux_tracker_tsv: tracker_path.to_string_lossy().into_owned(),
+                ..SourcePathsConfig::default()
+            },
+            build_catalog(&[("Song A", "Song A", "DP", "LEGGENDARIA")]),
+        );
+
+        let first = parser
+            .parse(&ParserInput {
+                changed_path: latest_path.clone(),
+            })
+            .expect("first parse should succeed");
+        assert!(first.is_some());
+
+        write_file(
+            &latest_path,
+            r#"{"timestamp":"20260320-100500","title":"Song A","title2":"Song A Alt","diff":"DPL","exscore":"2000","bad":"5","poor":"6","assist":"OFF","lamp":"AC","playtype":"DP","gaugepercent":"99"}"#,
+        );
+
+        let second = parser
+            .parse(&ParserInput {
+                changed_path: latest_path.clone(),
+            })
+            .expect("second parse should succeed");
+        assert!(second.is_some());
+
+        let _ = fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
     fn parse_tracker_cache_prefers_higher_score_then_lower_bp() {
         let catalog = build_catalog(&[("Song A", "Song A", "DP", "LEGGENDARIA")]);
         let cache = parse_tracker_cache(
@@ -997,6 +1065,14 @@ mod tests {
                 misscount: Some(20),
             })
         );
+    }
+
+    #[test]
+    fn normalize_chart_difficulty_accepts_master_labels() {
+        assert_eq!(super::normalize_chart_difficulty("ANOTHER"), Some("ANOTHER"));
+        assert_eq!(super::normalize_chart_difficulty("hyper"), Some("HYPER"));
+        assert_eq!(super::normalize_chart_difficulty("spn"), Some("NORMAL"));
+        assert_eq!(super::normalize_chart_difficulty("dpl"), Some("LEGGENDARIA"));
     }
 
     fn assert_source_meta_extras(
