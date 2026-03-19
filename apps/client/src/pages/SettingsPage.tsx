@@ -52,6 +52,7 @@ const FEEDBACK_SCREEN = "SettingsScreen";
 const APP_VERSION = typeof clientPackageJson.version === "string" ? clientPackageJson.version : "unknown";
 
 type FeedbackCategory = "bug" | "feature" | "other";
+type SettingsErrorField = "display_name" | "source_directory";
 
 interface FeedbackDraft {
   category: FeedbackCategory;
@@ -70,8 +71,11 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
   const statusMessage = useSettingsStore((state) => state.statusMessage);
   const _lastSavedAt = useSettingsStore((state) => state.lastSavedAt);
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
+  const displayNameInputRef = useRef<HTMLInputElement | null>(null);
+  const sourceDirectoryInputRef = useRef<HTMLInputElement | null>(null);
   const [displayNameError, setDisplayNameError] = useState<string | null>(null);
   const [validationMessage, setValidationMessage] = useState<string | null>(null);
+  const [focusedErrorField, setFocusedErrorField] = useState<SettingsErrorField | null>(null);
   const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
   const [feedbackDraft, setFeedbackDraft] = useState<FeedbackDraft>(() => createInitialFeedbackDraft());
   const [feedbackMessage, setFeedbackMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -196,10 +200,12 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
 
   async function handleSave(): Promise<void> {
     settingsStore.setStatusMessage(null);
+    setFocusedErrorField(null);
 
     const nextDisplayNameError = validateDisplayName(draft.displayName);
     if (nextDisplayNameError !== null) {
       setDisplayNameError(nextDisplayNameError);
+      focusErrorField("display_name");
       return;
     }
 
@@ -207,6 +213,7 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
 
     if (activeDirectory.trim().length === 0) {
       setValidationMessage("先に監視元フォルダを指定してください。");
+      focusErrorField("source_directory");
       return;
     }
 
@@ -219,6 +226,7 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
 
       if (validation.missingPaths.length > 0) {
         setValidationMessage(`必須ファイルが見つかりません: ${validation.missingPaths.join(" / ")}`);
+        focusErrorField("source_directory");
         return;
       }
 
@@ -226,7 +234,18 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
       await sourceStore.start(settingsStore.getState().saved, { force: false });
     } catch (error) {
       setValidationMessage(formatUnknownError(error, "監視元フォルダの検証に失敗しました。"));
+      focusErrorField("source_directory");
     }
+  }
+
+  function focusErrorField(field: SettingsErrorField): void {
+    const target = field === "display_name" ? displayNameInputRef.current : sourceDirectoryInputRef.current;
+    if (target === null) {
+      return;
+    }
+    setFocusedErrorField(field);
+    target.focus({ preventScroll: true });
+    target.scrollIntoView({ behavior: "smooth", block: "start", inline: "nearest" });
   }
 
   async function handleSubmitFeedback(): Promise<void> {
@@ -304,16 +323,27 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
           <div className="max-w-md space-y-2">
             <label className="text-[10px] font-black uppercase text-gray-500">DJ NAME</label>
             <input
+              ref={displayNameInputRef}
               type="text"
               value={draft.displayName}
               maxLength={DJ_NAME_MAX_LENGTH}
               onChange={(event) => {
                 const nextValue = event.currentTarget.value;
                 settingsStore.update("displayName", nextValue);
+                if (focusedErrorField === "display_name") {
+                  setFocusedErrorField(null);
+                }
                 setDisplayNameError(validateDisplayName(nextValue));
               }}
+              aria-invalid={displayNameError !== null}
               placeholder="DJNAME"
-              className="w-full rounded-xl border border-white/10 bg-[#252526] p-4 font-bold text-white outline-none transition-all placeholder:text-gray-600 focus:border-cyan-500"
+              className={`w-full scroll-mt-20 rounded-xl border bg-[#252526] p-4 font-bold text-white outline-none transition-all placeholder:text-gray-600 ${
+                displayNameError
+                  ? focusedErrorField === "display_name"
+                    ? "border-red-500 ring-2 ring-red-500/30"
+                    : "border-red-500"
+                  : "border-white/10 focus:border-cyan-500"
+              }`}
             />
             {displayNameError ? <p className="text-sm font-semibold text-red-400">{displayNameError}</p> : null}
           </div>
@@ -364,15 +394,26 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
             </label>
             <div className="flex max-w-3xl flex-col gap-3 md:flex-row">
               <input
+                ref={sourceDirectoryInputRef}
                 type="text"
                 value={activeDirectory}
                 disabled={roomJoined}
                 onChange={(event) => {
                   settingsStore.updateSourceDirectory(draft.source, event.currentTarget.value);
+                  if (focusedErrorField === "source_directory") {
+                    setFocusedErrorField(null);
+                  }
                   setValidationMessage(null);
                 }}
+                aria-invalid={validationMessage !== null}
                 placeholder={activeOption.placeholder}
-                className="flex-1 rounded-xl border border-white/5 bg-[#151515] px-4 py-3 text-sm font-mono text-gray-300 outline-none placeholder:text-gray-600 disabled:cursor-not-allowed disabled:opacity-70"
+                className={`flex-1 scroll-mt-20 rounded-xl border bg-[#151515] px-4 py-3 text-sm font-mono text-gray-300 outline-none placeholder:text-gray-600 disabled:cursor-not-allowed disabled:opacity-70 ${
+                  validationMessage
+                    ? focusedErrorField === "source_directory"
+                      ? "border-red-500 ring-2 ring-red-500/30"
+                      : "border-red-500"
+                    : "border-white/5 focus:border-cyan-500"
+                }`}
               />
               <button
                 type="button"
