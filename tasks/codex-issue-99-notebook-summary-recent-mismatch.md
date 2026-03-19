@@ -10,9 +10,11 @@
 - Do not change chart alias catalog format.
 
 ## Changes
-- Tighten `inf-notebook` parser resolution so single-candidate `recent` is accepted only when summary/recent consistency checks pass.
-- Treat summary/recent mismatch as unresolved (non-observation) to block auto-submit.
-- Add/update parser unit tests for mismatch reject and valid-match accept behavior.
+- Keep `inf-notebook` single-candidate `recent` behavior contract-compliant (`resolved_full`) even when OCR metadata mismatches.
+- Restrict summary/recent mismatch handling to warning-only diagnostics (no reject path based on `recent.music` / `recent.difficulty`).
+- Add client-side stale replay guard for `inf-notebook` auto-submit:
+  - reject auto-submit when notebook timestamp is not newer than the previous submitted timestamp for the same `room_id + player_id`.
+  - keep parser contract unchanged.
 
 ## Impact
 - Users: Avoids accidental carry-over score submission from previous song when source files are out of sync.
@@ -23,13 +25,14 @@
 ## Target Files / Layers
 - Files:
   - `apps/client/src-tauri/src/parsers/notebook.rs`
+  - `apps/client/src/services/source-submission.ts`
 - Layers:
-  - client (Tauri Rust watcher/parser)
+  - client (Tauri Rust watcher/parser + TS auto-submit path)
 
 ## Test Focus
 - QUALITY section 1 (technical): targeted parser test execution.
 - QUALITY section 2 (diff): intended file-only diff and encoding/line-ending safety.
-- QUALITY section 4 (source I/O): verify mismatch does not produce observation while valid data still produces observation.
+- QUALITY section 4 (source I/O): verify unique timestamp candidate remains accepted and OCR metadata mismatch is warning-only.
 - Not required: QUALITY section 3 (FSM/Protocol), section 5 (E2E) because no FSM/WS/DO contract changes.
 
 ## Rollback Plan
@@ -37,8 +40,8 @@
 - If needed during release triage, disable watcher auto-submit by stopping source watcher in client settings as temporary operational workaround.
 
 ## Commit Split Plan
-1. Implement parser consistency guard and related logic updates.
-2. Add/update parser tests proving mismatch block and valid-match pass.
+1. Align parser behavior with source I/O contract for unique recent candidate handling.
+2. Add stale replay guard in auto-submit path without OCR-key-based rejection.
 
 ## Checklist
 - [x] Design doc alignment confirmed (if required)
