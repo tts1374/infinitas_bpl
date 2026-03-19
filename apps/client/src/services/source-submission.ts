@@ -291,7 +291,10 @@ function buildDebugObservation(
 
   return {
     timestamp: template.source_meta?.timestamp ?? "",
-    playStyle: template.source === "inf_daken_counter" ? expectedKey.play_style : null,
+    playStyle:
+      template.source === "inf_daken_counter" || template.source === "daken_counter_v3"
+        ? expectedKey.play_style
+        : null,
     difficulty: expectedKey.difficulty,
     title: template.source_meta?.title ?? expectedKey.title_search_key,
     titleSearchKey: expectedKey.title_search_key,
@@ -420,6 +423,7 @@ export function submitParsedSourceChange(
       score: matchedObservation.score,
       misscount: matchedObservation.misscount,
       file_path: parsedChange.filePath,
+      ...(matchedObservation.sourceMetaExtras ?? {}),
     },
   });
   if (!sent) {

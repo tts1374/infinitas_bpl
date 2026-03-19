@@ -40,7 +40,7 @@
 
 ### 3.1 ルーム
 - `ROOM_JOIN`
-  - payload: `{ join_code?: string, display_name: string, source: "inf_daken_counter"|"inf-notebook", client_version?: string, client_capabilities?: object }`
+  - payload: `{ join_code?: string, display_name: string, source: "inf_daken_counter"|"inf-notebook"|"daken_counter_v3", client_version?: string, client_capabilities?: object }`
   - 備考: WS接続直後に必ず送る（DOがJOIN完了するまでstate配信しない）
 - `ROOM_LEAVE`
   - payload: `{}`
@@ -158,7 +158,7 @@
   "settings": { "...": "..." },
   "host_player_id": "string",
   "players": [
-    { "player_id": "string", "display_name": "string", "source": "inf_daken_counter|inf-notebook", "connected": true, "ready": false }
+    { "player_id": "string", "display_name": "string", "source": "inf_daken_counter|inf-notebook|daken_counter_v3", "connected": true, "ready": false }
   ],
   "picks": [
     { "player_id": "string", "pick_chart_key": "string", "accepted_at": "ISO8601" }

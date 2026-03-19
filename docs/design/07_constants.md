@@ -109,7 +109,8 @@ Ph1で固定するタイマー値、制約値、表示/運用上の定数を整�
 ## 5. ソース監視定数
 
 ## 5.1 source options
-- `SOURCE_OPTIONS = ["inf_daken_counter", "inf-notebook"]`
+- `SOURCE_OPTIONS = ["inf_daken_counter", "inf-notebook", "daken_counter_v3"]`
+- 設定UIでの選択対象は `inf-notebook` / `daken_counter_v3`（`inf_daken_counter` はlegacy非表示）
 
 ## 5.2 source制約
 - `SOURCE_FIXED_PER_DEVICE = true`

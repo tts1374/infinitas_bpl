@@ -41,7 +41,7 @@
 ### 2.3 Player
 - `player_id: string`
 - `display_name: string`
-- `source: inf_daken_counter|inf-notebook`（端末設定）
+- `source: inf_daken_counter|inf-notebook|daken_counter_v3`（端末設定）
 - `connected: bool`
 - `ready: bool`
 - `joined_at: datetime`

@@ -22,6 +22,7 @@ export interface ParsedSourceObservationPayload {
   titleSearchKey: string;
   score: number;
   misscount: number;
+  sourceMetaExtras?: Record<string, string | number | boolean | null>;
 }
 
 export type ParsedSourceUnresolvedCaseKind =
