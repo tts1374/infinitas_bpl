@@ -63,6 +63,59 @@ export interface NotebookUnresolvedAliasDialogRequest {
   forcePayload: NotebookForcedRegistrationPayload;
 }
 
+const NOTEBOOK_TIMESTAMP_PATTERN = /^\d{8}-\d{6}$/;
+const NOTEBOOK_TIMESTAMP_CACHE_LIMIT = 64;
+const lastSubmittedNotebookTimestampByRoomPlayer = new Map<string, string>();
+
+function normalizeNotebookTimestamp(rawTimestamp: string): string | null {
+  const trimmed = rawTimestamp.trim();
+  return NOTEBOOK_TIMESTAMP_PATTERN.test(trimmed) ? trimmed : null;
+}
+
+function buildNotebookTimestampCacheKey(context: ActiveRoundContext): string {
+  return `${context.snapshot.room_id}:${context.savedSettings.playerId}`;
+}
+
+function findNotebookTimestampReplay(
+  context: ActiveRoundContext,
+  rawTimestamp: string,
+): { current: string; previous: string } | null {
+  const current = normalizeNotebookTimestamp(rawTimestamp);
+  if (current === null) {
+    return null;
+  }
+
+  const previous = lastSubmittedNotebookTimestampByRoomPlayer.get(
+    buildNotebookTimestampCacheKey(context),
+  );
+  if (previous === undefined || current > previous) {
+    return null;
+  }
+
+  return { current, previous };
+}
+
+function rememberNotebookTimestamp(context: ActiveRoundContext, rawTimestamp: string): void {
+  const normalized = normalizeNotebookTimestamp(rawTimestamp);
+  if (normalized === null) {
+    return;
+  }
+
+  const key = buildNotebookTimestampCacheKey(context);
+  if (lastSubmittedNotebookTimestampByRoomPlayer.has(key)) {
+    lastSubmittedNotebookTimestampByRoomPlayer.delete(key);
+  }
+  lastSubmittedNotebookTimestampByRoomPlayer.set(key, normalized);
+
+  while (lastSubmittedNotebookTimestampByRoomPlayer.size > NOTEBOOK_TIMESTAMP_CACHE_LIMIT) {
+    const oldestKey = lastSubmittedNotebookTimestampByRoomPlayer.keys().next().value;
+    if (typeof oldestKey !== "string") {
+      break;
+    }
+    lastSubmittedNotebookTimestampByRoomPlayer.delete(oldestKey);
+  }
+}
+
 function observationMatchesExpected(
   observation: ParsedSourceObservationPayload,
   expectedKey: ExpectedKey,
@@ -327,6 +380,18 @@ export function submitParsedSourceChange(
     };
   }
 
+  if (parsedChange.source === "inf-notebook") {
+    const replay = findNotebookTimestampReplay(context, matchedObservation.timestamp);
+    if (replay !== null) {
+      return {
+        ok: false,
+        message:
+          `Skipped inf-notebook auto-submit because timestamp ${replay.current} ` +
+          `is not newer than the previous submission (${replay.previous}).`,
+      };
+    }
+  }
+
   const metricValue =
     context.snapshot.settings.win_metric === "SCORE"
       ? matchedObservation.score
@@ -362,6 +427,9 @@ export function submitParsedSourceChange(
       ok: false,
       message: "Failed to send RESULT_SUBMIT for the injected payload.",
     };
+  }
+  if (parsedChange.source === "inf-notebook") {
+    rememberNotebookTimestamp(context, matchedObservation.timestamp);
   }
 
   const timestampLabel =
@@ -420,6 +488,18 @@ export function submitNotebookForcedRegistration(
     return metricValidation;
   }
 
+  if (payload.source === "inf-notebook") {
+    const replay = findNotebookTimestampReplay(context, payload.sourceMeta.timestamp);
+    if (replay !== null) {
+      return {
+        ok: false,
+        message:
+          `Skipped inf-notebook auto-submit because timestamp ${replay.current} ` +
+          `is not newer than the previous submission (${replay.previous}).`,
+      };
+    }
+  }
+
   const sent = roomStore.submitResult({
     round_index: payload.roundIndex,
     observed_key: payload.expectedKey,
@@ -440,6 +520,9 @@ export function submitNotebookForcedRegistration(
       ok: false,
       message: "Failed to send RESULT_SUBMIT for the unresolved_alias confirmation.",
     };
+  }
+  if (payload.source === "inf-notebook") {
+    rememberNotebookTimestamp(context, payload.sourceMeta.timestamp);
   }
 
   const timestampLabel =
