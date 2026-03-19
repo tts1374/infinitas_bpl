@@ -123,6 +123,13 @@ const DAKEN_COUNTER_V3_WARNING_MESSAGE =
 const DAKEN_COUNTER_V3_HISTORY_LIMIT = 512;
 const DAKEN_COUNTER_V3_RECONNECT_DELAY_MS = 2000;
 
+function formatSourceOriginLabel(source: SourceType): string {
+  if (source === "reflux") {
+    return "Reflux";
+  }
+  return source;
+}
+
 const initialState: SourceStoreState = {
   watcherState: {
     status: "IDLE",
@@ -848,6 +855,7 @@ function buildUnresolvedDialogsFromParserOutput(
     return [];
   }
 
+  const originLabel = formatSourceOriginLabel(parserOutput.source);
   const unresolvedCases = parserOutput.unresolvedCases ?? [];
   const dialogs: SourceUnresolvedDialog[] = [];
   for (const unresolvedCase of unresolvedCases) {
@@ -856,7 +864,7 @@ function buildUnresolvedDialogsFromParserOutput(
         id: nextUnresolvedDialogId(),
         kind: "unresolved_alias_catalog",
         source: parserOutput.source,
-        originLabel: parserOutput.source,
+        originLabel,
         chart: buildDialogChartInfo(unresolvedCase, metricContext),
         errorCode: "NB-UNRESOLVED-ALIAS",
       });
@@ -868,7 +876,7 @@ function buildUnresolvedDialogsFromParserOutput(
         id: nextUnresolvedDialogId(),
         kind: "resolved_partial",
         source: parserOutput.source,
-        originLabel: parserOutput.source,
+        originLabel,
         chart: buildDialogChartInfo(unresolvedCase, metricContext),
       });
       continue;
@@ -879,7 +887,7 @@ function buildUnresolvedDialogsFromParserOutput(
         id: nextUnresolvedDialogId(),
         kind: "ambiguous_recent",
         source: parserOutput.source,
-        originLabel: parserOutput.source,
+        originLabel,
         chart: buildDialogChartInfo(unresolvedCase, metricContext),
         candidateCount: Math.max(2, unresolvedCase.recentCandidateCount ?? 2),
         errorCode: "NB-AMBIGUOUS-RECENT",
@@ -892,6 +900,7 @@ function buildUnresolvedDialogsFromParserOutput(
 
 function buildUnresolvedAliasDialog(
   source: SourceType,
+  originLabel: string,
   pending: {
     expectedTarget: NotebookDialogChartInfo;
     parsedResult: NotebookDialogChartInfo;
@@ -903,7 +912,7 @@ function buildUnresolvedAliasDialog(
     id: nextUnresolvedDialogId(),
     kind: "unresolved_alias",
     source,
-    originLabel: source,
+    originLabel,
     expectedTarget: pending.expectedTarget,
     parsedResult: pending.parsedResult,
     mismatchReason: pending.mismatchReason,
@@ -974,11 +983,16 @@ function handleWatcherEvent(payload: SourceWatcherEventPayload): void {
     return;
   }
 
+  const originLabel = formatSourceOriginLabel(payload.parserOutput.source);
   const unresolvedDialogs = buildUnresolvedDialogsFromParserOutput(payload.parserOutput);
-  const outcome = submitParsedSourceChange(payload.parserOutput, payload.parserOutput.source);
+  const outcome = submitParsedSourceChange(payload.parserOutput, originLabel);
   if (outcome.pendingUnresolvedAlias) {
     unresolvedDialogs.push(
-      buildUnresolvedAliasDialog(payload.parserOutput.source, outcome.pendingUnresolvedAlias),
+      buildUnresolvedAliasDialog(
+        payload.parserOutput.source,
+        originLabel,
+        outcome.pendingUnresolvedAlias,
+      ),
     );
   }
 
@@ -1000,6 +1014,14 @@ function getMissingPathMessage(source: SourceType, paths: SourcePaths): string |
 
   if (source === "inf-notebook" && paths.notebookRecordsRecentJson.trim().length === 0) {
     return "Set inf-notebook / records/summary.json before starting the watcher.";
+  }
+
+  if (source === "reflux" && paths.refluxLatestJson.trim().length === 0) {
+    return "Set Reflux / latest.json before starting the watcher.";
+  }
+
+  if (source === "reflux" && paths.refluxTrackerTsv.trim().length === 0) {
+    return "Set Reflux / tracker.tsv before starting the watcher.";
   }
 
   return null;
@@ -1095,7 +1117,7 @@ export const sourceStore = {
       }
     } else if (activeDialog.kind === "resolved_partial") {
       roomStore.noteLocalEvent(
-        "Source auto-submit skipped: inf-notebook resolved_partial requires re-registration.",
+        `Source auto-submit skipped: ${activeDialog.originLabel} resolved_partial requires re-registration.`,
       );
     } else if (activeDialog.kind === "unresolved_alias_catalog") {
       roomStore.noteLocalEvent(

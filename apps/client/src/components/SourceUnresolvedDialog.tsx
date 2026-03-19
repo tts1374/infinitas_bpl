@@ -46,7 +46,7 @@ export function SourceUnresolvedDialog({ dialog, onAction }: SourceUnresolvedDia
           aria-labelledby="source-unresolved-title"
         >
           <div className="border-b border-white/10 p-6 text-center">
-            <p className="mb-3 text-[10px] font-black uppercase tracking-[0.35em] text-amber-300">inf-notebook</p>
+            <p className="mb-3 text-[10px] font-black uppercase tracking-[0.35em] text-amber-300">{`source=${dialog.originLabel}`}</p>
             <h2 id="source-unresolved-title" className="text-2xl font-black tracking-tight text-white">
               登録先の譜面が一致しません
             </h2>
@@ -100,7 +100,7 @@ export function SourceUnresolvedDialog({ dialog, onAction }: SourceUnresolvedDia
           aria-labelledby="source-unresolved-title"
         >
           <div className="p-6 text-center">
-            <p className="mb-3 text-[10px] font-black uppercase tracking-[0.35em] text-slate-300">inf-notebook</p>
+            <p className="mb-3 text-[10px] font-black uppercase tracking-[0.35em] text-slate-300">{`source=${dialog.originLabel}`}</p>
             <h2 id="source-unresolved-title" className="text-2xl font-black tracking-tight text-white">
               スコアを特定できませんでした
             </h2>
@@ -141,7 +141,7 @@ export function SourceUnresolvedDialog({ dialog, onAction }: SourceUnresolvedDia
           aria-labelledby="source-unresolved-title"
         >
           <div className="p-6 text-center">
-            <p className="mb-3 text-[10px] font-black uppercase tracking-[0.35em] text-amber-300">inf-notebook</p>
+            <p className="mb-3 text-[10px] font-black uppercase tracking-[0.35em] text-amber-300">{`source=${dialog.originLabel}`}</p>
             <h2 id="source-unresolved-title" className="text-2xl font-black tracking-tight text-white">
               譜面を特定できませんでした
             </h2>
@@ -183,7 +183,7 @@ export function SourceUnresolvedDialog({ dialog, onAction }: SourceUnresolvedDia
         aria-labelledby="source-unresolved-title"
       >
         <div className="p-6 text-center">
-          <p className="mb-3 text-[10px] font-black uppercase tracking-[0.35em] text-red-300">inf-notebook</p>
+          <p className="mb-3 text-[10px] font-black uppercase tracking-[0.35em] text-red-300">{`source=${dialog.originLabel}`}</p>
           <h2 id="source-unresolved-title" className="text-2xl font-black tracking-tight text-white">
             スコアを一意に特定できませんでした
           </h2>
