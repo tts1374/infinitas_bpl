@@ -52,7 +52,7 @@ type SoundEffectCategory = "presentation" | "notification";
 const SOUND_EFFECT_CATEGORIES: Record<SoundEffectKey, SoundEffectCategory> = {
   round_intro: "presentation",
   count_beep: "presentation",
-  match_found: "presentation",
+  match_found: "notification",
   phase_locked: "presentation",
   count_go: "presentation",
   cancel: "notification",
