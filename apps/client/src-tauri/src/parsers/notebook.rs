@@ -621,6 +621,7 @@ fn resolution_result_to_observation(
         title_search_key: title_search_key.clone(),
         score: recent.score,
         misscount: recent.misscount,
+        source_meta_extras: None,
     })
 }
 

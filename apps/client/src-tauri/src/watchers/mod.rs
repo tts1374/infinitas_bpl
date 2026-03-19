@@ -417,6 +417,10 @@ fn resolve_watched_files(
                 "inf-notebook / records/summary.json",
             )?])
         }
+        SourceType::Reflux => Ok(vec![
+            require_path(&source_paths.reflux_latest_json, "Reflux / latest.json")?,
+            require_path(&source_paths.reflux_tracker_tsv, "Reflux / tracker.tsv")?,
+        ]),
     }
 }
 

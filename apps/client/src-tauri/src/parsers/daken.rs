@@ -133,6 +133,7 @@ fn parse_daken_item(raw_item: &str) -> Result<ParsedDakenItem, String> {
             title_search_key: title,
             score,
             misscount,
+            source_meta_extras: None,
         },
     })
 }
