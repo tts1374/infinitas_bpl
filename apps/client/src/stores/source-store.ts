@@ -111,7 +111,7 @@ let dakenCounterV3ReconnectTimer: number | null = null;
 let dakenCounterV3MonitoringEnabled = false;
 let dakenCounterV3LastRoomState: RoomStateSnapshot["room_state"] | null = null;
 let dakenCounterV3HasSnapshotBaseline = false;
-let dakenCounterV3SnapshotFingerprints = new Set<string>();
+let dakenCounterV3SnapshotFingerprintCounts = new Map<string, number>();
 const dakenCounterV3ProcessedFingerprints = new Set<string>();
 const dakenCounterV3ProcessedFingerprintQueue: string[] = [];
 
@@ -301,7 +301,15 @@ function resetDakenCounterV3SnapshotTracking(): void {
   dakenCounterV3MonitoringEnabled = false;
   dakenCounterV3LastRoomState = null;
   dakenCounterV3HasSnapshotBaseline = false;
-  dakenCounterV3SnapshotFingerprints = new Set<string>();
+  dakenCounterV3SnapshotFingerprintCounts = new Map<string, number>();
+  dakenCounterV3ProcessedFingerprints.clear();
+  dakenCounterV3ProcessedFingerprintQueue.splice(0, dakenCounterV3ProcessedFingerprintQueue.length);
+}
+
+function resetDakenCounterV3MatchTracking(): void {
+  dakenCounterV3MonitoringEnabled = false;
+  dakenCounterV3HasSnapshotBaseline = false;
+  dakenCounterV3SnapshotFingerprintCounts = new Map<string, number>();
   dakenCounterV3ProcessedFingerprints.clear();
   dakenCounterV3ProcessedFingerprintQueue.splice(0, dakenCounterV3ProcessedFingerprintQueue.length);
 }
@@ -434,7 +442,7 @@ function parseDakenCounterV3Item(
 
 function parseDakenCounterV3Message(rawMessage: string): {
   entries: DakenCounterV3ObservationEntry[];
-  fingerprintSet: Set<string>;
+  fingerprintCounts: Map<string, number>;
 } | null {
   let parsedMessage: unknown;
   try {
@@ -474,8 +482,61 @@ function parseDakenCounterV3Message(rawMessage: string): {
 
   return {
     entries,
-    fingerprintSet: new Set(entries.map((entry) => entry.fingerprint)),
+    fingerprintCounts: buildDakenCounterV3FingerprintCounts(entries),
   };
+}
+
+function buildDakenCounterV3FingerprintCounts(
+  entries: DakenCounterV3ObservationEntry[],
+): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const entry of entries) {
+    counts.set(entry.fingerprint, (counts.get(entry.fingerprint) ?? 0) + 1);
+  }
+
+  return counts;
+}
+
+function diffDakenCounterV3SnapshotEntries(
+  previousCounts: Map<string, number>,
+  currentCounts: Map<string, number>,
+  currentEntries: DakenCounterV3ObservationEntry[],
+): DakenCounterV3ObservationEntry[] {
+  const remaining = new Map<string, number>();
+  for (const [fingerprint, currentCount] of currentCounts) {
+    const previousCount = previousCounts.get(fingerprint) ?? 0;
+    if (currentCount > previousCount) {
+      remaining.set(fingerprint, currentCount - previousCount);
+    }
+  }
+
+  if (remaining.size === 0) {
+    return [];
+  }
+
+  const deltaEntries: DakenCounterV3ObservationEntry[] = [];
+  for (const entry of currentEntries) {
+    const rest = remaining.get(entry.fingerprint) ?? 0;
+    if (rest <= 0) {
+      continue;
+    }
+
+    deltaEntries.push(entry);
+    if (rest === 1) {
+      remaining.delete(entry.fingerprint);
+    } else {
+      remaining.set(entry.fingerprint, rest - 1);
+    }
+  }
+
+  return deltaEntries;
+}
+
+function isRetryableDakenCounterV3SubmitFailure(message: string): boolean {
+  return (
+    message === "A connected PLAYING room is required before injecting source data." ||
+    message === "Failed to send RESULT_SUBMIT for the injected payload."
+  );
 }
 
 function shouldKeepDakenCounterV3Connection(snapshot: RoomStateSnapshot | null): boolean {
@@ -528,14 +589,19 @@ function handleDakenCounterV3SocketMessage(rawMessage: string): void {
     return;
   }
 
+  const previousCounts = dakenCounterV3SnapshotFingerprintCounts;
   const deltaEntries = dakenCounterV3HasSnapshotBaseline
-    ? parsedSnapshot.entries.filter(
-        (entry) => !dakenCounterV3SnapshotFingerprints.has(entry.fingerprint),
+    ? diffDakenCounterV3SnapshotEntries(
+        previousCounts,
+        parsedSnapshot.fingerprintCounts,
+        parsedSnapshot.entries,
       )
     : [];
 
-  dakenCounterV3SnapshotFingerprints = parsedSnapshot.fingerprintSet;
-  dakenCounterV3HasSnapshotBaseline = true;
+  if (!dakenCounterV3HasSnapshotBaseline) {
+    dakenCounterV3SnapshotFingerprintCounts = parsedSnapshot.fingerprintCounts;
+    dakenCounterV3HasSnapshotBaseline = true;
+  }
 
   const roomSnapshot = roomStore.getState().snapshot;
   if (
@@ -543,6 +609,7 @@ function handleDakenCounterV3SocketMessage(rawMessage: string): void {
     roomSnapshot.room_state !== "PLAYING" ||
     !dakenCounterV3MonitoringEnabled
   ) {
+    dakenCounterV3SnapshotFingerprintCounts = parsedSnapshot.fingerprintCounts;
     return;
   }
 
@@ -550,24 +617,40 @@ function handleDakenCounterV3SocketMessage(rawMessage: string): void {
     (entry) => !dakenCounterV3ProcessedFingerprints.has(entry.fingerprint),
   );
   if (uniqueEntries.length === 0) {
+    dakenCounterV3SnapshotFingerprintCounts = parsedSnapshot.fingerprintCounts;
     return;
   }
 
+  let hasRetryableFailure = false;
   for (const entry of uniqueEntries) {
-    rememberProcessedFingerprint(entry.fingerprint);
+    const parsedChange: ParsedSourceChangePayload = {
+      source: DAKEN_COUNTER_V3_SOURCE,
+      filePath: buildDakenCounterV3Endpoint(currentDakenCounterV3Port()),
+      fileSizeBytes: 0,
+      observations: [entry.observation],
+      unresolvedCases: [],
+    };
+
+    const outcome = submitParsedSourceChange(parsedChange, DAKEN_COUNTER_V3_ORIGIN_LABEL);
+    if (outcome.ok) {
+      rememberProcessedFingerprint(entry.fingerprint);
+      continue;
+    }
+
+    if (outcome.pendingUnresolvedAlias !== undefined) {
+      continue;
+    }
+
+    if (isRetryableDakenCounterV3SubmitFailure(outcome.message)) {
+      hasRetryableFailure = true;
+      continue;
+    }
+
+    roomStore.noteLocalEvent(`Source auto-submit skipped: ${outcome.message}`);
   }
 
-  const parsedChange: ParsedSourceChangePayload = {
-    source: DAKEN_COUNTER_V3_SOURCE,
-    filePath: buildDakenCounterV3Endpoint(currentDakenCounterV3Port()),
-    fileSizeBytes: 0,
-    observations: uniqueEntries.map((entry) => entry.observation),
-    unresolvedCases: [],
-  };
-
-  const outcome = submitParsedSourceChange(parsedChange, DAKEN_COUNTER_V3_ORIGIN_LABEL);
-  if (!outcome.ok && outcome.pendingUnresolvedAlias === undefined) {
-    roomStore.noteLocalEvent(`Source auto-submit skipped: ${outcome.message}`);
+  if (!hasRetryableFailure) {
+    dakenCounterV3SnapshotFingerprintCounts = parsedSnapshot.fingerprintCounts;
   }
 }
 
@@ -689,6 +772,8 @@ function syncDakenCounterV3RoomLifecycle(snapshot: RoomStateSnapshot | null): vo
   }
 
   if (currentState === "LOBBY" && previousState !== "LOBBY") {
+    // Clear per-match dedupe state so rematches can submit identical result tuples.
+    resetDakenCounterV3MatchTracking();
     connectDakenCounterV3Socket(snapshot);
   }
 
