@@ -4,6 +4,8 @@ export interface RuntimeSourcePathDefaults {
   dakenTodayUpdateXml: string | undefined;
   notebookExportRecentJson: string | undefined;
   notebookRecordsRecentJson: string | undefined;
+  refluxLatestJson: string | undefined;
+  refluxTrackerTsv: string | undefined;
 }
 
 export interface RuntimeSettingsDefaults {
@@ -129,6 +131,8 @@ export const runtimeConfig: RuntimeConfig = {
       dakenTodayUpdateXml: readSearchParam("dakenPath"),
       notebookExportRecentJson: readSearchParam("notebookPath"),
       notebookRecordsRecentJson: readSearchParam("recordsPath"),
+      refluxLatestJson: readSearchParam("refluxLatestPath"),
+      refluxTrackerTsv: readSearchParam("refluxTrackerPath"),
     },
   },
 };

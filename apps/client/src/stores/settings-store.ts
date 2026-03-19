@@ -15,11 +15,14 @@ export interface SourcePaths {
   dakenTodayUpdateXml: string;
   notebookExportRecentJson: string;
   notebookRecordsRecentJson: string;
+  refluxLatestJson: string;
+  refluxTrackerTsv: string;
 }
 
 export interface SourceDirectories {
   dakenDirectory: string;
   notebookDirectory: string;
+  refluxDirectory: string;
 }
 
 export interface ClientSettings {
@@ -66,6 +69,8 @@ function createDefaultSourcePaths(): SourcePaths {
     dakenTodayUpdateXml: "",
     notebookExportRecentJson: "",
     notebookRecordsRecentJson: "",
+    refluxLatestJson: "",
+    refluxTrackerTsv: "",
   };
 }
 
@@ -73,6 +78,7 @@ function createDefaultSourceDirectories(): SourceDirectories {
   return {
     dakenDirectory: "",
     notebookDirectory: "",
+    refluxDirectory: "",
   };
 }
 
@@ -188,6 +194,15 @@ function extractNotebookDirectory(paths: Partial<SourcePaths>): string {
 
 function deriveSourceDirectories(paths: Partial<SourcePaths>): SourceDirectories {
   const dakenCandidate = paths.dakenTodayUpdateXml?.trim() ?? "";
+  const refluxCandidate = paths.refluxLatestJson?.trim() || paths.refluxTrackerTsv?.trim() || "";
+  const refluxBaseDirectory =
+    refluxCandidate.length === 0
+      ? ""
+      : normalizeDirectory(
+          refluxCandidate
+            .replace(/[\\/]latest\.json$/i, "")
+            .replace(/[\\/]tracker\.tsv$/i, ""),
+        ) || extractParentDirectory(refluxCandidate);
 
   return {
     dakenDirectory:
@@ -195,6 +210,7 @@ function deriveSourceDirectories(paths: Partial<SourcePaths>): SourceDirectories
         ? ""
         : normalizeDirectory(dakenCandidate.replace(/[\\/]today_update\.xml$/i, "")) || extractParentDirectory(dakenCandidate),
     notebookDirectory: extractNotebookDirectory(paths),
+    refluxDirectory: refluxBaseDirectory,
   };
 }
 
@@ -212,6 +228,14 @@ export function deriveSourcePaths(sourceDirectories: SourceDirectories): SourceP
       sourceDirectories.notebookDirectory.length === 0
         ? ""
         : joinPath(sourceDirectories.notebookDirectory, ["records", "summary.json"]),
+    refluxLatestJson:
+      sourceDirectories.refluxDirectory.length === 0
+        ? ""
+        : joinPath(sourceDirectories.refluxDirectory, ["latest.json"]),
+    refluxTrackerTsv:
+      sourceDirectories.refluxDirectory.length === 0
+        ? ""
+        : joinPath(sourceDirectories.refluxDirectory, ["tracker.tsv"]),
   };
 }
 
@@ -247,6 +271,8 @@ function createDefaultSettings(): ClientSettings {
     dakenTodayUpdateXml: runtimeConfig.settingsDefaults.sourcePaths.dakenTodayUpdateXml ?? "",
     notebookExportRecentJson: runtimeConfig.settingsDefaults.sourcePaths.notebookExportRecentJson ?? "",
     notebookRecordsRecentJson: runtimeConfig.settingsDefaults.sourcePaths.notebookRecordsRecentJson ?? "",
+    refluxLatestJson: runtimeConfig.settingsDefaults.sourcePaths.refluxLatestJson ?? "",
+    refluxTrackerTsv: runtimeConfig.settingsDefaults.sourcePaths.refluxTrackerTsv ?? "",
   };
   const sourceDirectories = {
     ...createDefaultSourceDirectories(),
@@ -283,6 +309,9 @@ function normalizeSettings(rawSettings: PartialClientSettings | null): ClientSet
   }
   if (rawSettings?.sourceDirectories?.notebookDirectory !== undefined) {
     normalizedRawDirectories.notebookDirectory = normalizeDirectory(rawSettings.sourceDirectories.notebookDirectory);
+  }
+  if (rawSettings?.sourceDirectories?.refluxDirectory !== undefined) {
+    normalizedRawDirectories.refluxDirectory = normalizeDirectory(rawSettings.sourceDirectories.refluxDirectory);
   }
   const pathHints: SourcePaths = {
     ...defaults.sourcePaths,
@@ -331,6 +360,10 @@ export function getActiveSourceDirectory(settings: Pick<ClientSettings, "source"
 
   if (settings.source === "inf-notebook") {
     return settings.sourceDirectories.notebookDirectory;
+  }
+
+  if (settings.source === "reflux") {
+    return settings.sourceDirectories.refluxDirectory;
   }
 
   return "";
@@ -417,6 +450,11 @@ export const settingsStore = {
               ...state.draft.sourceDirectories,
               dakenDirectory: normalizeDirectory(directory),
             }
+          : source === "reflux"
+            ? {
+                ...state.draft.sourceDirectories,
+                refluxDirectory: normalizeDirectory(directory),
+              }
           : {
               ...state.draft.sourceDirectories,
               notebookDirectory: normalizeDirectory(directory),

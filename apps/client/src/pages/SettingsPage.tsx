@@ -44,6 +44,14 @@ const SOURCE_OPTIONS = [
     directoryPlaceholder: "C:\\Users\\you\\Documents\\inf-notebook",
   },
   {
+    id: "reflux" as const,
+    name: "Reflux",
+    description: "latest.json を監視",
+    usesDirectory: true,
+    directoryLabel: "Reflux Directory (contains Reflux.exe)",
+    directoryPlaceholder: "C:\\Users\\you\\Documents\\Reflux",
+  },
+  {
     id: "daken_counter_v3" as const,
     name: "打鍵カウンタv3",
     description: "ローカルWebSocket (today_updates) を監視",
@@ -505,6 +513,8 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
                 ? `LOBBY入場時に ws://localhost:${draft.dakenCounterV3Port} へ接続します。PLAYING開始時に接続確認し、失敗時は「${DAKEN_COUNTER_V3_CONNECTION_WARNING}」を表示します。`
                 : draft.source === "inf_daken_counter"
                 ? "選択したフォルダ配下の today_update.xml を自動で監視します。"
+                : draft.source === "reflux"
+                ? "選択したフォルダ配下の latest.json を監視し、tracker.tsv からベスト値を補完します。"
                 : "選択したフォルダ配下の records/summary.json を監視し、export/recent.json から score/misscount を補完します。"}
             </p>
             {validationMessage ? <p className="text-sm font-semibold text-red-400">{validationMessage}</p> : null}

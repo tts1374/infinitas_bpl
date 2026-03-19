@@ -68,10 +68,13 @@ const BASE_SETTINGS: Omit<ClientSettings, "playerId" | "displayName" | "source" 
     dakenTodayUpdateXml: "",
     notebookExportRecentJson: "",
     notebookRecordsRecentJson: "",
+    refluxLatestJson: "",
+    refluxTrackerTsv: "",
   },
   sourceDirectories: {
     dakenDirectory: "",
     notebookDirectory: "",
+    refluxDirectory: "",
   },
   voiceEnabled: true,
   voiceVolume: 80,

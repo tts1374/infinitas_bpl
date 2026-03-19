@@ -33,6 +33,10 @@ pub fn validate_source_directory(
             join_path(base_directory, &["export", "recent.json"]),
             join_path(base_directory, &["records", "summary.json"]),
         ],
+        SourceType::Reflux => vec![
+            join_path(base_directory, &["latest.json"]),
+            join_path(base_directory, &["tracker.tsv"]),
+        ],
     };
 
     let missing_paths = required_paths
