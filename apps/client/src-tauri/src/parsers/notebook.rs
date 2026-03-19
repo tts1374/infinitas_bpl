@@ -561,14 +561,33 @@ fn resolve_entry_with_candidates(
             recent_candidate_count: Some(0),
             warnings: Vec::new(),
         },
-        [candidate] => NotebookResolutionResult {
-            status: NotebookResolutionStatus::ResolvedFull,
-            summary: entry.clone(),
-            title_search_key: Some(title_search_key),
-            recent: Some(candidate.clone()),
-            recent_candidate_count: Some(1),
-            warnings: collect_recent_mismatch_warnings(entry, candidate),
-        },
+        [candidate] => {
+            let warnings = collect_recent_mismatch_warnings(entry, candidate);
+            if !is_recent_candidate_consistent(
+                entry,
+                candidate,
+                alias_catalog,
+                title_search_key.as_str(),
+            ) {
+                return NotebookResolutionResult {
+                    status: NotebookResolutionStatus::ResolvedPartial,
+                    summary: entry.clone(),
+                    title_search_key: Some(title_search_key),
+                    recent: Some(candidate.clone()),
+                    recent_candidate_count: Some(1),
+                    warnings,
+                };
+            }
+
+            NotebookResolutionResult {
+                status: NotebookResolutionStatus::ResolvedFull,
+                summary: entry.clone(),
+                title_search_key: Some(title_search_key),
+                recent: Some(candidate.clone()),
+                recent_candidate_count: Some(1),
+                warnings,
+            }
+        }
         _ => NotebookResolutionResult {
             status: NotebookResolutionStatus::AmbiguousRecent,
             summary: entry.clone(),
@@ -578,6 +597,22 @@ fn resolve_entry_with_candidates(
             warnings: Vec::new(),
         },
     }
+}
+
+fn is_recent_candidate_consistent(
+    summary: &SummaryLatestRecord,
+    recent: &RecentIndexedRecord,
+    alias_catalog: &AliasCatalog,
+    expected_title_search_key: &str,
+) -> bool {
+    if recent.difficulty_normalized.as_deref() != Some(summary.difficulty.as_str()) {
+        return false;
+    }
+
+    let Some(recent_title_search_key) = alias_catalog.resolve_alias_exact(recent.music.as_str()) else {
+        return false;
+    };
+    recent_title_search_key.as_str() == expected_title_search_key
 }
 
 fn collect_recent_mismatch_warnings(
@@ -916,9 +951,22 @@ mod tests {
             score: 2111,
             misscount: 22,
         };
-        let full = resolve_entry_with_candidates(&summary, &catalog, &[mismatch]);
+        let mismatch_partial = resolve_entry_with_candidates(&summary, &catalog, &[mismatch]);
+        assert_eq!(
+            mismatch_partial.status,
+            NotebookResolutionStatus::ResolvedPartial
+        );
+        assert!(mismatch_partial.warnings.len() >= 2);
+
+        let alias_equivalent = RecentIndexedRecord {
+            music: "Song A (ALT)".to_string(),
+            difficulty_raw: "ANOTHER".to_string(),
+            difficulty_normalized: Some("ANOTHER".to_string()),
+            score: 2222,
+            misscount: 20,
+        };
+        let full = resolve_entry_with_candidates(&summary, &catalog, &[alias_equivalent]);
         assert_eq!(full.status, NotebookResolutionStatus::ResolvedFull);
-        assert_eq!(full.warnings.len(), 2);
 
         let ambiguous = resolve_entry_with_candidates(
             &summary,
@@ -1059,6 +1107,47 @@ mod tests {
     }
 
     #[test]
+    fn notebook_parser_blocks_observation_when_recent_candidate_mismatches_summary() {
+        let temp_dir = create_temp_dir("notebook-summary-mismatch");
+        let summary_path = temp_dir.join("summary.json");
+        let recent_path = temp_dir.join("recent.json");
+        write_file(
+            &summary_path,
+            r#"{"musics":{"Song A":{"SP":{"ANOTHER":{"latest":{"timestamp":"20260101-120000"}}}}}}"#,
+        );
+        write_file(
+            &recent_path,
+            r#"{"list":[{"timestamp":"20260101-130000","difficulty":"HYPER","music":"Different Song","score":2450,"misscount":18}]}"#,
+        );
+
+        let mut parser = NotebookParser::new_with_catalog(
+            &SourcePathsConfig {
+                notebook_export_recent_json: recent_path.to_string_lossy().into_owned(),
+                notebook_records_recent_json: summary_path.to_string_lossy().into_owned(),
+                ..SourcePathsConfig::default()
+            },
+            build_test_catalog(),
+        );
+
+        write_file(
+            &summary_path,
+            r#"{"musics":{"Song A":{"SP":{"ANOTHER":{"latest":{"timestamp":"20260101-130000"}}}}}}"#,
+        );
+
+        let parsed_change = parser
+            .parse(&ParserInput {
+                changed_path: summary_path.clone(),
+            })
+            .expect("parse should succeed")
+            .expect("parser should emit payload");
+
+        assert!(parsed_change.observations.is_empty());
+        assert_eq!(parsed_change.unresolved_cases.len(), 1);
+
+        let _ = fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
     fn build_recent_timestamp_index_skips_invalid_rows() {
         let entries = vec![
             NotebookRecentEntry {
@@ -1085,6 +1174,7 @@ mod tests {
         let mut alias_to_title_search_key = HashMap::new();
         alias_to_title_search_key.insert("Song A".to_string(), "song-a".to_string());
         alias_to_title_search_key.insert("song a".to_string(), "song-a-lower".to_string());
+        alias_to_title_search_key.insert("Song A (ALT)".to_string(), "song-a".to_string());
 
         let mut chart_index = HashSet::new();
         chart_index.insert(ChartIndexKey {
