@@ -1,5 +1,6 @@
 mod daken;
 mod notebook;
+mod reflux;
 
 use std::path::PathBuf;
 
@@ -20,5 +21,6 @@ pub fn create_parser(
     match source {
         SourceType::InfNotebook => Box::new(notebook::NotebookParser::new(source_paths)),
         SourceType::InfDakenCounter => Box::new(daken::DakenParser::new(source_paths)),
+        SourceType::Reflux => Box::new(reflux::RefluxParser::new(source_paths)),
     }
 }

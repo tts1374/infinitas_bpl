@@ -1,4 +1,7 @@
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const SOURCE_WATCHER_EVENT_NAME: &str = "source-watcher://event";
@@ -9,6 +12,8 @@ pub enum SourceType {
     InfDakenCounter,
     #[serde(rename = "inf-notebook")]
     InfNotebook,
+    #[serde(rename = "reflux")]
+    Reflux,
 }
 
 impl SourceType {
@@ -16,6 +21,7 @@ impl SourceType {
         match self {
             Self::InfDakenCounter => "inf_daken_counter",
             Self::InfNotebook => "inf-notebook",
+            Self::Reflux => "reflux",
         }
     }
 }
@@ -26,6 +32,8 @@ pub struct SourcePathsConfig {
     pub daken_today_update_xml: String,
     pub notebook_export_recent_json: String,
     pub notebook_records_recent_json: String,
+    pub reflux_latest_json: String,
+    pub reflux_tracker_tsv: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -78,11 +86,14 @@ pub struct ParsedSourceObservation {
     pub title_search_key: String,
     pub score: u32,
     pub misscount: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_meta_extras: Option<HashMap<String, Value>>,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ParsedSourceUnresolvedCaseKind {
+    UnresolvedAlias,
     ResolvedPartial,
     AmbiguousRecent,
 }
