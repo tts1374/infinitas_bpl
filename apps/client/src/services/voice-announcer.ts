@@ -50,7 +50,7 @@ type SoundEffectCategory = "presentation" | "notification";
 
 // Presentation sounds are mood/phase cues. Notification sounds are state awareness cues.
 const SOUND_EFFECT_CATEGORIES: Record<SoundEffectKey, SoundEffectCategory> = {
-  round_intro: "presentation",
+  round_intro: "notification",
   count_beep: "presentation",
   match_found: "notification",
   phase_locked: "presentation",
