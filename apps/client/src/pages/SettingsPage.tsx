@@ -1,13 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, Database, FolderOpen, MessageSquare, Save, Package, CheckSquare, Square, Check, Settings as SettingsIcon, User, Volume2, VolumeX } from "lucide-react";
 import { pickDirectory, validateSourceDirectory } from "../services/tauri-bridge";
-import type { SongPack } from "@infinitas/shared";
+import type { SongPack, SourceType } from "@infinitas/shared";
 import { listSongPacks, sendFeedback, type FeedbackRequest } from "../services/worker-api-client";
 import { sourceStore } from "../stores/source-store";
 import {
   getActiveSourceDirectory,
   getVoicePlaybackVolume,
+  isValidPortNumber,
   isVoicePlaybackEnabled,
+  SOURCE_PORT_MAX,
+  SOURCE_PORT_MIN,
   settingsStore,
   useSettingsStore,
 } from "../stores/settings-store";
@@ -20,21 +23,32 @@ interface SettingsPageProps {
 
 const DJ_NAME_PATTERN = /^[a-zA-Z0-9.\-*&!?#$]*$/;
 const DJ_NAME_MAX_LENGTH = 6;
+const DAKEN_COUNTER_V3_CONNECTION_WARNING =
+  "打鍵カウンタv3 に接続できませんでした。ポート設定と起動状態を確認してください。";
 
 const SOURCE_OPTIONS = [
   {
     id: "inf_daken_counter" as const,
     name: "打鍵カウンタ",
     description: "today_update.xml を監視",
-    label: "Daken Counter Directory",
-    placeholder: "C:\\Games\\beatmania IIDX INFINITAS\\data",
+    usesDirectory: true,
+    directoryLabel: "Daken Counter Directory",
+    directoryPlaceholder: "C:\\Games\\beatmania IIDX INFINITAS\\data",
   },
   {
     id: "inf-notebook" as const,
     name: "リザルト手帳",
     description: "summary.json を監視",
-    label: "Result Notebook Directory",
-    placeholder: "C:\\Users\\you\\Documents\\inf-notebook",
+    usesDirectory: true,
+    directoryLabel: "Result Notebook Directory",
+    directoryPlaceholder: "C:\\Users\\you\\Documents\\inf-notebook",
+  },
+  {
+    id: "daken_counter_v3" as const,
+    name: "打鍵カウンタv3",
+    description: "ローカルWebSocket (today_updates) を監視",
+    usesDirectory: false,
+    portLabel: "Daken Counter v3 WebSocket Port",
   },
 ];
 
@@ -52,7 +66,7 @@ const FEEDBACK_SCREEN = "SettingsScreen";
 const APP_VERSION = typeof clientPackageJson.version === "string" ? clientPackageJson.version : "unknown";
 
 type FeedbackCategory = "bug" | "feature" | "other";
-type SettingsErrorField = "display_name" | "source_directory";
+type SettingsErrorField = "display_name" | "source_directory" | "source_port";
 
 interface FeedbackDraft {
   category: FeedbackCategory;
@@ -73,6 +87,7 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
   const displayNameInputRef = useRef<HTMLInputElement | null>(null);
   const sourceDirectoryInputRef = useRef<HTMLInputElement | null>(null);
+  const sourcePortInputRef = useRef<HTMLInputElement | null>(null);
   const [displayNameError, setDisplayNameError] = useState<string | null>(null);
   const [validationMessage, setValidationMessage] = useState<string | null>(null);
   const [focusedErrorField, setFocusedErrorField] = useState<SettingsErrorField | null>(null);
@@ -85,8 +100,8 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
   const [songPackDialogMessage, setSongPackDialogMessage] = useState<string | null>(null);
   const [isSongPackLoading, setIsSongPackLoading] = useState(false);
 
-  const activeDirectory = getActiveSourceDirectory(draft);
   const activeOption = getSourceOption(draft.source);
+  const activeDirectory = activeOption.usesDirectory ? getActiveSourceDirectory(draft) : "";
 
   const togglePack = (packId: number) => {
     const currentOwnedPackIds = draft.ownedPackIds;
@@ -187,6 +202,10 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
   }
 
   async function handleBrowseDirectory(): Promise<void> {
+    if (!activeOption.usesDirectory) {
+      return;
+    }
+
     try {
       const selectedDirectory = await pickDirectory();
       if (selectedDirectory !== null) {
@@ -210,6 +229,18 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
     }
 
     setDisplayNameError(null);
+
+    if (draft.source === "daken_counter_v3") {
+      if (!isValidPortNumber(draft.dakenCounterV3Port)) {
+        setValidationMessage(`WebSocketポートは ${SOURCE_PORT_MIN} - ${SOURCE_PORT_MAX} の整数で入力してください。`);
+        focusErrorField("source_port");
+        return;
+      }
+
+      settingsStore.save();
+      await sourceStore.start(settingsStore.getState().saved, { force: false });
+      return;
+    }
 
     if (activeDirectory.trim().length === 0) {
       setValidationMessage("先に監視元フォルダを指定してください。");
@@ -239,7 +270,15 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
   }
 
   function focusErrorField(field: SettingsErrorField): void {
-    const target = field === "display_name" ? displayNameInputRef.current : sourceDirectoryInputRef.current;
+    let target: HTMLInputElement | null = null;
+    if (field === "display_name") {
+      target = displayNameInputRef.current;
+    } else if (field === "source_directory") {
+      target = sourceDirectoryInputRef.current;
+    } else {
+      target = sourcePortInputRef.current;
+    }
+
     if (target === null) {
       return;
     }
@@ -390,45 +429,81 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
 
           <div className="space-y-3">
             <label className="text-[10px] font-black uppercase italic tracking-wider text-gray-500">
-              {activeOption.label}
+              {activeOption.usesDirectory ? activeOption.directoryLabel : activeOption.portLabel}
             </label>
-            <div className="flex max-w-3xl flex-col gap-3 md:flex-row">
-              <input
-                ref={sourceDirectoryInputRef}
-                type="text"
-                value={activeDirectory}
-                disabled={roomJoined}
-                onChange={(event) => {
-                  settingsStore.updateSourceDirectory(draft.source, event.currentTarget.value);
-                  if (focusedErrorField === "source_directory") {
-                    setFocusedErrorField(null);
-                  }
-                  setValidationMessage(null);
-                }}
-                aria-invalid={validationMessage !== null}
-                placeholder={activeOption.placeholder}
-                className={`flex-1 scroll-mt-20 rounded-xl border bg-[#151515] px-4 py-3 text-sm font-mono text-gray-300 outline-none placeholder:text-gray-600 disabled:cursor-not-allowed disabled:opacity-70 ${
-                  validationMessage
-                    ? focusedErrorField === "source_directory"
-                      ? "border-red-500 ring-2 ring-red-500/30"
-                      : "border-red-500"
-                    : "border-white/5 focus:border-cyan-500"
-                }`}
-              />
-              <button
-                type="button"
-                disabled={roomJoined}
-                onClick={() => {
-                  void handleBrowseDirectory();
-                }}
-                className="flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-[#2d2d30] px-6 py-3 text-sm font-bold text-white transition-all active:scale-95 hover:bg-[#353538] disabled:cursor-not-allowed disabled:opacity-70"
-              >
-                <FolderOpen size={18} />
-                参照
-              </button>
-            </div>
+            {activeOption.usesDirectory ? (
+              <div className="flex max-w-3xl flex-col gap-3 md:flex-row">
+                <input
+                  ref={sourceDirectoryInputRef}
+                  type="text"
+                  value={activeDirectory}
+                  disabled={roomJoined}
+                  onChange={(event) => {
+                    settingsStore.updateSourceDirectory(draft.source, event.currentTarget.value);
+                    if (focusedErrorField === "source_directory") {
+                      setFocusedErrorField(null);
+                    }
+                    setValidationMessage(null);
+                  }}
+                  aria-invalid={validationMessage !== null}
+                  placeholder={activeOption.directoryPlaceholder}
+                  className={`flex-1 scroll-mt-20 rounded-xl border bg-[#151515] px-4 py-3 text-sm font-mono text-gray-300 outline-none placeholder:text-gray-600 disabled:cursor-not-allowed disabled:opacity-70 ${
+                    validationMessage
+                      ? focusedErrorField === "source_directory"
+                        ? "border-red-500 ring-2 ring-red-500/30"
+                        : "border-red-500"
+                      : "border-white/5 focus:border-cyan-500"
+                  }`}
+                />
+                <button
+                  type="button"
+                  disabled={roomJoined}
+                  onClick={() => {
+                    void handleBrowseDirectory();
+                  }}
+                  className="flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-[#2d2d30] px-6 py-3 text-sm font-bold text-white transition-all active:scale-95 hover:bg-[#353538] disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  <FolderOpen size={18} />
+                  参照
+                </button>
+              </div>
+            ) : (
+              <div className="max-w-md">
+                <input
+                  ref={sourcePortInputRef}
+                  type="number"
+                  inputMode="numeric"
+                  min={SOURCE_PORT_MIN}
+                  max={SOURCE_PORT_MAX}
+                  step={1}
+                  value={draft.dakenCounterV3Port}
+                  disabled={roomJoined}
+                  onChange={(event) => {
+                    const parsed = Number.isFinite(event.currentTarget.valueAsNumber)
+                      ? Math.trunc(event.currentTarget.valueAsNumber)
+                      : 0;
+                    settingsStore.update("dakenCounterV3Port", parsed);
+                    if (focusedErrorField === "source_port") {
+                      setFocusedErrorField(null);
+                    }
+                    setValidationMessage(null);
+                  }}
+                  aria-invalid={validationMessage !== null}
+                  placeholder="8767"
+                  className={`w-full scroll-mt-20 rounded-xl border bg-[#151515] px-4 py-3 text-sm font-mono text-gray-300 outline-none placeholder:text-gray-600 disabled:cursor-not-allowed disabled:opacity-70 ${
+                    validationMessage
+                      ? focusedErrorField === "source_port"
+                        ? "border-red-500 ring-2 ring-red-500/30"
+                        : "border-red-500"
+                      : "border-white/5 focus:border-cyan-500"
+                  }`}
+                />
+              </div>
+            )}
             <p className="text-xs text-gray-500">
-              {draft.source === "inf_daken_counter"
+              {draft.source === "daken_counter_v3"
+                ? `LOBBY入場時に ws://localhost:${draft.dakenCounterV3Port} へ接続します。PLAYING開始時に接続確認し、失敗時は「${DAKEN_COUNTER_V3_CONNECTION_WARNING}」を表示します。`
+                : draft.source === "inf_daken_counter"
                 ? "選択したフォルダ配下の today_update.xml を自動で監視します。"
                 : "選択したフォルダ配下の records/summary.json を監視し、export/recent.json から score/misscount を補完します。"}
             </p>
@@ -802,7 +877,7 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
   );
 }
 
-function getSourceOption(source: "inf_daken_counter" | "inf-notebook") {
+function getSourceOption(source: SourceType) {
   return SOURCE_OPTIONS.find((option) => option.id === source) ?? SOURCE_OPTIONS[0]!;
 }
 

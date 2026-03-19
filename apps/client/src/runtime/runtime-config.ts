@@ -11,6 +11,7 @@ export interface RuntimeSettingsDefaults {
   playerId: string | undefined;
   displayName: string | undefined;
   source: SourceType | undefined;
+  dakenCounterV3Port: number | undefined;
   sourcePaths: RuntimeSourcePathDefaults;
 }
 
@@ -59,6 +60,16 @@ function readNumberParam(name: string, fallback: number): number {
   return Number.isFinite(value) ? value : fallback;
 }
 
+function readOptionalIntegerParam(name: string): number | undefined {
+  const raw = readSearchParam(name);
+  if (raw === undefined) {
+    return undefined;
+  }
+
+  const value = Number(raw);
+  return Number.isFinite(value) ? Math.trunc(value) : undefined;
+}
+
 function normalizeInstanceId(value: string | undefined): string | null {
   if (value === undefined) {
     return null;
@@ -83,6 +94,9 @@ const apiBaseUrlFromEnv = import.meta.env.VITE_WORKER_API_BASE_URL?.trim();
 const apiBaseUrl =
   apiBaseUrlFromEnv && apiBaseUrlFromEnv.length > 0 ? apiBaseUrlFromEnv : readSearchParam("api");
 const source = parseSourceType(readSearchParam("source"));
+const dakenCounterV3Port =
+  readOptionalIntegerParam("dakenCounterV3Port") ??
+  readOptionalIntegerParam("dakenPort");
 const updaterTarget =
   readSearchParam("updateTarget") ?? import.meta.env.VITE_UPDATER_TARGET?.trim() ?? "windows-x86_64";
 const updaterTimeoutEnvRaw = import.meta.env.VITE_UPDATER_CHECK_TIMEOUT_MS?.trim();
@@ -110,6 +124,7 @@ export const runtimeConfig: RuntimeConfig = {
     playerId,
     displayName,
     source,
+    dakenCounterV3Port,
     sourcePaths: {
       dakenTodayUpdateXml: readSearchParam("dakenPath"),
       notebookExportRecentJson: readSearchParam("notebookPath"),

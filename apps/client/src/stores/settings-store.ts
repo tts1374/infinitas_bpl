@@ -6,6 +6,10 @@ import { createExternalStore, useExternalStore } from "./create-store";
 const SETTINGS_STORAGE_KEY = "infinitas.client.settings.v1";
 const DEFAULT_API_BASE_URL = "http://127.0.0.1:8787";
 const DEFAULT_VOICE_VOLUME = 80;
+export const SOURCE_PORT_MIN = 1;
+export const SOURCE_PORT_MAX = 65535;
+export const DAKEN_COUNTER_V3_DEFAULT_PORT = 8767;
+const FALLBACK_SOURCE: SourceType = "inf-notebook";
 
 export interface SourcePaths {
   dakenTodayUpdateXml: string;
@@ -23,6 +27,7 @@ export interface ClientSettings {
   playerId: string;
   displayName: string;
   source: SourceType;
+  dakenCounterV3Port: number;
   sourcePaths: SourcePaths;
   sourceDirectories: SourceDirectories;
   voiceEnabled: boolean;
@@ -45,6 +50,7 @@ interface PartialClientSettings {
   playerId?: string;
   displayName?: string;
   source?: string;
+  dakenCounterV3Port?: number;
   sourcePaths?: Partial<SourcePaths>;
   sourceDirectories?: Partial<SourceDirectories>;
   voiceEnabled?: boolean;
@@ -71,7 +77,29 @@ function createDefaultSourceDirectories(): SourceDirectories {
 }
 
 function normalizeSource(value: string | undefined): SourceType {
-  return SOURCE_TYPES.includes(value as SourceType) ? (value as SourceType) : SOURCE_TYPES[0];
+  if (!SOURCE_TYPES.includes(value as SourceType)) {
+    return FALLBACK_SOURCE;
+  }
+
+  const normalized = value as SourceType;
+  return normalized === "inf_daken_counter" ? FALLBACK_SOURCE : normalized;
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+export function isValidPortNumber(value: number): boolean {
+  return Number.isInteger(value) && value >= SOURCE_PORT_MIN && value <= SOURCE_PORT_MAX;
+}
+
+export function normalizeDakenCounterV3Port(value: unknown): number {
+  if (!isFiniteNumber(value)) {
+    return DAKEN_COUNTER_V3_DEFAULT_PORT;
+  }
+
+  const normalized = Math.trunc(value);
+  return isValidPortNumber(normalized) ? normalized : DAKEN_COUNTER_V3_DEFAULT_PORT;
 }
 
 function normalizeBaseUrl(value: string | undefined): string {
@@ -235,6 +263,7 @@ function createDefaultSettings(): ClientSettings {
     playerId: runtimeConfig.settingsDefaults.playerId?.trim() || crypto.randomUUID(),
     displayName: runtimeConfig.settingsDefaults.displayName?.trim() ?? "",
     source: normalizeSource(runtimeConfig.settingsDefaults.source),
+    dakenCounterV3Port: normalizeDakenCounterV3Port(runtimeConfig.settingsDefaults.dakenCounterV3Port),
     sourcePaths,
     sourceDirectories,
     voiceEnabled: true,
@@ -277,6 +306,7 @@ function normalizeSettings(rawSettings: PartialClientSettings | null): ClientSet
     playerId: rawSettings?.playerId?.trim() || defaults.playerId,
     displayName: rawSettings?.displayName?.trim() ?? defaults.displayName,
     source: normalizeSource(rawSettings?.source ?? defaults.source),
+    dakenCounterV3Port: normalizeDakenCounterV3Port(rawSettings?.dakenCounterV3Port ?? defaults.dakenCounterV3Port),
     sourcePaths,
     sourceDirectories,
     ...voiceSettings,
@@ -295,15 +325,29 @@ function syncVoiceDraft(draft: ClientSettings): ClientSettings {
 }
 
 export function getActiveSourceDirectory(settings: Pick<ClientSettings, "source" | "sourceDirectories">): string {
-  return settings.source === "inf_daken_counter"
-    ? settings.sourceDirectories.dakenDirectory
-    : settings.sourceDirectories.notebookDirectory;
+  if (settings.source === "inf_daken_counter") {
+    return settings.sourceDirectories.dakenDirectory;
+  }
+
+  if (settings.source === "inf-notebook") {
+    return settings.sourceDirectories.notebookDirectory;
+  }
+
+  return "";
 }
 
 export function isRoomEntryReady(
-  settings: Pick<ClientSettings, "displayName" | "source" | "sourceDirectories">,
+  settings: Pick<ClientSettings, "displayName" | "source" | "sourceDirectories" | "dakenCounterV3Port">,
 ): boolean {
-  return settings.displayName.trim().length > 0 && getActiveSourceDirectory(settings).trim().length > 0;
+  if (settings.displayName.trim().length === 0) {
+    return false;
+  }
+
+  if (settings.source === "daken_counter_v3") {
+    return isValidPortNumber(settings.dakenCounterV3Port);
+  }
+
+  return getActiveSourceDirectory(settings).trim().length > 0;
 }
 
 export function isVoicePlaybackEnabled(
@@ -360,6 +404,13 @@ export const settingsStore = {
   },
   updateSourceDirectory(source: SourceType, directory: string): void {
     internalStore.setState((state) => {
+      if (source === "daken_counter_v3") {
+        return {
+          ...state,
+          statusMessage: null,
+        };
+      }
+
       const sourceDirectories =
         source === "inf_daken_counter"
           ? {
