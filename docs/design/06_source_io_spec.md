@@ -7,12 +7,15 @@ Ph1で対応するローカル監視ソースについて、
 Ph1では以下を前提とする。
 
 - 対応ソースは 2種類
-  - `inf_daken_counter`
   - `inf-notebook`
+  - `daken_counter_v3`
+  - `inf_daken_counter` は legacy（設定UIでは非表示）
 - **1端末1ソース固定**
 - ソースは事前設定で選択
 - ルーム参加中は変更不可
-- 監視方式は **file watcher**
+- 監視方式はソースごとに固定
+  - `inf-notebook`: **file watcher**
+  - `daken_counter_v3`: **local WebSocket** (`ws://localhost:{port}`)
 - 監視異常時は `SOURCE_UNAVAILABLE` を表示し、TECHスキップ誘導とする
 
 ---
@@ -238,7 +241,7 @@ score/misscount = export/recent.json (timestamp一致)
 
 ---
 
-## 3. ソース: inf_daken_counter（打鍵カウンタ）
+## 3. ソース: inf_daken_counter（legacy / 非推奨）
 
 ## 3.1 使用ファイル
 必須:
@@ -338,11 +341,30 @@ Ph1では以下を採用する。
 
 ---
 
+## 3.7 ソース: daken_counter_v3（Ph1 v1）
+
+入力:
+- local WebSocket `ws://localhost:{port}`（default `8767`）
+
+受信:
+- `type == "today_updates"` のみ処理対象
+- `data.items[]` は一覧スナップショットとして扱い、前回受信との差分のみ新規候補にする
+
+採用:
+- LOBBY では採用しない（直近スナップショットのみ保持）
+- PLAYING 開始時に接続確認し、接続不可なら `SOURCE_UNAVAILABLE` として監視開始しない
+- PLAYING 中のみ差分判定を有効化し、重複履歴を保持して再処理を防ぐ
+- `difficulty` は 3.4 の変換表を厳格適用する
+- `battle == 1` は v1 非対応として破棄する
+
+---
+
 ## 4. ソース設定UIとの対応
 
 ## 4.1 設定値
-- `inf_daken_counter`
 - `inf-notebook`
+- `daken_counter_v3`
+- `inf_daken_counter` は legacy 非推奨（既存設定が残っていても利用しない）
 
 ## 4.2 制約
 - 1端末1ソース固定
@@ -355,6 +377,9 @@ Ph1では以下を採用する。
 ### inf-notebook
 - `records/summary.json`
 - `export/recent.json`
+
+### daken_counter_v3
+- `ws://localhost:{port}`（default: `8767`）
 
 ---
 

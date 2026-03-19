@@ -63,6 +63,7 @@ const ARENA_PLAYER_3_ID = "mock-arena-player-3";
 const ARENA_PLAYER_4_ID = "mock-arena-player-4";
 
 const BASE_SETTINGS: Omit<ClientSettings, "playerId" | "displayName" | "source" | "apiBaseUrl"> = {
+  dakenCounterV3Port: 8767,
   sourcePaths: {
     dakenTodayUpdateXml: "",
     notebookExportRecentJson: "",

@@ -111,6 +111,19 @@ export function App() {
     void sourceStore.start(savedSettings, { force: false });
   }, [mockScenarioRequested, savedSettings]);
 
+  useEffect(() => {
+    if (mockScenarioRequested) {
+      return;
+    }
+
+    sourceStore.syncRoomSnapshot(roomSnapshot);
+  }, [
+    mockScenarioRequested,
+    roomSnapshot,
+    savedSettings.source,
+    savedSettings.dakenCounterV3Port,
+  ]);
+
   function navigate(view: AppView): void {
     startTransition(() => {
       setActiveView(view);
