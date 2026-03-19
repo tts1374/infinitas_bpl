@@ -67,6 +67,23 @@ function validateJoinCode(value: string): string | null {
   return null;
 }
 
+type CreateRoomErrorField = "join_code";
+type CreateRoomValidationError = {
+  field: CreateRoomErrorField;
+  message: string;
+};
+
+function scrollFieldIntoContainer(container: HTMLElement, target: HTMLElement): void {
+  const containerRect = container.getBoundingClientRect();
+  const targetRect = target.getBoundingClientRect();
+  const topOffset = 16;
+  const nextTop = container.scrollTop + (targetRect.top - containerRect.top) - topOffset;
+  container.scrollTo({
+    top: Math.max(0, nextTop),
+    behavior: "smooth",
+  });
+}
+
 function roomTitle(room: LobbyRoomSummary): string {
   const name = room.roomName.trim();
   return name.length > 0 ? name : `${modeLabels[room.mode]} ${room.playStyle}`;
@@ -95,6 +112,8 @@ export function LobbyPage() {
   const [showCreateRoom, setShowCreateRoom] = useState(false);
   const [showManualJoinCode, setShowManualJoinCode] = useState(false);
   const [showCreateJoinCode, setShowCreateJoinCode] = useState(false);
+  const [createValidationSummary, setCreateValidationSummary] = useState<string | null>(null);
+  const [createValidationFocusField, setCreateValidationFocusField] = useState<CreateRoomErrorField | null>(null);
   const [selectedRoomForJoin, setSelectedRoomForJoin] = useState<LobbyRoomSummary | null>(null);
   const [showRoomJoinCode, setShowRoomJoinCode] = useState(false);
   const [joinModalCode, setJoinModalCode] = useState("");
@@ -104,6 +123,8 @@ export function LobbyPage() {
   const [levelFilter, setLevelFilter] = useState<(typeof LEVEL_FILTERS)[number] | "">("");
   const [searchDraft, setSearchDraft] = useState("");
   const createRoomInFlightRef = useRef(false);
+  const createFormBodyRef = useRef<HTMLDivElement | null>(null);
+  const createJoinCodeInputRef = useRef<HTMLInputElement | null>(null);
   const roomEntryReady = isRoomEntryReady(savedSettings);
   const roomEntryRequiredMessage = "DJ NAME と DATA SOURCE を設定してからルーム作成・参加を行ってください。";
 
@@ -122,6 +143,8 @@ export function LobbyPage() {
     setShowCreateJoinCode(false);
     setShowCreateRoom(false);
     setCreateDraft({ ...defaultCreateDraft });
+    setCreateValidationSummary(null);
+    setCreateValidationFocusField(null);
     setLocalMessage(null);
   }
 
@@ -200,6 +223,35 @@ export function LobbyPage() {
     }
 
     void joinRoomFromList(room);
+  }
+
+  function collectCreateRoomValidationErrors(): CreateRoomValidationError[] {
+    const errors: CreateRoomValidationError[] = [];
+    if (createJoinCodeError !== null) {
+      errors.push({
+        field: "join_code",
+        message: createJoinCodeError,
+      });
+    }
+    return errors;
+  }
+
+  function focusFirstCreateRoomError(errors: CreateRoomValidationError[]): void {
+    const firstError = errors[0];
+    if (!firstError) {
+      return;
+    }
+
+    setCreateValidationFocusField(firstError.field);
+    if (firstError.field === "join_code" && createJoinCodeInputRef.current) {
+      const targetInput = createJoinCodeInputRef.current;
+      targetInput.focus({ preventScroll: true });
+      if (createFormBodyRef.current) {
+        scrollFieldIntoContainer(createFormBodyRef.current, targetInput);
+      } else {
+        targetInput.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }
   }
 
   return (
@@ -482,7 +534,7 @@ export function LobbyPage() {
           <div className="fixed inset-0 z-[1001]">
             <div className="absolute inset-0 bg-black/85 backdrop-blur-[2px]" />
             <div className="relative flex min-h-full items-center justify-center p-4">
-              <div className="w-full max-w-[580px] overflow-hidden rounded-2xl border border-white/10 bg-[#252526] shadow-[0_25px_70px_rgba(0,0,0,0.8)]">
+              <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-[580px] flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#252526] shadow-[0_25px_70px_rgba(0,0,0,0.8)]">
             <div className="flex items-center justify-between border-b border-white/5 bg-cyan-500/5 px-8 py-6">
               <h2 className="flex items-center gap-3 text-xl font-bold text-cyan-400">
                 <Plus size={24} />
@@ -496,7 +548,7 @@ export function LobbyPage() {
                 <X size={24} />
               </button>
             </div>
-            <div className="flex flex-col gap-8 bg-[#252526] p-8">
+            <div ref={createFormBodyRef} className="custom-scrollbar flex-1 space-y-8 overflow-y-auto bg-[#252526] px-8 py-6">
               <section className="space-y-4">
                 <h3 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">
                   <Trophy size={14} />
@@ -660,21 +712,32 @@ export function LobbyPage() {
                   ))}
                 </div>
                 <div className="space-y-2">
-                  <div className="flex items-end justify-between">
-                    <label className="text-xs font-bold text-gray-400">合言葉 (Join Code)</label>
-                    {createJoinCodeError ? <span className="text-[10px] font-bold text-red-500">{createJoinCodeError}</span> : null}
-                  </div>
+                  <label htmlFor="create-room-join-code" className="text-xs font-bold text-gray-400">
+                    合言葉 (Join Code)
+                  </label>
                   <div className="relative">
                     <input
+                      id="create-room-join-code"
+                      ref={createJoinCodeInputRef}
                       type={showCreateJoinCode ? "text" : "password"}
                       value={createDraft.join_code ?? ""}
                       maxLength={JOIN_CODE_LENGTH}
+                      aria-invalid={createJoinCodeError !== null}
+                      aria-describedby={createJoinCodeError ? "create-room-join-code-error" : undefined}
                       placeholder={createDraft.visibility === "PUBLIC" ? "任意（未入力でパスワードなし）" : "空欄なら自動生成"}
                       className={`w-full rounded-xl border bg-[#1e1e1e] p-3 pr-12 font-mono text-sm uppercase text-white outline-none transition-all placeholder:text-gray-700 ${
-                        createJoinCodeError ? "border-red-500" : "border-white/10 focus:border-cyan-500"
+                        createJoinCodeError
+                          ? createValidationFocusField === "join_code"
+                            ? "border-red-500 ring-2 ring-red-500/50"
+                            : "border-red-500"
+                          : "border-white/10 focus:border-cyan-500"
                       }`}
                       onChange={(event) => {
                         const nextJoinCode = normalizeJoinCodeInput(event.currentTarget.value);
+                        setCreateValidationSummary(null);
+                        if (createValidationFocusField === "join_code") {
+                          setCreateValidationFocusField(null);
+                        }
                         setCreateDraft((current) => ({
                           ...current,
                           join_code: nextJoinCode.length > 0 ? nextJoinCode : null,
@@ -690,6 +753,11 @@ export function LobbyPage() {
                       {showCreateJoinCode ? <EyeOff size={18} /> : <Eye size={18} />}
                     </button>
                   </div>
+                  {createJoinCodeError ? (
+                    <p id="create-room-join-code-error" className="text-[11px] font-bold text-red-400">
+                      {createJoinCodeError}
+                    </p>
+                  ) : null}
                 </div>
               </section>
               <section className="space-y-2">
@@ -712,8 +780,15 @@ export function LobbyPage() {
                   }}
                 />
               </section>
+            </div>
+            <div className="shrink-0 border-t border-white/5 bg-[#252526] px-8 py-6">
+              {createValidationSummary ? (
+                <p className="mb-3 rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-2 text-sm font-bold text-red-300" role="alert">
+                  {createValidationSummary}
+                </p>
+              ) : null}
               {localMessage ? <p className="text-sm font-medium text-red-400">{localMessage}</p> : null}
-              <div className="mt-2 flex gap-4">
+              <div className="mt-3 flex gap-4">
                 <button
                   type="button"
                   onClick={closeCreateRoomModal}
@@ -723,9 +798,9 @@ export function LobbyPage() {
                 </button>
                 <button
                   type="button"
-                  disabled={!roomEntryReady || busyAction !== null || createJoinCodeError !== null}
+                  disabled={!roomEntryReady || busyAction !== null}
                   className={`flex-1 rounded-xl py-4 font-black transition-all shadow-[0_10px_30px_rgba(6,182,212,0.3)] ${
-                    !roomEntryReady || busyAction !== null || createJoinCodeError !== null
+                    !roomEntryReady || busyAction !== null
                       ? "cursor-not-allowed bg-gray-800 text-gray-600"
                       : "bg-cyan-500 text-black hover:bg-cyan-400"
                   }`}
@@ -737,9 +812,21 @@ export function LobbyPage() {
                       setLocalMessage(roomEntryRequiredMessage);
                       return;
                     }
+                    const validationErrors = collectCreateRoomValidationErrors();
+                    if (validationErrors.length > 0) {
+                      const summaryPrefix = "入力内容に不備があります。赤枠の項目を確認してください。";
+                      const summaryWithCount =
+                        validationErrors.length > 1 ? `${summaryPrefix} (${validationErrors.length}件)` : summaryPrefix;
+                      setCreateValidationSummary(summaryWithCount);
+                      setLocalMessage(null);
+                      focusFirstCreateRoomError(validationErrors);
+                      return;
+                    }
 
                     createRoomInFlightRef.current = true;
                     setBusyAction("create");
+                    setCreateValidationSummary(null);
+                    setCreateValidationFocusField(null);
                     setLocalMessage(null);
                     void createRoom(savedSettings.apiBaseUrl, createDraft)
                       .then(async (response) => {
