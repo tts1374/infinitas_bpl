@@ -46,6 +46,19 @@ const SOUND_EFFECT_URLS: Record<SoundEffectKey, string> = {
   error: "/se/error.mp3",
 };
 
+type SoundEffectCategory = "presentation" | "notification";
+
+// Presentation sounds are mood/phase cues. Notification sounds are state awareness cues.
+const SOUND_EFFECT_CATEGORIES: Record<SoundEffectKey, SoundEffectCategory> = {
+  round_intro: "presentation",
+  count_beep: "presentation",
+  match_found: "presentation",
+  phase_locked: "presentation",
+  count_go: "presentation",
+  cancel: "notification",
+  error: "notification",
+};
+
 interface ScheduledCue {
   kind: SoundEffectKey;
   eventId: string;
@@ -85,6 +98,7 @@ let unsubscribeSettingsStore: (() => void) | null = null;
 let activeRoomId: string | null = null;
 let activeRoundToken: string | null = null;
 let activeTimeoutIds: number[] = [];
+let roomPresentationSeOverride: { roomId: string; enabled: boolean } | null = null;
 
 const playedEventIds = new Set<string>();
 const queuedEventIds = new Set<string>();
@@ -106,6 +120,19 @@ function getMasterVolume(): number {
 
 function getEffectiveVolume(volumeMultiplier: number): number {
   return Math.max(0, Math.min(1, getMasterVolume() * volumeMultiplier));
+}
+
+function getSoundEffectCategory(kind: SoundEffectKey): SoundEffectCategory {
+  return SOUND_EFFECT_CATEGORIES[kind];
+}
+
+function isPresentationSeEnabled(): boolean {
+  const roomId = roomStore.getState().snapshot?.room_id ?? null;
+  if (roomId !== null && roomPresentationSeOverride?.roomId === roomId) {
+    return roomPresentationSeOverride.enabled;
+  }
+
+  return settingsStore.getState().saved.enablePresentationSe;
 }
 
 function setVoiceState(partialState: Partial<VoicePlaybackState>): void {
@@ -312,6 +339,24 @@ export async function playLobbyNotificationSound(kind: LobbyNotificationSoundEff
   }
 }
 
+export function getRoomPresentationSeOverride(roomId: string): boolean | null {
+  if (roomPresentationSeOverride?.roomId !== roomId) {
+    return null;
+  }
+
+  return roomPresentationSeOverride.enabled;
+}
+
+export function setRoomPresentationSeOverride(roomId: string, enabled: boolean): void {
+  roomPresentationSeOverride = { roomId, enabled };
+}
+
+export function clearRoomPresentationSeOverride(roomId?: string): void {
+  if (roomId === undefined || roomPresentationSeOverride?.roomId === roomId) {
+    roomPresentationSeOverride = null;
+  }
+}
+
 function clearPlayback(nextPhase: VoicePlaybackPhase, detail: string, enabled: boolean): void {
   if (SOUND_CLEAR_QUEUE_ON_STATE_CHANGE) {
     for (const timeoutId of activeTimeoutIds) {
@@ -430,6 +475,11 @@ function shouldSuppressCue(cue: ScheduledCue): boolean {
 
 async function playCue(cue: ScheduledCue): Promise<void> {
   if (shouldSuppressCue(cue) || !isVoicePlaybackEnabled(settingsStore.getState().saved)) {
+    return;
+  }
+
+  if (getSoundEffectCategory(cue.kind) === "presentation" && !isPresentationSeEnabled()) {
+    playedEventIds.add(cue.eventId);
     return;
   }
 
@@ -579,6 +629,7 @@ export const voiceAnnouncerService = {
     unsubscribeSettingsStore?.();
     unsubscribeRoomStore = null;
     unsubscribeSettingsStore = null;
+    roomPresentationSeOverride = null;
     clearPlayback("IDLE", "Sound cues idle.", isVoicePlaybackEnabled(settingsStore.getState().saved));
   },
 };

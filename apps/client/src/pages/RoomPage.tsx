@@ -15,6 +15,7 @@ import {
   AlertTriangle,
   Database,
   ShieldAlert,
+  Volume2,
 } from "lucide-react";
 import { useDeferredValue, useEffect, useRef, useState, type ReactNode } from "react";
 import { DebugInjectionPanel } from "../components/DebugInjectionPanel";
@@ -43,7 +44,13 @@ import {
 import { runtimeConfig } from "../runtime/runtime-config";
 import { useLocalResultArchiveStore } from "../services/result-archive";
 import { listCharts, listRoomCharts } from "../services/worker-api-client";
-import { playLobbyNotificationSound, useVoicePlaybackStore } from "../services/voice-announcer";
+import {
+  clearRoomPresentationSeOverride,
+  getRoomPresentationSeOverride,
+  playLobbyNotificationSound,
+  setRoomPresentationSeOverride,
+  useVoicePlaybackStore,
+} from "../services/voice-announcer";
 import { roomStore, useRoomStore, type RoomConnectionStatus } from "../stores/room-store";
 import { isVoicePlaybackEnabled, useSettingsStore } from "../stores/settings-store";
 import { formatDateTime, stringifyJson } from "../utils/format";
@@ -634,6 +641,8 @@ export function RoomPage() {
   const [copiedRoomId, setCopiedRoomId] = useState(false);
   const [copiedJoinCode, setCopiedJoinCode] = useState(false);
   const [showHostLeaveConfirm, setShowHostLeaveConfirm] = useState(false);
+  const [showRoomAudioMenu, setShowRoomAudioMenu] = useState(false);
+  const [roomPresentationSeEnabled, setRoomPresentationSeEnabled] = useState(savedSettings.enablePresentationSe);
   const [arenaLobbyLogs, setArenaLobbyLogs] = useState<RoomArenaLogEntry[]>([]);
   const [pendingOwnPickCutIn, setPendingOwnPickCutIn] = useState<ChartSearchEntry | null>(null);
   const [ownPickCutInChart, setOwnPickCutInChart] = useState<ChartSearchEntry | null>(null);
@@ -1021,11 +1030,31 @@ export function RoomPage() {
   useEffect(() => {
     setPendingOwnPickCutIn(null);
     setOwnPickCutInChart(null);
+    setShowRoomAudioMenu(false);
     if (cutInTimeoutRef.current !== null) {
       window.clearTimeout(cutInTimeoutRef.current);
       cutInTimeoutRef.current = null;
     }
   }, [snapshot?.room_id]);
+
+  useEffect(() => {
+    if (snapshot === null) {
+      clearRoomPresentationSeOverride();
+      return;
+    }
+
+    const roomOverride = getRoomPresentationSeOverride(snapshot.room_id);
+    setRoomPresentationSeEnabled(roomOverride ?? savedSettings.enablePresentationSe);
+  }, [savedSettings.enablePresentationSe, snapshot?.room_id]);
+
+  useEffect(() => {
+    const roomId = roomStore.getState().snapshot?.room_id ?? null;
+    if (roomId === null) {
+      return;
+    }
+
+    setRoomPresentationSeOverride(roomId, roomPresentationSeEnabled);
+  }, [roomPresentationSeEnabled]);
 
   useEffect(() => {
     if (pendingOwnPickCutIn === null || mySubmittedPick?.pick_chart_key !== pendingOwnPickCutIn.chart_key) {
@@ -1476,6 +1505,7 @@ export function RoomPage() {
     : isVoicePlaybackEnabled(savedSettings)
       ? `Volume ${savedSettings.voiceVolume}`
       : "Sound disabled";
+  const roomPresentationSeStatusLabel = roomPresentationSeEnabled ? "ON" : "OFF";
 
   function requestLeaveRoom(): void {
     if (leaveRoomDisabled) {
@@ -2380,6 +2410,47 @@ export function RoomPage() {
   return (
     <section id="visual-capture-root" className="flex h-full min-h-0 w-full flex-col text-white font-sans">
       {roomSurface}
+
+      {snapshot.room_state !== "CLOSED" ? (
+        <div className="pointer-events-none fixed right-4 top-4 z-[140]">
+          <div className="pointer-events-auto relative">
+            <button
+              type="button"
+              onClick={() => setShowRoomAudioMenu((current) => !current)}
+              className="flex items-center gap-2 rounded-xl border border-white/15 bg-[#111112]/90 px-3 py-2 text-[11px] font-black uppercase tracking-[0.2em] text-gray-200 shadow-[0_12px_24px_rgba(0,0,0,0.45)] backdrop-blur-sm transition-all hover:border-cyan-400/40 hover:text-cyan-200"
+            >
+              <Volume2 size={14} />
+              Room Audio
+            </button>
+            {showRoomAudioMenu ? (
+              <div className="absolute right-0 mt-2 w-[320px] rounded-2xl border border-white/10 bg-[#161618]/95 p-4 shadow-[0_20px_40px_rgba(0,0,0,0.55)] backdrop-blur-sm">
+                <p className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-500">Audio Override</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRoomPresentationSeEnabled((current) => !current);
+                  }}
+                  className={`mt-3 flex w-full items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left transition-all ${
+                    roomPresentationSeEnabled
+                      ? "border-cyan-500/40 bg-cyan-500/10 text-cyan-200"
+                      : "border-white/10 bg-black/20 text-gray-300 hover:border-white/30"
+                  }`}
+                >
+                  <div className="space-y-1">
+                    <p className="text-sm font-bold">演出SEを再生する（この部屋のみ）</p>
+                    <p className="text-xs font-semibold text-gray-500">
+                      退室すると設定画面のデフォルト値に戻ります。
+                    </p>
+                  </div>
+                  <span className="rounded-md border border-white/20 px-2 py-1 text-[10px] font-black uppercase tracking-[0.2em]">
+                    {roomPresentationSeStatusLabel}
+                  </span>
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
 
       {runtimeConfig.debugUiEnabled && snapshot.room_state === "PLAYING" && currentRound ? (
         <div className="fixed bottom-6 right-6 z-[160] w-[320px]">

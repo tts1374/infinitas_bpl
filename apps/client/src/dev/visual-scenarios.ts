@@ -79,6 +79,7 @@ const BASE_SETTINGS: Omit<ClientSettings, "playerId" | "displayName" | "source" 
   voiceEnabled: true,
   voiceVolume: 80,
   voiceMuted: false,
+  enablePresentationSe: true,
   bitUnlockEnabled: false,
   djpUnlockEnabled: false,
   ownedPackIds: [],

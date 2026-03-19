@@ -36,6 +36,7 @@ export interface ClientSettings {
   voiceEnabled: boolean;
   voiceVolume: number;
   voiceMuted: boolean;
+  enablePresentationSe: boolean;
   bitUnlockEnabled: boolean;
   djpUnlockEnabled: boolean;
   ownedPackIds: number[];
@@ -59,6 +60,7 @@ interface PartialClientSettings {
   voiceEnabled?: boolean;
   voiceVolume?: number;
   voiceMuted?: boolean;
+  enablePresentationSe?: boolean;
   bitUnlockEnabled?: boolean;
   djpUnlockEnabled?: boolean;
   ownedPackIds?: number[];
@@ -295,6 +297,7 @@ function createDefaultSettings(): ClientSettings {
     voiceEnabled: true,
     voiceVolume: DEFAULT_VOICE_VOLUME,
     voiceMuted: false,
+    enablePresentationSe: true,
     bitUnlockEnabled: false,
     djpUnlockEnabled: false,
     ownedPackIds: [],
@@ -339,6 +342,7 @@ function normalizeSettings(rawSettings: PartialClientSettings | null): ClientSet
     sourcePaths,
     sourceDirectories,
     ...voiceSettings,
+    enablePresentationSe: rawSettings?.enablePresentationSe ?? defaults.enablePresentationSe,
     bitUnlockEnabled: rawSettings?.bitUnlockEnabled === true,
     djpUnlockEnabled: rawSettings?.djpUnlockEnabled === true,
     ownedPackIds,
