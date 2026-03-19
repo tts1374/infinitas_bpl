@@ -690,6 +690,26 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
               <span>Min</span>
               <span>Max</span>
             </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                settingsStore.update("enablePresentationSe", !draft.enablePresentationSe);
+              }}
+              className={`flex w-full items-center justify-between rounded-xl border p-4 text-left transition-all ${
+                draft.enablePresentationSe
+                  ? "border-cyan-500/50 bg-cyan-500/10 text-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.15)]"
+                  : "border-white/5 bg-[#1e1e1e] text-gray-400 hover:border-white/20"
+              }`}
+            >
+              <div className="space-y-1">
+                <p className="text-sm font-bold">演出SEを再生する</p>
+                <p className="text-[11px] font-semibold text-gray-500">
+                  ルーム入室時の初期値として使われます。
+                </p>
+              </div>
+              {draft.enablePresentationSe ? <CheckSquare size={20} /> : <Square size={20} />}
+            </button>
           </div>
         </section>
 
