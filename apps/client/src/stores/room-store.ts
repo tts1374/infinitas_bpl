@@ -1,15 +1,16 @@
-import type {
-  CloseReason,
-  ClientMessagePayloadMap,
-  ClientMessageType,
-  ErrorCode,
-  ResultReadyPayload,
-  RoomStateSnapshot,
-  ServerMessage,
-  ServerMessagePayloadMap,
-  SkipReason,
-  SoundEffectKey,
-  SourceType,
+import {
+  REJOIN_COOLDOWN_SECONDS,
+  type CloseReason,
+  type ClientMessagePayloadMap,
+  type ClientMessageType,
+  type ErrorCode,
+  type ResultReadyPayload,
+  type RoomStateSnapshot,
+  type ServerMessage,
+  type ServerMessagePayloadMap,
+  type SkipReason,
+  type SoundEffectKey,
+  type SourceType,
 } from "@infinitas/shared";
 import { logE2EEvent } from "../services/e2e-observability";
 import { RoomSocketClient, type SocketConnectionState } from "../services/ws-client";
@@ -69,8 +70,8 @@ const requestIdsByKey = new Map<string, string>();
 const DJ_NAME_PATTERN = /^[a-zA-Z0-9.\-*&!?#$]*$/;
 const DJ_NAME_MAX_LENGTH = 6;
 const RECONNECT_DELAY_MS = 1_200;
-const RECONNECT_MAX_ATTEMPTS = 20;
-const RECONNECT_WINDOW_SECONDS = 20;
+const RECONNECT_WINDOW_SECONDS = REJOIN_COOLDOWN_SECONDS;
+const RECONNECT_MAX_ATTEMPTS = Math.ceil((RECONNECT_WINDOW_SECONDS * 1_000) / RECONNECT_DELAY_MS);
 let reconnectContext: RoomReconnectContext | null = null;
 let reconnectTimer: number | null = null;
 let reconnectAttempts = 0;
@@ -991,6 +992,18 @@ export const roomStore = {
     }
 
     appendEventLog(message);
+  },
+  sendHeartbeatPing(): boolean {
+    if (activeMockScenarioId !== null || activeClient === null) {
+      return false;
+    }
+
+    try {
+      activeClient.send("PING", {});
+      return true;
+    } catch {
+      return false;
+    }
   },
   reportSourceUnavailable(detail: string): void {
     const state = internalStore.getState();

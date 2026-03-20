@@ -1,4 +1,4 @@
-import { LOBBY_POLL_INTERVAL_MS } from "@infinitas/shared";
+import { LOBBY_POLL_INTERVAL_MS, PING_INTERVAL_SECONDS } from "@infinitas/shared";
 import { startTransition, useEffect, useRef, useState } from "react";
 import { AppSidebar, type AppView } from "../components/AppSidebar";
 import { captureElementAsPng } from "../dev/visual-capture";
@@ -24,6 +24,7 @@ export function App() {
   const savedSettings = useSettingsStore((state) => state.saved);
   const roomSnapshot = useRoomStore((state) => state.snapshot);
   const roomConnectionStatus = useRoomStore((state) => state.connectionStatus);
+  const connectionPlayerId = useRoomStore((state) => state.connectionPlayerId);
   const dialog = useRoomStore((state) => state.errorDialog);
   const sourceUnresolvedDialog = useSourceStore((state) => state.activeUnresolvedDialog);
   const [activeView, setActiveView] = useState<AppView>("lobby");
@@ -33,6 +34,12 @@ export function App() {
   );
   const roomEntryReady = isRoomEntryReady(savedSettings);
   const shouldShowSetupDialog = activeView === "lobby" && roomSnapshot === null && !roomEntryReady;
+  const shouldSendHostHeartbeat =
+    roomConnectionStatus === "CONNECTED" &&
+    roomSnapshot !== null &&
+    connectionPlayerId !== null &&
+    roomSnapshot.host_player_id === connectionPlayerId &&
+    (roomSnapshot.room_state === "PICKING" || roomSnapshot.room_state === "PLAYING");
 
   const mockScenarioRequested = runtimeConfig.mockScenarioId !== null;
 
@@ -70,6 +77,21 @@ export function App() {
       window.clearInterval(intervalId);
     };
   }, [activeView, savedSettings.apiBaseUrl]);
+
+  useEffect(() => {
+    if (!shouldSendHostHeartbeat || mockScenarioRequested) {
+      return;
+    }
+
+    roomStore.sendHeartbeatPing();
+    const intervalId = window.setInterval(() => {
+      roomStore.sendHeartbeatPing();
+    }, PING_INTERVAL_SECONDS * 1_000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [mockScenarioRequested, shouldSendHostHeartbeat]);
 
   useEffect(() => {
     if (mockScenarioRequested) {
