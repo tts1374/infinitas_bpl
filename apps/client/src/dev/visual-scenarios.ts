@@ -242,6 +242,9 @@ function createExpectedKey(chart: ChartSearchEntry): ExpectedKey {
     play_style: chart.play_style,
     difficulty: chart.difficulty,
     title_search_key: chart.title_search_key,
+    ...(typeof chart.chart_id === "number" && Number.isInteger(chart.chart_id) && chart.chart_id > 0
+      ? { chart_id: chart.chart_id }
+      : {}),
   };
 }
 
@@ -1068,7 +1071,13 @@ export function findVisualScenarioChart(id: string, expectedKey: ExpectedKey | n
       (chart) =>
         chart.play_style === expectedKey.play_style &&
         chart.difficulty === expectedKey.difficulty &&
-        chart.title_search_key === expectedKey.title_search_key,
+        chart.title_search_key === expectedKey.title_search_key &&
+        (
+          typeof expectedKey.chart_id !== "number" ||
+          !Number.isInteger(expectedKey.chart_id) ||
+          expectedKey.chart_id <= 0 ||
+          chart.chart_id === expectedKey.chart_id
+        ),
     ) ?? null
   );
 }

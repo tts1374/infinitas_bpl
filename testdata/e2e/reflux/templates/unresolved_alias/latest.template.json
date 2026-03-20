@@ -1,0 +1,13 @@
+{
+  "timestamp": "YYYYMMDD-HHMMSS",
+  "title": "UNRESOLVED_ALIAS_TITLE",
+  "title2": "UNRESOLVED_ALIAS_TITLE",
+  "diff": "{DIFF}",
+  "exscore": "2300",
+  "bad": "8",
+  "poor": "11",
+  "assist": "OFF",
+  "lamp": "AC",
+  "playtype": "{PLAY_STYLE}"
+}
+

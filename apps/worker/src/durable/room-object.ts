@@ -163,6 +163,9 @@ function summarizeExpectedKey(expectedKey: ExpectedKey): JsonObject {
     play_style: expectedKey.play_style,
     difficulty: expectedKey.difficulty,
     title_search_key: expectedKey.title_search_key,
+    ...(typeof expectedKey.chart_id === "number" && Number.isInteger(expectedKey.chart_id) && expectedKey.chart_id > 0
+      ? { chart_id: expectedKey.chart_id }
+      : {}),
   };
 }
 
@@ -527,6 +530,13 @@ function parseExpectedKey(value: unknown): ExpectedKey | null {
   const playStyle = asEnumValue(value.play_style, PLAY_STYLES);
   const difficulty = asOptionalString(value.difficulty)?.trim() ?? "";
   const titleSearchKey = asOptionalString(value.title_search_key)?.trim() ?? "";
+  const chartIdRaw = value.chart_id;
+  const chartId =
+    typeof chartIdRaw === "number" && Number.isInteger(chartIdRaw) && chartIdRaw > 0
+      ? chartIdRaw
+      : typeof chartIdRaw === "string" && /^\d+$/.test(chartIdRaw)
+        ? Number.parseInt(chartIdRaw, 10)
+        : null;
 
   if (playStyle === undefined || difficulty.length === 0 || titleSearchKey.length === 0) {
     return null;
@@ -536,6 +546,7 @@ function parseExpectedKey(value: unknown): ExpectedKey | null {
     play_style: playStyle,
     difficulty,
     title_search_key: titleSearchKey,
+    ...(chartId === null ? {} : { chart_id: chartId }),
   };
 }
 
@@ -1358,6 +1369,20 @@ export class RoomDurableObject {
           validation: "invalid_join_payload",
         },
       }));
+      return;
+    }
+
+    if (payload.source === "inf_daken_counter") {
+      this.sendJoinRejected(
+        session.socket,
+        "SOURCE_DEPRECATED",
+        this.buildMessageLogInput(message, {
+          source: payload.source,
+          detail: {
+            validation: "source_deprecated",
+          },
+        }),
+      );
       return;
     }
 

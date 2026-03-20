@@ -1,0 +1,16 @@
+{
+  "musics": {
+    "{TITLE}": {
+      "{PLAY_STYLE}": {
+        "{DIFFICULTY}": {
+          "latest": {
+            "timestamp": "YYYYMMDD-HHMMSS",
+            "score": 2500,
+            "misscount": 10
+          }
+        }
+      }
+    }
+  }
+}
+

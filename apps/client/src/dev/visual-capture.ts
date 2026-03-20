@@ -17,7 +17,7 @@ function copyComputedStyles(source: Element, target: Element): void {
   });
 }
 
-async function renderElementToBlob(element: HTMLElement): Promise<Blob> {
+export async function renderElementAsPngBlob(element: HTMLElement): Promise<Blob> {
   const rect = element.getBoundingClientRect();
   const clone = element.cloneNode(true);
   if (!(clone instanceof HTMLElement)) {
@@ -72,7 +72,7 @@ async function renderElementToBlob(element: HTMLElement): Promise<Blob> {
 }
 
 export async function captureElementAsPng(element: HTMLElement, fileName: string): Promise<void> {
-  const blob = await renderElementToBlob(element);
+  const blob = await renderElementAsPngBlob(element);
   const blobUrl = URL.createObjectURL(blob);
 
   try {

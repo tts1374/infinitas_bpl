@@ -49,6 +49,7 @@ export interface NotebookForcedRegistrationPayload {
     difficulty: string;
     title: string;
     titleSearchKey: string;
+    chartId?: number | null;
     score: number;
     misscount: number;
     filePath: string;
@@ -119,7 +120,27 @@ function rememberNotebookTimestamp(context: ActiveRoundContext, rawTimestamp: st
 function observationMatchesExpected(
   observation: ParsedSourceObservationPayload,
   expectedKey: ExpectedKey,
+  source: ParsedSourceChangePayload["source"],
 ): boolean {
+  const expectedChartId =
+    typeof expectedKey.chart_id === "number" && Number.isInteger(expectedKey.chart_id) && expectedKey.chart_id > 0
+      ? expectedKey.chart_id
+      : null;
+  const observedChartId =
+    typeof observation.chartId === "number" && Number.isInteger(observation.chartId) && observation.chartId > 0
+      ? observation.chartId
+      : null;
+
+  if (expectedChartId !== null) {
+    if (observedChartId !== null && observedChartId !== expectedChartId) {
+      return false;
+    }
+
+    if (source === "daken_counter_v3" && observedChartId === null) {
+      return false;
+    }
+  }
+
   const observedPlayStyle = observation.playStyle ?? expectedKey.play_style;
   return (
     observedPlayStyle === expectedKey.play_style &&
@@ -142,10 +163,25 @@ function getExpectedRoundTitle(context: ActiveRoundContext): string {
 function buildMismatchReason(
   expectedKey: ExpectedKey,
   observation: ParsedSourceObservationPayload,
+  source: ParsedSourceChangePayload["source"],
 ): string | null {
   const observedPlayStyle = observation.playStyle ?? expectedKey.play_style;
   const observedTitleSearchKey = observation.titleSearchKey.trim();
+  const expectedChartId =
+    typeof expectedKey.chart_id === "number" && Number.isInteger(expectedKey.chart_id) && expectedKey.chart_id > 0
+      ? expectedKey.chart_id
+      : null;
+  const observedChartId =
+    typeof observation.chartId === "number" && Number.isInteger(observation.chartId) && observation.chartId > 0
+      ? observation.chartId
+      : null;
   const mismatchedItems: string[] = [];
+  if (source === "daken_counter_v3" && expectedChartId !== null && observedChartId === null) {
+    mismatchedItems.push("chart_id");
+  }
+  if (expectedChartId !== null && observedChartId !== null && observedChartId !== expectedChartId) {
+    mismatchedItems.push("chart_id");
+  }
   if (observedTitleSearchKey !== expectedKey.title_search_key) {
     mismatchedItems.push("曲名");
   }
@@ -169,7 +205,7 @@ function buildNotebookUnresolvedAliasDialogRequest(
 
   const candidate = parsedChange.observations[0]!;
   const expectedKey = context.currentRound.expected_key;
-  const mismatchReason = buildMismatchReason(expectedKey, candidate);
+  const mismatchReason = buildMismatchReason(expectedKey, candidate, parsedChange.source);
   if (mismatchReason === null) {
     return null;
   }
@@ -212,6 +248,7 @@ function buildNotebookUnresolvedAliasDialogRequest(
         difficulty: candidate.difficulty,
         title: candidate.title,
         titleSearchKey: candidate.titleSearchKey,
+        ...(candidate.chartId === undefined ? {} : { chartId: candidate.chartId }),
         score: candidate.score,
         misscount: candidate.misscount,
         filePath: parsedChange.filePath,
@@ -298,6 +335,10 @@ function buildDebugObservation(
     difficulty: expectedKey.difficulty,
     title: template.source_meta?.title ?? expectedKey.title_search_key,
     titleSearchKey: expectedKey.title_search_key,
+    chartId:
+      typeof expectedKey.chart_id === "number" && Number.isInteger(expectedKey.chart_id) && expectedKey.chart_id > 0
+        ? expectedKey.chart_id
+        : null,
     score,
     misscount,
   };
@@ -361,7 +402,7 @@ export function submitParsedSourceChange(
   }
 
   const matchedObservation = parsedChange.observations.find((observation) =>
-    observationMatchesExpected(observation, context.currentRound.expected_key),
+    observationMatchesExpected(observation, context.currentRound.expected_key, parsedChange.source),
   );
   if (!matchedObservation) {
     const unresolvedAliasDialog = buildNotebookUnresolvedAliasDialogRequest(
@@ -412,6 +453,11 @@ export function submitParsedSourceChange(
       play_style: observedPlayStyle,
       difficulty: matchedObservation.difficulty,
       title_search_key: matchedObservation.titleSearchKey,
+      ...(typeof matchedObservation.chartId === "number" &&
+      Number.isInteger(matchedObservation.chartId) &&
+      matchedObservation.chartId > 0
+        ? { chart_id: matchedObservation.chartId }
+        : {}),
     },
     metric_value: metricValue,
     source_meta: {
@@ -420,6 +466,11 @@ export function submitParsedSourceChange(
       difficulty: matchedObservation.difficulty,
       title: matchedObservation.title,
       title_search_key: matchedObservation.titleSearchKey,
+      ...(typeof matchedObservation.chartId === "number" &&
+      Number.isInteger(matchedObservation.chartId) &&
+      matchedObservation.chartId > 0
+        ? { chart_id: matchedObservation.chartId }
+        : {}),
       score: matchedObservation.score,
       misscount: matchedObservation.misscount,
       file_path: parsedChange.filePath,
@@ -449,6 +500,18 @@ export function submitParsedSourceChange(
 }
 
 function expectedKeyMatches(left: ExpectedKey, right: ExpectedKey): boolean {
+  const leftChartId =
+    typeof left.chart_id === "number" && Number.isInteger(left.chart_id) && left.chart_id > 0
+      ? left.chart_id
+      : null;
+  const rightChartId =
+    typeof right.chart_id === "number" && Number.isInteger(right.chart_id) && right.chart_id > 0
+      ? right.chart_id
+      : null;
+  if (leftChartId !== null && rightChartId !== null && leftChartId !== rightChartId) {
+    return false;
+  }
+
   return (
     left.play_style === right.play_style &&
     left.difficulty === right.difficulty &&
@@ -514,6 +577,11 @@ export function submitNotebookForcedRegistration(
       difficulty: payload.sourceMeta.difficulty,
       title: payload.sourceMeta.title,
       title_search_key: payload.sourceMeta.titleSearchKey,
+      ...(typeof payload.sourceMeta.chartId === "number" &&
+      Number.isInteger(payload.sourceMeta.chartId) &&
+      payload.sourceMeta.chartId > 0
+        ? { chart_id: payload.sourceMeta.chartId }
+        : {}),
       score: payload.sourceMeta.score,
       misscount: payload.sourceMeta.misscount,
       file_path: payload.sourceMeta.filePath,

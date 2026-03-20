@@ -1,0 +1,22 @@
+{
+  "type": "today_updates",
+  "data": {
+    "items": [
+      {
+        "battle": 0,
+        "title": "{TITLE}",
+        "difficulty": "{DIFF}",
+        "score": 2500,
+        "bp": 10,
+        "pre_score": 2440,
+        "pre_bp": 18,
+        "lamp": "EXH-CLEAR",
+        "pre_lamp": "H-CLEAR",
+        "opt": "RANDOM",
+        "playspeed": "2.50",
+        "notes": 2000
+      }
+    ]
+  }
+}
+

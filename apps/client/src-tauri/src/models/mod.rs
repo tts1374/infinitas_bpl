@@ -1,6 +1,10 @@
+mod e2e_file;
 mod local_result;
 mod source_watcher;
 
+pub use e2e_file::{
+    WriteE2eBinaryFileRequest, WriteE2eFileResponse, WriteE2eTextFileRequest,
+};
 pub use local_result::{SaveLocalResultRequest, SaveLocalResultResponse};
 pub use source_watcher::{
     now_ms, ParsedSourceChange, ParsedSourceObservation, ParsedSourceUnresolvedCase,

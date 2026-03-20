@@ -65,6 +65,7 @@ type DisplayExpectedKey = {
   play_style: string;
   difficulty: string;
   title_search_key: string;
+  chart_id?: number | null;
 };
 
 type ParsedResultPlayer = {
@@ -232,6 +233,10 @@ function getExpectedKeyCacheKey(expectedKey: DisplayExpectedKey | null | undefin
     return null;
   }
 
+  if (typeof expectedKey.chart_id === "number" && Number.isInteger(expectedKey.chart_id) && expectedKey.chart_id > 0) {
+    return `chart_id::${expectedKey.chart_id}`;
+  }
+
   return `${expectedKey.play_style}:${expectedKey.difficulty}:${expectedKey.title_search_key}`;
 }
 
@@ -240,7 +245,46 @@ function parsePickChartKey(pickChartKey: string | null | undefined): CurrentRoun
     return null;
   }
 
-  const [playStyle, difficulty, ...titleParts] = pickChartKey.split("::");
+  const trimmed = pickChartKey.trim();
+  if (trimmed.length === 0) {
+    return null;
+  }
+
+  if (trimmed.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+      const parsedChartId =
+        typeof parsed.chart_id === "number" && Number.isInteger(parsed.chart_id) && parsed.chart_id > 0
+          ? parsed.chart_id
+          : typeof parsed.chart_id === "string" && /^\d+$/.test(parsed.chart_id)
+            ? Number.parseInt(parsed.chart_id, 10)
+            : null;
+      const parsedPlayStyle =
+        parsed.play_style === "SP" || parsed.play_style === "DP" ? parsed.play_style : null;
+      const parsedDifficulty =
+        typeof parsed.difficulty === "string" &&
+        CHART_DIFFICULTIES.includes(parsed.difficulty as (typeof CHART_DIFFICULTIES)[number])
+          ? (parsed.difficulty as (typeof CHART_DIFFICULTIES)[number])
+          : null;
+      const parsedTitleSearchKey =
+        typeof parsed.title_search_key === "string" ? parsed.title_search_key.trim() : "";
+      if (parsedPlayStyle !== null && parsedDifficulty !== null && parsedTitleSearchKey.length > 0) {
+        return {
+          play_style: parsedPlayStyle,
+          difficulty: parsedDifficulty,
+          title_search_key: parsedTitleSearchKey,
+          ...(parsedChartId === null ? {} : { chart_id: parsedChartId }),
+        };
+      }
+      if (typeof parsed.chart_key === "string") {
+        return parsePickChartKey(parsed.chart_key);
+      }
+    } catch {
+      return null;
+    }
+  }
+
+  const [playStyle, difficulty, ...titleParts] = trimmed.split("::");
   const titleSearchKey = titleParts.join("::").trim();
   if (
     (playStyle !== "SP" && playStyle !== "DP") ||
@@ -467,6 +511,11 @@ function parseResultRounds(resultReady: ResultReadyPayload | null): ParsedResult
               play_style: asString(expectedKeyRecord.play_style) ?? "",
               difficulty: asString(expectedKeyRecord.difficulty) ?? "",
               title_search_key: asString(expectedKeyRecord.title_search_key) ?? "",
+              ...(typeof expectedKeyRecord.chart_id === "number" &&
+              Number.isInteger(expectedKeyRecord.chart_id) &&
+              expectedKeyRecord.chart_id > 0
+                ? { chart_id: expectedKeyRecord.chart_id }
+                : {}),
             },
       winnerPlayerIds: asStringArray(record.winner_player_ids),
       results,
@@ -839,7 +888,13 @@ export function RoomPage() {
                   (chart) =>
                     chart.play_style === expectedKey.play_style &&
                     chart.difficulty === expectedKey.difficulty &&
-                    chart.title_search_key === expectedKey.title_search_key,
+                    chart.title_search_key === expectedKey.title_search_key &&
+                    (
+                      typeof expectedKey.chart_id !== "number" ||
+                      !Number.isInteger(expectedKey.chart_id) ||
+                      expectedKey.chart_id <= 0 ||
+                      chart.chart_id === expectedKey.chart_id
+                    ),
                 ) ?? null;
 
           return [cacheKey, resolvedChart] as const;

@@ -408,6 +408,10 @@ function canNewPlayerJoin(roomState: RoomState): roomState is "LOBBY" {
 }
 
 function expectedKeyId(expectedKey: ExpectedKey): string {
+  if (typeof expectedKey.chart_id === "number" && Number.isInteger(expectedKey.chart_id) && expectedKey.chart_id > 0) {
+    return `chart_id::${expectedKey.chart_id}`;
+  }
+
   return `${expectedKey.play_style}::${expectedKey.difficulty}::${expectedKey.title_search_key}`;
 }
 
@@ -416,6 +420,9 @@ function cloneExpectedKey(expectedKey: ExpectedKey): ExpectedKey {
     play_style: expectedKey.play_style,
     difficulty: expectedKey.difficulty,
     title_search_key: expectedKey.title_search_key,
+    ...(typeof expectedKey.chart_id === "number" && Number.isInteger(expectedKey.chart_id) && expectedKey.chart_id > 0
+      ? { chart_id: expectedKey.chart_id }
+      : {}),
   };
 }
 
@@ -1497,7 +1504,22 @@ export class RoomLobbyState {
   }
 
   private isSameExpectedKey(left: ExpectedKey, right: ExpectedKey): boolean {
-    return expectedKeyId(left) === expectedKeyId(right);
+    if (
+      typeof left.chart_id === "number" &&
+      Number.isInteger(left.chart_id) &&
+      left.chart_id > 0 &&
+      typeof right.chart_id === "number" &&
+      Number.isInteger(right.chart_id) &&
+      right.chart_id > 0
+    ) {
+      return left.chart_id === right.chart_id;
+    }
+
+    return (
+      left.play_style === right.play_style &&
+      left.difficulty === right.difficulty &&
+      left.title_search_key === right.title_search_key
+    );
   }
 
   private createRoundConfirmation(input: {

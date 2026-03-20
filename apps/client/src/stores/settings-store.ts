@@ -380,6 +380,10 @@ export function isRoomEntryReady(
     return false;
   }
 
+  if (settings.source === "inf_daken_counter") {
+    return false;
+  }
+
   if (settings.source === "daken_counter_v3") {
     return isValidPortNumber(settings.dakenCounterV3Port);
   }

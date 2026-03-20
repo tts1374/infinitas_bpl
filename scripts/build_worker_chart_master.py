@@ -5,7 +5,6 @@ import os
 import sqlite3
 import tempfile
 import urllib.request
-from collections import Counter
 from pathlib import Path
 
 GITHUB_API_BASE = "https://api.github.com"
@@ -40,6 +39,7 @@ def build_payload(sqlite_path: Path, release_tag: str, manifest: dict) -> dict:
 
     charts = [
         {
+            "chart_id": row["chart_id"],
             "play_style": row["play_style"],
             "difficulty": row["difficulty"],
             "level": row["level"],
@@ -54,6 +54,7 @@ def build_payload(sqlite_path: Path, release_tag: str, manifest: dict) -> dict:
         for row in cursor.execute(
             """
             SELECT
+              c.chart_id,
               c.play_style,
               c.difficulty,
               c.level,
@@ -69,18 +70,9 @@ def build_payload(sqlite_path: Path, release_tag: str, manifest: dict) -> dict:
             WHERE c.is_active = 1
               AND c.is_inf_active = 1
               AND m.is_inf_active = 1
-            ORDER BY m.title_search_key, c.play_style, c.difficulty
+            ORDER BY m.title_search_key, c.play_style, c.difficulty, c.chart_id
             """
         )
-    ]
-
-    chart_key_counts = Counter(
-        f"{chart['play_style']}::{chart['difficulty']}::{chart['title_search_key']}" for chart in charts
-    )
-    unique_charts = [
-        chart
-        for chart in charts
-        if chart_key_counts[f"{chart['play_style']}::{chart['difficulty']}::{chart['title_search_key']}"] == 1
     ]
 
     aliases = {
@@ -136,10 +128,10 @@ def build_payload(sqlite_path: Path, release_tag: str, manifest: dict) -> dict:
             "generated_at": manifest["generated_at"],
             "sha256": manifest["sha256"],
             "byte_size": manifest["byte_size"],
-            "retained_chart_count": len(unique_charts),
-            "excluded_ambiguous_chart_count": len(charts) - len(unique_charts),
+            "retained_chart_count": len(charts),
+            "excluded_ambiguous_chart_count": 0,
         },
-        "charts": unique_charts,
+        "charts": charts,
         "aliases": aliases,
         "song_packs": song_packs,
     }

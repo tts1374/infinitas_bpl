@@ -13,6 +13,9 @@
 - `runtime/`
   `scripts/start-local-two-clients.ps1` が生成する一時設定、ログ、インスタンス別 watcher ディレクトリ。
   Git 管理対象外です。
+- `e2e/`
+  datasource 別（`reflux` / `daken_counter_v3` / `inf-notebook` / `mixed`）の
+  ローカル E2E テンプレート・サンプル置き場。
 
 ## JSON 方針
 
@@ -29,6 +32,12 @@
 
 - `scripts/apply-notebook-unresolved-fixture.ps1`
 - `scripts/verify-notebook-unresolved-dialogs.ps1`
+
+ローカル E2E 全体は以下を利用します。
+
+- `scripts/start-local-two-clients.ps1`（E2E モード対応）
+- `scripts/start-daken-counter-v3-mock.ps1`
+- `scripts/run-local-e2e.ps1`
 
 ## 代表ケース
 

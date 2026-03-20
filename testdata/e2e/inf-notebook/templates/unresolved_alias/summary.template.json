@@ -1,0 +1,16 @@
+{
+  "musics": {
+    "UNRESOLVED_ALIAS_TITLE": {
+      "{PLAY_STYLE}": {
+        "{DIFFICULTY}": {
+          "latest": {
+            "timestamp": "YYYYMMDD-HHMMSS",
+            "score": 2300,
+            "misscount": 25
+          }
+        }
+      }
+    }
+  }
+}
+

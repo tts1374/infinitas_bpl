@@ -2,6 +2,7 @@ import type { ChartDifficulty, LevelFilter, PlayStyle } from "../enums";
 
 export interface ChartSearchEntry {
   chart_key: string;
+  chart_id?: number | null;
   play_style: PlayStyle;
   difficulty: ChartDifficulty;
   level: number;

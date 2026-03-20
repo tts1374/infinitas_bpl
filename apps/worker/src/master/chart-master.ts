@@ -26,6 +26,7 @@ interface WorkerChartMasterMetadata {
 }
 
 interface WorkerChartMasterChart {
+  chart_id: number;
   play_style: PlayStyle;
   difficulty: ChartDifficulty;
   level: number;
@@ -46,8 +47,9 @@ interface WorkerChartMasterSnapshot {
 }
 
 interface ParsedPickChartKey {
-  play_style: PlayStyle;
-  difficulty: ChartDifficulty;
+  chart_id: number | null;
+  play_style: PlayStyle | null;
+  difficulty: ChartDifficulty | null;
   title_search_key: string | null;
   title_lookup_key: string | null;
 }
@@ -94,6 +96,7 @@ export interface RoomChartMaster {
     levelFilter: LevelFilter,
     unlockFilter?: MatchSongUnlockFilter,
   ): ResolvedMasterChart | null;
+  resolveAliasExact(alias: string, playStyle: PlayStyle, difficulty: ChartDifficulty): string[];
   pickRandomUnusedChart(options: RandomUnusedChartOptions): ResolvedMasterChart | null;
   searchCharts(options: SearchChartsOptions): ChartSearchResponse;
   getSongPacks(): SongPack[];
@@ -117,8 +120,32 @@ function normalizeLookupKey(value: string): string {
     .toLowerCase();
 }
 
-function buildChartKey(playStyle: PlayStyle, difficulty: ChartDifficulty, titleSearchKey: string): string {
+function buildLegacyChartKey(playStyle: PlayStyle, difficulty: ChartDifficulty, titleSearchKey: string): string {
   return `${playStyle}::${difficulty}::${titleSearchKey}`;
+}
+
+function buildAmbiguousChartKey(chart: WorkerChartMasterChart): string {
+  return JSON.stringify({
+    chart_id: chart.chart_id,
+    play_style: chart.play_style,
+    difficulty: chart.difficulty,
+    title_search_key: chart.title_search_key,
+  });
+}
+
+function parseChartId(value: unknown): number | null {
+  if (typeof value === "number" && Number.isInteger(value) && value > 0) {
+    return value;
+  }
+
+  if (typeof value === "string" && /^\d+$/.test(value)) {
+    const parsed = Number.parseInt(value, 10);
+    if (Number.isInteger(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+
+  return null;
 }
 
 function parseCursorOffset(cursor: string | undefined): number {
@@ -228,12 +255,15 @@ function parsePickChartKeyJson(value: string, roomPlayStyle: PlayStyle): ParsedP
     return parsePickChartKey(record.chart_key, roomPlayStyle);
   }
 
+  const chartIdFromRecord = parseChartId(record.chart_id);
+
   if (typeof record.expected_key === "object" && record.expected_key !== null) {
     const expectedKey = record.expected_key as Record<string, unknown>;
     if (!isChartDifficulty(expectedKey.difficulty) || typeof expectedKey.title_search_key !== "string") {
       return null;
     }
 
+    const chartId = parseChartId(expectedKey.chart_id) ?? chartIdFromRecord;
     const playStyle = isPlayStyle(expectedKey.play_style) ? expectedKey.play_style : roomPlayStyle;
     const titleSearchKey = normalizeLookupKey(expectedKey.title_search_key);
     if (titleSearchKey.length === 0) {
@@ -241,10 +271,21 @@ function parsePickChartKeyJson(value: string, roomPlayStyle: PlayStyle): ParsedP
     }
 
     return {
+      chart_id: chartId,
       play_style: playStyle,
       difficulty: expectedKey.difficulty,
       title_search_key: titleSearchKey,
       title_lookup_key: null,
+    };
+  }
+
+  if (chartIdFromRecord !== null && !isChartDifficulty(record.difficulty)) {
+    return {
+      chart_id: chartIdFromRecord,
+      play_style: isPlayStyle(record.play_style) ? record.play_style : roomPlayStyle,
+      difficulty: null,
+      title_search_key: null,
+      title_lookup_key: typeof record.title === "string" ? normalizeLookupKey(record.title) : null,
     };
   }
 
@@ -262,6 +303,7 @@ function parsePickChartKeyJson(value: string, roomPlayStyle: PlayStyle): ParsedP
   }
 
   return {
+    chart_id: chartIdFromRecord,
     play_style: playStyle,
     difficulty: record.difficulty,
     title_search_key: titleSearchKey.length > 0 ? titleSearchKey : null,
@@ -294,6 +336,7 @@ function parsePickChartKeyDelimited(value: string, roomPlayStyle: PlayStyle): Pa
     }
 
     return {
+      chart_id: null,
       play_style: firstSegment,
       difficulty: secondSegment,
       title_search_key: titleSearchKey,
@@ -312,6 +355,7 @@ function parsePickChartKeyDelimited(value: string, roomPlayStyle: PlayStyle): Pa
   }
 
   return {
+    chart_id: null,
     play_style: roomPlayStyle,
     difficulty: firstSegment,
     title_search_key: titleSearchKey.length > 0 ? titleSearchKey : null,
@@ -325,21 +369,31 @@ function parsePickChartKey(value: string, roomPlayStyle: PlayStyle): ParsedPickC
     return null;
   }
 
+  const chartIdOnlyMatch = /^chart_id::(\d+)$/i.exec(trimmedValue);
+  if (chartIdOnlyMatch) {
+    return {
+      chart_id: Number.parseInt(chartIdOnlyMatch[1]!, 10),
+      play_style: roomPlayStyle,
+      difficulty: null,
+      title_search_key: null,
+      title_lookup_key: null,
+    };
+  }
+
   return (
     parsePickChartKeyJson(trimmedValue, roomPlayStyle) ??
     parsePickChartKeyDelimited(trimmedValue, roomPlayStyle)
   );
 }
 
-function createResolvedMasterChart(chart: WorkerChartMasterChart): ResolvedMasterChart {
-  const chartKey = buildChartKey(chart.play_style, chart.difficulty, chart.title_search_key);
-
+function createResolvedMasterChart(chart: WorkerChartMasterChart, chartKey: string): ResolvedMasterChart {
   return {
     chart_key: chartKey,
     expected_key: {
       play_style: chart.play_style,
       difficulty: chart.difficulty,
       title_search_key: chart.title_search_key,
+      chart_id: chart.chart_id,
     },
     display: {
       title: chart.title,
@@ -348,9 +402,10 @@ function createResolvedMasterChart(chart: WorkerChartMasterChart): ResolvedMaste
   };
 }
 
-function createChartSearchEntry(chart: WorkerChartMasterChart): ChartSearchEntry {
+function createChartSearchEntry(chart: WorkerChartMasterChart, chartKey: string): ChartSearchEntry {
   return {
-    chart_key: buildChartKey(chart.play_style, chart.difficulty, chart.title_search_key),
+    chart_key: chartKey,
+    chart_id: chart.chart_id,
     play_style: chart.play_style,
     difficulty: chart.difficulty,
     level: chart.level,
@@ -364,11 +419,15 @@ function createChartSearchEntry(chart: WorkerChartMasterChart): ChartSearchEntry
 
 export function createRoomChartMaster(snapshotInput: WorkerChartMasterSnapshot): RoomChartMaster {
   const snapshot = snapshotInput;
-  const chartKeyCounts = new Map<string, number>();
+  const legacyChartKeyCounts = new Map<string, number>();
   const chartByKey = new Map<string, ResolvedMasterChart>();
   const rawChartByKey = new Map<string, WorkerChartMasterChart>();
+  const chartById = new Map<number, ResolvedMasterChart>();
+  const rawChartById = new Map<number, WorkerChartMasterChart>();
+  const chartsByLegacyKey = new Map<string, ResolvedMasterChart[]>();
   const poolByFilter = new Map<string, ResolvedMasterChart[]>();
-  const aliasToTitleSearchKey = new Map<string, string>();
+  const aliasToTitleSearchKeys = new Map<string, Set<string>>();
+  const aliasToTitleSearchKeysExact = new Map<string, Set<string>>();
   const searchableCharts: Array<{ chart: ChartSearchEntry; keyword_index: string; source: WorkerChartMasterChart }> = [];
   const songPacks = [...(snapshot.song_packs ?? [])].sort((left, right) => {
     if (left.display_order !== right.display_order) {
@@ -378,22 +437,47 @@ export function createRoomChartMaster(snapshotInput: WorkerChartMasterSnapshot):
   });
 
   for (const [alias, titleSearchKey] of Object.entries(snapshot.aliases)) {
-    aliasToTitleSearchKey.set(normalizeLookupKey(alias), titleSearchKey);
+    const normalizedAlias = normalizeLookupKey(alias);
+    const existing = aliasToTitleSearchKeys.get(normalizedAlias);
+    if (existing) {
+      existing.add(titleSearchKey);
+    } else {
+      aliasToTitleSearchKeys.set(normalizedAlias, new Set([titleSearchKey]));
+    }
+
+    const exactAlias = alias.trim();
+    if (exactAlias.length > 0) {
+      const exactExisting = aliasToTitleSearchKeysExact.get(exactAlias);
+      if (exactExisting) {
+        exactExisting.add(titleSearchKey);
+      } else {
+        aliasToTitleSearchKeysExact.set(exactAlias, new Set([titleSearchKey]));
+      }
+    }
   }
 
   for (const chart of snapshot.charts) {
-    const chartKey = buildChartKey(chart.play_style, chart.difficulty, chart.title_search_key);
-    chartKeyCounts.set(chartKey, (chartKeyCounts.get(chartKey) ?? 0) + 1);
+    const legacyChartKey = buildLegacyChartKey(chart.play_style, chart.difficulty, chart.title_search_key);
+    legacyChartKeyCounts.set(legacyChartKey, (legacyChartKeyCounts.get(legacyChartKey) ?? 0) + 1);
   }
 
   for (const chart of snapshot.charts) {
-    const resolvedChart = createResolvedMasterChart(chart);
-    if ((chartKeyCounts.get(resolvedChart.chart_key) ?? 0) > 1) {
-      continue;
+    const legacyChartKey = buildLegacyChartKey(chart.play_style, chart.difficulty, chart.title_search_key);
+    const isAmbiguous = (legacyChartKeyCounts.get(legacyChartKey) ?? 0) > 1;
+    const chartKey = isAmbiguous ? buildAmbiguousChartKey(chart) : legacyChartKey;
+    const resolvedChart = createResolvedMasterChart(chart, chartKey);
+    const exactTitle = chart.title.trim();
+    if (exactTitle.length > 0) {
+      const exactExisting = aliasToTitleSearchKeysExact.get(exactTitle);
+      if (exactExisting) {
+        exactExisting.add(chart.title_search_key);
+      } else {
+        aliasToTitleSearchKeysExact.set(exactTitle, new Set([chart.title_search_key]));
+      }
     }
 
     searchableCharts.push({
-      chart: createChartSearchEntry(chart),
+      chart: createChartSearchEntry(chart, chartKey),
       keyword_index: normalizeLookupKey(
         [chart.title, chart.title_qualifier, chart.artist, chart.genre].filter((value) => value.length > 0).join(" "),
       ),
@@ -401,6 +485,15 @@ export function createRoomChartMaster(snapshotInput: WorkerChartMasterSnapshot):
     });
     chartByKey.set(resolvedChart.chart_key, resolvedChart);
     rawChartByKey.set(resolvedChart.chart_key, chart);
+    chartById.set(chart.chart_id, resolvedChart);
+    rawChartById.set(chart.chart_id, chart);
+
+    const legacyBucket = chartsByLegacyKey.get(legacyChartKey);
+    if (legacyBucket) {
+      legacyBucket.push(resolvedChart);
+    } else {
+      chartsByLegacyKey.set(legacyChartKey, [resolvedChart]);
+    }
 
     for (const levelFilter of ["ANY", "LV8_10", "LV10", "LV11", "LV12"] as const) {
       if (!matchesLevelFilter(chart.level, levelFilter)) {
@@ -417,30 +510,62 @@ export function createRoomChartMaster(snapshotInput: WorkerChartMasterSnapshot):
     }
   }
 
+  const resolveUniqueAllowedChart = (
+    candidates: ResolvedMasterChart[],
+    levelFilter: LevelFilter,
+    unlockFilter: MatchSongUnlockFilter | undefined,
+  ): ResolvedMasterChart | null => {
+    const eligible = candidates.filter((candidate) => {
+      const sourceChart = rawChartByKey.get(candidate.chart_key);
+      return (
+        sourceChart !== undefined &&
+        typeof candidate.display.level === "number" &&
+        matchesLevelFilter(candidate.display.level, levelFilter) &&
+        canUseChartByUnlockFilter(sourceChart, unlockFilter)
+      );
+    });
+
+    return eligible.length === 1 ? (eligible[0] ?? null) : null;
+  };
+
   const resolveByLookup = (
     parsedPick: ParsedPickChartKey,
     levelFilter: LevelFilter,
     unlockFilter: MatchSongUnlockFilter | undefined,
   ): ResolvedMasterChart | null => {
-    if (parsedPick.play_style !== "SP" && parsedPick.play_style !== "DP") {
+    if (parsedPick.chart_id !== null) {
+      const chart = chartById.get(parsedPick.chart_id);
+      if (chart !== undefined) {
+        const sourceChart = rawChartById.get(parsedPick.chart_id);
+        if (
+          sourceChart !== undefined &&
+          typeof chart.display.level === "number" &&
+          matchesLevelFilter(chart.display.level, levelFilter) &&
+          canUseChartByUnlockFilter(sourceChart, unlockFilter)
+        ) {
+          return chart;
+        }
+      }
+    }
+
+    if (
+      (parsedPick.play_style !== "SP" && parsedPick.play_style !== "DP") ||
+      !isChartDifficulty(parsedPick.difficulty)
+    ) {
       return null;
     }
 
-    const directLookupKey =
-      parsedPick.title_search_key === null
-        ? null
-        : buildChartKey(parsedPick.play_style, parsedPick.difficulty, parsedPick.title_search_key);
-
-    const directChart = directLookupKey === null ? undefined : chartByKey.get(directLookupKey);
-    const directSource = directLookupKey === null ? undefined : rawChartByKey.get(directLookupKey);
-    if (
-      directChart !== undefined &&
-      directSource !== undefined &&
-      typeof directChart.display.level === "number" &&
-      matchesLevelFilter(directChart.display.level, levelFilter) &&
-      canUseChartByUnlockFilter(directSource, unlockFilter)
-    ) {
-      return directChart;
+    if (parsedPick.title_search_key !== null) {
+      const directLookupKey = buildLegacyChartKey(
+        parsedPick.play_style,
+        parsedPick.difficulty,
+        parsedPick.title_search_key,
+      );
+      const directCandidates = chartsByLegacyKey.get(directLookupKey) ?? [];
+      const directResolved = resolveUniqueAllowedChart(directCandidates, levelFilter, unlockFilter);
+      if (directResolved !== null) {
+        return directResolved;
+      }
     }
 
     const aliasCandidates = [parsedPick.title_search_key, parsedPick.title_lookup_key];
@@ -449,22 +574,22 @@ export function createRoomChartMaster(snapshotInput: WorkerChartMasterSnapshot):
         continue;
       }
 
-      const canonicalTitleSearchKey = aliasToTitleSearchKey.get(aliasCandidate);
-      if (!canonicalTitleSearchKey) {
+      const canonicalTitleSearchKeys = aliasToTitleSearchKeys.get(aliasCandidate);
+      if (!canonicalTitleSearchKeys) {
         continue;
       }
 
-      const chartKey = buildChartKey(parsedPick.play_style, parsedPick.difficulty, canonicalTitleSearchKey);
-      const chart = chartByKey.get(chartKey);
-      const sourceChart = rawChartByKey.get(chartKey);
-      if (
-        chart !== undefined &&
-        sourceChart !== undefined &&
-        typeof chart.display.level === "number" &&
-        matchesLevelFilter(chart.display.level, levelFilter) &&
-        canUseChartByUnlockFilter(sourceChart, unlockFilter)
-      ) {
-        return chart;
+      for (const canonicalTitleSearchKey of canonicalTitleSearchKeys) {
+        const chartKey = buildLegacyChartKey(
+          parsedPick.play_style,
+          parsedPick.difficulty,
+          canonicalTitleSearchKey,
+        );
+        const candidates = chartsByLegacyKey.get(chartKey) ?? [];
+        const resolved = resolveUniqueAllowedChart(candidates, levelFilter, unlockFilter);
+        if (resolved !== null) {
+          return resolved;
+        }
       }
     }
 
@@ -472,9 +597,35 @@ export function createRoomChartMaster(snapshotInput: WorkerChartMasterSnapshot):
   };
 
   return {
+    resolveAliasExact(alias, playStyle, difficulty) {
+      const exactAlias = alias.trim();
+      if (exactAlias.length === 0) {
+        return [];
+      }
+
+      const titleSearchKeys = aliasToTitleSearchKeysExact.get(exactAlias);
+      if (!titleSearchKeys) {
+        return [];
+      }
+
+      const resolved: string[] = [];
+      for (const titleSearchKey of titleSearchKeys) {
+        const legacyKey = buildLegacyChartKey(playStyle, difficulty, titleSearchKey);
+        if ((legacyChartKeyCounts.get(legacyKey) ?? 0) > 0) {
+          resolved.push(titleSearchKey);
+        }
+      }
+
+      return resolved;
+    },
+
     resolvePickChartKey(pickChartKey, playStyle, levelFilter, unlockFilter) {
       const parsedPick = parsePickChartKey(pickChartKey, playStyle);
-      if (parsedPick === null || parsedPick.play_style !== playStyle) {
+      if (parsedPick === null) {
+        return null;
+      }
+
+      if (parsedPick.play_style !== null && parsedPick.play_style !== playStyle) {
         return null;
       }
 

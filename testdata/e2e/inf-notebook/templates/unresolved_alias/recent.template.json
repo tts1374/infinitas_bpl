@@ -1,0 +1,12 @@
+{
+  "list": [
+    {
+      "timestamp": "YYYYMMDD-HHMMSS",
+      "difficulty": "{DIFFICULTY}",
+      "music": "UNRESOLVED_ALIAS_TITLE",
+      "score": 2300,
+      "misscount": 25
+    }
+  ]
+}
+

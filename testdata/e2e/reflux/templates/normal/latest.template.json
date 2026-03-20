@@ -1,0 +1,13 @@
+{
+  "timestamp": "YYYYMMDD-HHMMSS",
+  "title": "{TITLE}",
+  "title2": "{TITLE}",
+  "diff": "{DIFF}",
+  "exscore": "2500",
+  "bad": "4",
+  "poor": "6",
+  "assist": "OFF",
+  "lamp": "AC",
+  "playtype": "{PLAY_STYLE}"
+}
+

@@ -1,4 +1,12 @@
-import type { ChartSearchEntry, ChartSearchQuery, LobbyListResponse, RoomSettings, SongPack } from "@infinitas/shared";
+import type {
+  ChartDifficulty,
+  ChartSearchEntry,
+  ChartSearchQuery,
+  LobbyListResponse,
+  PlayStyle,
+  RoomSettings,
+  SongPack,
+} from "@infinitas/shared";
 
 export interface CreateRoomResponse {
   room_id: string;
@@ -16,6 +24,16 @@ export interface ChartSearchResponse {
 
 export interface SongPackListResponse {
   song_packs: SongPack[];
+}
+
+export interface ChartAliasResolveQuery {
+  alias: string;
+  play_style: PlayStyle;
+  difficulty: ChartDifficulty;
+}
+
+export interface ChartAliasResolveResponse {
+  title_search_keys: string[];
 }
 
 export type FeedbackCategory = "bug" | "feature" | "other";
@@ -185,6 +203,20 @@ export async function listRoomCharts(baseUrl: string, roomId: string, query: Cha
 export async function listSongPacks(baseUrl: string): Promise<SongPackListResponse> {
   const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
   return requestJson<SongPackListResponse>(`${normalizedBaseUrl}/api/song-packs`, { method: "GET" });
+}
+
+export async function resolveChartAlias(
+  baseUrl: string,
+  query: ChartAliasResolveQuery,
+): Promise<ChartAliasResolveResponse> {
+  const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
+  const searchParams = new URLSearchParams();
+  searchParams.set("alias", query.alias.trim());
+  searchParams.set("play_style", query.play_style);
+  searchParams.set("difficulty", query.difficulty);
+
+  const url = `${normalizedBaseUrl}/api/chart-aliases/resolve?${searchParams}`;
+  return requestJson<ChartAliasResolveResponse>(url, { method: "GET" });
 }
 
 export async function sendFeedback(baseUrl: string, payload: FeedbackRequest): Promise<FeedbackResponse> {

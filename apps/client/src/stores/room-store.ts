@@ -11,6 +11,7 @@ import type {
   SoundEffectKey,
   SourceType,
 } from "@infinitas/shared";
+import { logE2EEvent } from "../services/e2e-observability";
 import { RoomSocketClient, type SocketConnectionState } from "../services/ws-client";
 import { createExternalStore, useExternalStore } from "./create-store";
 
@@ -339,6 +340,12 @@ function joinRejectDialog(reason: string, hasSnapshot: boolean): {
   }
 
   switch (reason) {
+    case "SOURCE_DEPRECATED":
+      return {
+        title: "参加できません",
+        description: "旧打鍵カウンタ（inf_daken_counter）は非推奨のため使用できません。打鍵カウンタv3 / Reflux / リザルト手帳を選択してください。",
+        code: reason,
+      };
     case "ROOM_FULL":
       return {
         title: "参加できません",
@@ -530,7 +537,18 @@ function startSocketConnection(
       }
 
       if (state === "CONNECTED") {
+        const completedReconnectAttempt = reconnectAttempts;
         resetReconnectAttempts();
+        void logE2EEvent("websocket_connected", {
+          roomId: connection.roomId,
+          detail,
+        });
+        if (completedReconnectAttempt > 0) {
+          void logE2EEvent("reconnect_succeeded", {
+            roomId: connection.roomId,
+            attempt: completedReconnectAttempt,
+          });
+        }
       }
 
       internalStore.setState((currentState) => ({
@@ -621,6 +639,11 @@ function scheduleReconnect(): void {
 
   reconnectAttempts += 1;
   const attempt = reconnectAttempts;
+  void logE2EEvent("reconnect_started", {
+    roomId: reconnectContext?.connection.roomId ?? null,
+    attempt,
+    maxAttempts: RECONNECT_MAX_ATTEMPTS,
+  });
   appendEventLog(`Connection lost. Reconnecting (${attempt}/${RECONNECT_MAX_ATTEMPTS})...`);
   internalStore.setState((currentState) => ({
     ...currentState,
@@ -647,6 +670,9 @@ function handleServerMessage(client: RoomSocketClient, message: ServerMessage): 
   if (activeClient !== client) {
     return;
   }
+  void logE2EEvent("websocket_message_received", {
+    messageType: message.type,
+  });
 
   const eventMessage = formatEvent(message);
   if (eventMessage) {
@@ -659,6 +685,12 @@ function handleServerMessage(client: RoomSocketClient, message: ServerMessage): 
     case "STATE_SNAPSHOT": {
       const payload = message.payload as { room_state_snapshot: RoomStateSnapshot };
       const previousSnapshot = internalStore.getState().snapshot;
+      if (message.type === "ROOM_JOIN_ACCEPTED") {
+        void logE2EEvent("room_join_succeeded", {
+          roomId: payload.room_state_snapshot.room_id,
+          playerCount: payload.room_state_snapshot.players.length,
+        });
+      }
       const shouldResetRoundHistory =
         payload.room_state_snapshot.room_state === "LOBBY" &&
         payload.room_state_snapshot.current_round === null &&
@@ -686,6 +718,13 @@ function handleServerMessage(client: RoomSocketClient, message: ServerMessage): 
         connectionStatus: "CONNECTED",
         connectionDetail: `Connected to ${payload.room_state_snapshot.room_state}.`,
       }));
+      if (previousSnapshot?.room_state !== payload.room_state_snapshot.room_state) {
+        void logE2EEvent("state_changed", {
+          roomId: payload.room_state_snapshot.room_id,
+          previousState: previousSnapshot?.room_state ?? null,
+          nextState: payload.room_state_snapshot.room_state,
+        });
+      }
       return;
     }
     case "ROOM_NOTIFICATION": {
@@ -737,6 +776,9 @@ function handleServerMessage(client: RoomSocketClient, message: ServerMessage): 
         ...state,
         resultReady: payload,
       }));
+      void logE2EEvent("result_received", {
+        roomId: internalStore.getState().roomId,
+      });
       return;
     }
     case "ROOM_CLOSED": {
@@ -827,6 +869,15 @@ export const roomStore = {
     connection: { roomId: string; joinCode?: string | null },
     settings: RoomConnectionSettings,
   ): boolean {
+    if (settings.source === "inf_daken_counter") {
+      setErrorDialog(
+        "Source deprecated",
+        "旧打鍵カウンタ（inf_daken_counter）は非推奨のため入室できません。打鍵カウンタv3 / Reflux / リザルト手帳を選択してください。",
+        "SOURCE_DEPRECATED",
+      );
+      return false;
+    }
+
     const normalizedJoinCode = connection.joinCode?.trim() || null;
     reconnectContext = {
       connection: {
@@ -839,6 +890,11 @@ export const roomStore = {
       },
     };
     resetReconnectAttempts();
+    void logE2EEvent("room_join_requested", {
+      roomId: connection.roomId,
+      hasJoinCode: normalizedJoinCode !== null,
+      source: settings.source,
+    });
 
     return startSocketConnection(
       {
@@ -895,6 +951,13 @@ export const roomStore = {
     type: TType,
     payload: ClientMessagePayloadMap[TType],
   ): boolean {
+    if (type === "READY_SET") {
+      const readyPayload = payload as ClientMessagePayloadMap["READY_SET"];
+      void logE2EEvent("ready_set_sent", {
+        ready: readyPayload.ready,
+      });
+    }
+
     if (activeMockScenarioId !== null) {
       appendEventLog(`[mock] ${type}`);
       return true;

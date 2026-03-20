@@ -1,4 +1,4 @@
-import type { RoomStateSnapshot, SourceType } from "@infinitas/shared";
+import type { ChartDifficulty, RoomStateSnapshot, SourceType } from "@infinitas/shared";
 import {
   getSourceWatcherState,
   isTauriRuntime,
@@ -13,12 +13,15 @@ import {
   type SourceWatcherStatePayload,
   type SourceWatcherStatus,
 } from "../services/tauri-bridge";
+import { logE2EEvent } from "../services/e2e-observability";
 import {
   submitNotebookForcedRegistration,
   submitParsedSourceChange,
   type NotebookDialogChartInfo,
   type NotebookForcedRegistrationPayload,
 } from "../services/source-submission";
+import { resolveChartAlias } from "../services/worker-api-client";
+import { runtimeConfig } from "../runtime/runtime-config";
 import { roomStore } from "./room-store";
 import { createExternalStore, useExternalStore } from "./create-store";
 import { isValidPortNumber, type ClientSettings, type SourcePaths } from "./settings-store";
@@ -104,7 +107,8 @@ let attachedListener: (() => void) | null = null;
 let attachPromise: Promise<void> | null = null;
 let appliedConfigKey: string | null = null;
 let unresolvedDialogSequence = 0;
-let latestSettings: Pick<ClientSettings, "source" | "sourcePaths" | "dakenCounterV3Port"> | null = null;
+let latestSettings: Pick<ClientSettings, "apiBaseUrl" | "source" | "sourcePaths" | "dakenCounterV3Port"> | null =
+  null;
 let dakenCounterV3Socket: WebSocket | null = null;
 let dakenCounterV3SocketPort: number | null = null;
 let dakenCounterV3ReconnectTimer: number | null = null;
@@ -112,8 +116,10 @@ let dakenCounterV3MonitoringEnabled = false;
 let dakenCounterV3LastRoomState: RoomStateSnapshot["room_state"] | null = null;
 let dakenCounterV3HasSnapshotBaseline = false;
 let dakenCounterV3SnapshotFingerprintCounts = new Map<string, number>();
+let dakenCounterV3SocketMessageQueue: Promise<void> = Promise.resolve();
 const dakenCounterV3ProcessedFingerprints = new Set<string>();
 const dakenCounterV3ProcessedFingerprintQueue: string[] = [];
+const dakenCounterV3AliasResolveCache = new Map<string, string[]>();
 
 const DAKEN_COUNTER_V3_SOURCE: SourceType = "daken_counter_v3";
 const DAKEN_COUNTER_V3_ORIGIN_LABEL = "打鍵カウンタv3";
@@ -122,6 +128,7 @@ const DAKEN_COUNTER_V3_WARNING_MESSAGE =
   "打鍵カウンタv3 に接続できませんでした。ポート設定と起動状態を確認してください。";
 const DAKEN_COUNTER_V3_HISTORY_LIMIT = 512;
 const DAKEN_COUNTER_V3_RECONNECT_DELAY_MS = 2000;
+const DAKEN_COUNTER_V3_E2E_SUBPROTOCOL = "infinitas-arena-daken-v3";
 
 function formatSourceOriginLabel(source: SourceType): string {
   if (source === "reflux") {
@@ -146,8 +153,11 @@ const initialState: SourceStoreState = {
 
 const internalStore = createExternalStore<SourceStoreState>(initialState);
 
-function createConfigKey(settings: Pick<ClientSettings, "source" | "sourcePaths" | "dakenCounterV3Port">): string {
+function createConfigKey(
+  settings: Pick<ClientSettings, "apiBaseUrl" | "source" | "sourcePaths" | "dakenCounterV3Port">,
+): string {
   return JSON.stringify({
+    apiBaseUrl: settings.apiBaseUrl,
     source: settings.source,
     sourcePaths: settings.sourcePaths,
     dakenCounterV3Port: settings.dakenCounterV3Port,
@@ -217,16 +227,69 @@ function normalizeTitle(value: unknown): string | null {
     return null;
   }
 
-  const normalized = rawTitle
-    .normalize("NFKC")
-    .replace(/\u3000/g, " ")
-    .split(/\s+/)
-    .filter((token) => token.length > 0)
-    .join(" ")
-    .replace(/ \(/g, "(")
-    .toLowerCase();
+  return rawTitle;
+}
 
-  return normalized.length > 0 ? normalized : null;
+const DAKEN_COUNTER_V3_ALIAS_DIFFICULTIES: ChartDifficulty[] = [
+  "BEGINNER",
+  "NORMAL",
+  "HYPER",
+  "ANOTHER",
+  "LEGGENDARIA",
+];
+
+function isChartDifficulty(value: string): value is ChartDifficulty {
+  return DAKEN_COUNTER_V3_ALIAS_DIFFICULTIES.includes(value as ChartDifficulty);
+}
+
+function buildDakenCounterV3AliasResolveCacheKey(alias: string, playStyle: "SP" | "DP", difficulty: ChartDifficulty): string {
+  return `${playStyle}::${difficulty}::${alias}`;
+}
+
+function clearDakenCounterV3AliasResolveCache(): void {
+  dakenCounterV3AliasResolveCache.clear();
+}
+
+async function resolveDakenCounterV3AliasCandidates(
+  rawAlias: string,
+  playStyle: "SP" | "DP",
+  difficulty: string,
+): Promise<string[]> {
+  const alias = rawAlias.trim();
+  if (alias.length === 0 || !isChartDifficulty(difficulty)) {
+    return [];
+  }
+
+  const cacheKey = buildDakenCounterV3AliasResolveCacheKey(alias, playStyle, difficulty);
+  const cached = dakenCounterV3AliasResolveCache.get(cacheKey);
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  const apiBaseUrl = latestSettings?.apiBaseUrl?.trim() ?? "";
+  if (apiBaseUrl.length === 0) {
+    return [];
+  }
+
+  try {
+    const response = await resolveChartAlias(apiBaseUrl, {
+      alias,
+      play_style: playStyle,
+      difficulty,
+    });
+    const normalized = Array.from(
+      new Set(
+        response.title_search_keys
+          .map((titleSearchKey) => titleSearchKey.trim())
+          .filter((titleSearchKey) => titleSearchKey.length > 0),
+      ),
+    );
+    dakenCounterV3AliasResolveCache.set(cacheKey, normalized);
+    return normalized;
+  } catch (error) {
+    console.warn(`${DAKEN_COUNTER_V3_ORIGIN_LABEL}: runtime alias resolve failed.`, error);
+    return [];
+  }
 }
 
 function parseNonNegativeInteger(value: unknown): number | null {
@@ -309,6 +372,8 @@ function resetDakenCounterV3SnapshotTracking(): void {
   dakenCounterV3LastRoomState = null;
   dakenCounterV3HasSnapshotBaseline = false;
   dakenCounterV3SnapshotFingerprintCounts = new Map<string, number>();
+  dakenCounterV3SocketMessageQueue = Promise.resolve();
+  clearDakenCounterV3AliasResolveCache();
   dakenCounterV3ProcessedFingerprints.clear();
   dakenCounterV3ProcessedFingerprintQueue.splice(0, dakenCounterV3ProcessedFingerprintQueue.length);
 }
@@ -317,6 +382,8 @@ function resetDakenCounterV3MatchTracking(): void {
   dakenCounterV3MonitoringEnabled = false;
   dakenCounterV3HasSnapshotBaseline = false;
   dakenCounterV3SnapshotFingerprintCounts = new Map<string, number>();
+  dakenCounterV3SocketMessageQueue = Promise.resolve();
+  clearDakenCounterV3AliasResolveCache();
   dakenCounterV3ProcessedFingerprints.clear();
   dakenCounterV3ProcessedFingerprintQueue.splice(0, dakenCounterV3ProcessedFingerprintQueue.length);
 }
@@ -330,6 +397,13 @@ function clearDakenCounterV3ReconnectTimer(): void {
 
 function buildDakenCounterV3Endpoint(port: number): string {
   return `ws://localhost:${port}`;
+}
+
+function createDakenCounterV3WebSocket(endpoint: string): WebSocket {
+  if (runtimeConfig.e2e.enabled) {
+    return new WebSocket(endpoint, DAKEN_COUNTER_V3_E2E_SUBPROTOCOL);
+  }
+  return new WebSocket(endpoint);
 }
 
 function currentDakenCounterV3Port(): number {
@@ -396,6 +470,8 @@ function parseDakenCounterV3Item(
     return null;
   }
 
+  const chartId = parseNonNegativeInteger(rawItem.chart_id);
+
   const rawBp = parseNonNegativeInteger(rawItem.bp);
   const rawPreScore = parseNonNegativeInteger(rawItem.pre_score);
   const rawPreBp = parseNonNegativeInteger(rawItem.pre_bp);
@@ -430,9 +506,11 @@ function parseDakenCounterV3Item(
       difficulty: parsedDifficulty.difficulty,
       title,
       titleSearchKey,
+      chartId,
       score,
       misscount: bp,
       sourceMetaExtras: {
+        chart_id: chartId,
         best_score: bestScore,
         best_bp: bestBp,
         pre_score: rawPreScore ?? score,
@@ -539,6 +617,98 @@ function diffDakenCounterV3SnapshotEntries(
   return deltaEntries;
 }
 
+function normalizeExactTitle(value: string): string {
+  return value.trim();
+}
+
+function getExpectedDisplayTitleForCurrentRound(snapshot: RoomStateSnapshot): string | null {
+  const currentRound = snapshot.current_round;
+  if (currentRound === null) {
+    return null;
+  }
+
+  const frozenRound = snapshot.frozen_rounds.find((round) => round.round_index === currentRound.round_index);
+  const displayTitle = frozenRound?.display.title.trim() ?? "";
+  if (displayTitle.length > 0) {
+    return displayTitle;
+  }
+
+  return null;
+}
+
+async function resolveDakenCounterV3ObservationAgainstCurrentRound(
+  observation: ParsedSourceObservationPayload,
+  snapshot: RoomStateSnapshot,
+): Promise<{
+  observation: ParsedSourceObservationPayload;
+  unresolvedCase: ParsedSourceUnresolvedCasePayload | null;
+}> {
+  const currentRound = snapshot.current_round;
+  if (currentRound === null) {
+    return { observation, unresolvedCase: null };
+  }
+
+  const expectedKey = currentRound.expected_key;
+  const observedPlayStyle = observation.playStyle ?? expectedKey.play_style;
+  const playStyleMatches = observedPlayStyle === expectedKey.play_style;
+  const difficultyMatches = observation.difficulty === expectedKey.difficulty;
+  const expectedDisplayTitle = getExpectedDisplayTitleForCurrentRound(snapshot);
+  const titleMatches =
+    expectedDisplayTitle !== null && normalizeExactTitle(observation.title) === normalizeExactTitle(expectedDisplayTitle);
+
+  const expectedChartId =
+    typeof expectedKey.chart_id === "number" && Number.isInteger(expectedKey.chart_id) && expectedKey.chart_id > 0
+      ? expectedKey.chart_id
+      : null;
+  const observedChartId =
+    typeof observation.chartId === "number" && Number.isInteger(observation.chartId) && observation.chartId > 0
+      ? observation.chartId
+      : null;
+  const chartIdMatches =
+    expectedChartId !== null && observedChartId !== null && observedChartId === expectedChartId;
+  const aliasMatches =
+    playStyleMatches && difficultyMatches && !chartIdMatches && !titleMatches
+      ? (await resolveDakenCounterV3AliasCandidates(
+          observation.title,
+          observedPlayStyle,
+          observation.difficulty,
+        )).includes(expectedKey.title_search_key)
+      : false;
+
+  if (playStyleMatches && difficultyMatches && (chartIdMatches || titleMatches || aliasMatches)) {
+    const mergedSourceMetaExtras = {
+      ...(observation.sourceMetaExtras ?? {}),
+      ...(expectedChartId === null ? {} : { chart_id: expectedChartId }),
+    };
+    return {
+      observation: {
+        ...observation,
+        playStyle: expectedKey.play_style,
+        difficulty: expectedKey.difficulty,
+        titleSearchKey: expectedKey.title_search_key,
+        chartId: expectedChartId,
+        sourceMetaExtras: mergedSourceMetaExtras,
+      },
+      unresolvedCase: null,
+    };
+  }
+
+  return {
+    observation,
+    unresolvedCase: {
+      kind: "unresolved_alias",
+      timestamp: observation.timestamp,
+      playStyle: observation.playStyle ?? expectedKey.play_style,
+      difficulty: observation.difficulty,
+      title: observation.title,
+      titleSearchKey: observation.titleSearchKey,
+      score: observation.score,
+      misscount: observation.misscount,
+      recentCandidateCount: null,
+    },
+  };
+}
+
 function isRetryableDakenCounterV3SubmitFailure(message: string): boolean {
   return (
     message === "A connected PLAYING room is required before injecting source data." ||
@@ -584,17 +754,32 @@ function scheduleDakenCounterV3Reconnect(snapshot: RoomStateSnapshot | null): vo
     return;
   }
 
+  void logE2EEvent("reconnect_started", {
+    source: DAKEN_COUNTER_V3_SOURCE,
+    delayMs: DAKEN_COUNTER_V3_RECONNECT_DELAY_MS,
+  });
   dakenCounterV3ReconnectTimer = window.setTimeout(() => {
     dakenCounterV3ReconnectTimer = null;
     connectDakenCounterV3Socket(roomStore.getState().snapshot);
   }, DAKEN_COUNTER_V3_RECONNECT_DELAY_MS);
 }
 
-function handleDakenCounterV3SocketMessage(rawMessage: string): void {
+async function handleDakenCounterV3SocketMessage(rawMessage: string): Promise<void> {
   const parsedSnapshot = parseDakenCounterV3Message(rawMessage);
   if (parsedSnapshot === null) {
     return;
   }
+  const endpoint = buildDakenCounterV3Endpoint(currentDakenCounterV3Port());
+  void logE2EEvent("file_detected", {
+    source: DAKEN_COUNTER_V3_SOURCE,
+    filePath: endpoint,
+    detail: "today_updates message received",
+  });
+  void logE2EEvent("file_parsed", {
+    source: DAKEN_COUNTER_V3_SOURCE,
+    observationCount: parsedSnapshot.entries.length,
+    unresolvedCount: 0,
+  });
 
   const previousCounts = dakenCounterV3SnapshotFingerprintCounts;
   const deltaEntries = dakenCounterV3HasSnapshotBaseline
@@ -630,30 +815,73 @@ function handleDakenCounterV3SocketMessage(rawMessage: string): void {
 
   let hasRetryableFailure = false;
   for (const entry of uniqueEntries) {
+    const resolvedEntry = await resolveDakenCounterV3ObservationAgainstCurrentRound(
+      entry.observation,
+      roomSnapshot,
+    );
     const parsedChange: ParsedSourceChangePayload = {
       source: DAKEN_COUNTER_V3_SOURCE,
       filePath: buildDakenCounterV3Endpoint(currentDakenCounterV3Port()),
       fileSizeBytes: 0,
-      observations: [entry.observation],
-      unresolvedCases: [],
+      observations: resolvedEntry.unresolvedCase === null ? [resolvedEntry.observation] : [],
+      unresolvedCases: resolvedEntry.unresolvedCase === null ? [] : [resolvedEntry.unresolvedCase],
     };
+
+    if (parsedChange.observations.length === 0 && (parsedChange.unresolvedCases?.length ?? 0) > 0) {
+      const unresolvedDialogs = buildUnresolvedDialogsFromParserOutput(parsedChange);
+      enqueueUnresolvedDialogs(unresolvedDialogs);
+      rememberProcessedFingerprint(entry.fingerprint);
+      roomStore.noteLocalEvent(
+        `Source auto-submit skipped: ${DAKEN_COUNTER_V3_ORIGIN_LABEL} requires unresolved_alias confirmation.`,
+      );
+      void logE2EEvent("normalize_failed", {
+        source: DAKEN_COUNTER_V3_SOURCE,
+        originLabel: DAKEN_COUNTER_V3_ORIGIN_LABEL,
+        message: "daken_counter_v3 observation requires unresolved_alias confirmation.",
+        hasPendingUnresolvedAlias: false,
+      });
+      continue;
+    }
 
     const outcome = submitParsedSourceChange(parsedChange, DAKEN_COUNTER_V3_ORIGIN_LABEL);
     if (outcome.ok) {
       rememberProcessedFingerprint(entry.fingerprint);
+      void logE2EEvent("normalize_succeeded", {
+        source: DAKEN_COUNTER_V3_SOURCE,
+        originLabel: DAKEN_COUNTER_V3_ORIGIN_LABEL,
+        unresolvedCount: parsedChange.unresolvedCases?.length ?? 0,
+      });
       continue;
     }
 
     if (outcome.pendingUnresolvedAlias !== undefined) {
+      void logE2EEvent("normalize_failed", {
+        source: DAKEN_COUNTER_V3_SOURCE,
+        originLabel: DAKEN_COUNTER_V3_ORIGIN_LABEL,
+        message: outcome.message,
+        hasPendingUnresolvedAlias: true,
+      });
       continue;
     }
 
     if (isRetryableDakenCounterV3SubmitFailure(outcome.message)) {
       hasRetryableFailure = true;
+      void logE2EEvent("normalize_failed", {
+        source: DAKEN_COUNTER_V3_SOURCE,
+        originLabel: DAKEN_COUNTER_V3_ORIGIN_LABEL,
+        message: outcome.message,
+        hasPendingUnresolvedAlias: false,
+      });
       continue;
     }
 
     roomStore.noteLocalEvent(`Source auto-submit skipped: ${outcome.message}`);
+    void logE2EEvent("normalize_failed", {
+      source: DAKEN_COUNTER_V3_SOURCE,
+      originLabel: DAKEN_COUNTER_V3_ORIGIN_LABEL,
+      message: outcome.message,
+      hasPendingUnresolvedAlias: false,
+    });
   }
 
   if (!hasRetryableFailure) {
@@ -689,7 +917,7 @@ function connectDakenCounterV3Socket(snapshot: RoomStateSnapshot | null): void {
 
   const endpoint = buildDakenCounterV3Endpoint(port);
   try {
-    const socket = new WebSocket(endpoint);
+    const socket = createDakenCounterV3WebSocket(endpoint);
     dakenCounterV3Socket = socket;
     dakenCounterV3SocketPort = port;
     updateDakenCounterV3WatcherState("IDLE", `${DAKEN_COUNTER_V3_ORIGIN_LABEL}: connecting...`, [endpoint]);
@@ -700,6 +928,18 @@ function connectDakenCounterV3Socket(snapshot: RoomStateSnapshot | null): void {
       }
       updateDakenCounterV3WatcherState("RUNNING", `${DAKEN_COUNTER_V3_ORIGIN_LABEL}: connected.`, [endpoint]);
       console.info(`${DAKEN_COUNTER_V3_ORIGIN_LABEL}: connected to ${endpoint}.`);
+      const latestSnapshot = roomStore.getState().snapshot;
+      if (latestSnapshot?.room_state === "PLAYING") {
+        dakenCounterV3MonitoringEnabled = true;
+        void logE2EEvent("reconnect_succeeded", {
+          source: DAKEN_COUNTER_V3_SOURCE,
+          roomState: latestSnapshot.room_state,
+        });
+      }
+      void logE2EEvent("watcher_started", {
+        source: DAKEN_COUNTER_V3_SOURCE,
+        watchedPaths: [endpoint],
+      });
     };
 
     socket.onmessage = (event) => {
@@ -712,7 +952,11 @@ function connectDakenCounterV3Socket(snapshot: RoomStateSnapshot | null): void {
         return;
       }
 
-      handleDakenCounterV3SocketMessage(event.data);
+      dakenCounterV3SocketMessageQueue = dakenCounterV3SocketMessageQueue
+        .then(() => handleDakenCounterV3SocketMessage(event.data))
+        .catch((error) => {
+          console.error(`${DAKEN_COUNTER_V3_ORIGIN_LABEL}: failed to process WebSocket payload.`, error);
+        });
     };
 
     socket.onerror = (event) => {
@@ -778,10 +1022,14 @@ function syncDakenCounterV3RoomLifecycle(snapshot: RoomStateSnapshot | null): vo
     return;
   }
 
-  if (currentState === "LOBBY" && previousState !== "LOBBY") {
-    // Clear per-match dedupe state so rematches can submit identical result tuples.
-    resetDakenCounterV3MatchTracking();
+  if (currentState === "LOBBY") {
+    if (previousState !== "LOBBY") {
+      // Clear per-match dedupe state so rematches can submit identical result tuples.
+      resetDakenCounterV3MatchTracking();
+    }
     connectDakenCounterV3Socket(snapshot);
+    dakenCounterV3MonitoringEnabled = false;
+    return;
   }
 
   if (currentState !== "PLAYING") {
@@ -941,6 +1189,17 @@ function enqueueUnresolvedDialogs(newDialogs: SourceUnresolvedDialog[]): void {
       unresolvedDialogQueue: remainingQueue,
     };
   });
+
+  const firstUnresolvedDialog = newDialogs.find(
+    (dialog) => dialog.kind === "unresolved_alias" || dialog.kind === "unresolved_alias_catalog",
+  );
+  if (firstUnresolvedDialog) {
+    void logE2EEvent("unresolved_alias_dialog_opened", {
+      source: firstUnresolvedDialog.source,
+      kind: firstUnresolvedDialog.kind,
+      originLabel: firstUnresolvedDialog.originLabel,
+    });
+  }
 }
 
 function advanceUnresolvedDialogQueue(): void {
@@ -980,8 +1239,24 @@ function handleWatcherEvent(payload: SourceWatcherEventPayload): void {
   handleWatcherError(payload);
 
   if (payload.kind !== "FILE_CHANGED" || payload.parserOutput === null) {
+    if (payload.kind === "STARTED") {
+      void logE2EEvent("watcher_started", {
+        source: payload.state.source,
+        detail: payload.detail,
+      });
+    }
     return;
   }
+  void logE2EEvent("file_detected", {
+    source: payload.parserOutput.source,
+    filePath: payload.filePath,
+    detail: payload.detail,
+  });
+  void logE2EEvent("file_parsed", {
+    source: payload.parserOutput.source,
+    observationCount: payload.parserOutput.observations.length,
+    unresolvedCount: payload.parserOutput.unresolvedCases?.length ?? 0,
+  });
 
   const originLabel = formatSourceOriginLabel(payload.parserOutput.source);
   const unresolvedDialogs = buildUnresolvedDialogsFromParserOutput(payload.parserOutput);
@@ -997,6 +1272,20 @@ function handleWatcherEvent(payload: SourceWatcherEventPayload): void {
   }
 
   enqueueUnresolvedDialogs(unresolvedDialogs);
+  if (outcome.ok) {
+    void logE2EEvent("normalize_succeeded", {
+      source: payload.parserOutput.source,
+      originLabel,
+      unresolvedCount: unresolvedDialogs.length,
+    });
+  } else {
+    void logE2EEvent("normalize_failed", {
+      source: payload.parserOutput.source,
+      originLabel,
+      message: outcome.message,
+      hasPendingUnresolvedAlias: outcome.pendingUnresolvedAlias !== undefined,
+    });
+  }
 
   if (!outcome.ok && outcome.pendingUnresolvedAlias === undefined && unresolvedDialogs.length === 0) {
     roomStore.noteLocalEvent(`Source auto-submit skipped: ${outcome.message}`);
@@ -1145,12 +1434,19 @@ export const sourceStore = {
     }));
   },
   async start(
-    settings: Pick<ClientSettings, "source" | "sourcePaths" | "dakenCounterV3Port">,
+    settings: Pick<ClientSettings, "apiBaseUrl" | "source" | "sourcePaths" | "dakenCounterV3Port">,
     options: StartOptions = {},
   ): Promise<void> {
     await ensureAttached();
 
     latestSettings = settings;
+    clearDakenCounterV3AliasResolveCache();
+    void logE2EEvent("datasource_initialized", {
+      source: settings.source,
+      apiBaseUrl: settings.apiBaseUrl,
+      dakenCounterV3Port: settings.dakenCounterV3Port,
+      sourcePaths: settings.sourcePaths,
+    });
 
     if (settings.source === DAKEN_COUNTER_V3_SOURCE) {
       appliedConfigKey = createConfigKey(settings);
@@ -1231,6 +1527,10 @@ export const sourceStore = {
         ...state,
         watcherState: mapWatcherState(payload),
       }));
+      void logE2EEvent("watcher_started", {
+        source: settings.source,
+        watchedPaths: payload.watchedPaths,
+      });
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "Failed to start watcher.";

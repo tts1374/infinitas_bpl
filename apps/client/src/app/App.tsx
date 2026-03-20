@@ -1,5 +1,5 @@
 import { LOBBY_POLL_INTERVAL_MS } from "@infinitas/shared";
-import { startTransition, useEffect, useState } from "react";
+import { startTransition, useEffect, useRef, useState } from "react";
 import { AppSidebar, type AppView } from "../components/AppSidebar";
 import { captureElementAsPng } from "../dev/visual-capture";
 import { getVisualScenario } from "../dev/visual-scenarios";
@@ -10,6 +10,8 @@ import { RoomPage } from "../pages/RoomPage";
 import { SettingsPage } from "../pages/SettingsPage";
 import { StatsPage } from "../pages/StatsPage";
 import { localResultArchiveService } from "../services/result-archive";
+import { initializeE2EObservability } from "../services/e2e-observability";
+import { startE2EScenarioRunner } from "../services/e2e-scenario-runner";
 import { runtimeConfig } from "../runtime/runtime-config";
 import { statsArchiveService } from "../services/stats-archive";
 import { voiceAnnouncerService } from "../services/voice-announcer";
@@ -25,6 +27,7 @@ export function App() {
   const dialog = useRoomStore((state) => state.errorDialog);
   const sourceUnresolvedDialog = useSourceStore((state) => state.activeUnresolvedDialog);
   const [activeView, setActiveView] = useState<AppView>("lobby");
+  const activeViewRef = useRef<AppView>(activeView);
   const [mockScenario] = useState(() =>
     runtimeConfig.mockScenarioId ? getVisualScenario(runtimeConfig.mockScenarioId) : null,
   );
@@ -32,6 +35,10 @@ export function App() {
   const shouldShowSetupDialog = activeView === "lobby" && roomSnapshot === null && !roomEntryReady;
 
   const mockScenarioRequested = runtimeConfig.mockScenarioId !== null;
+
+  useEffect(() => {
+    activeViewRef.current = activeView;
+  }, [activeView]);
 
   useEffect(() => {
     if (roomSnapshot !== null && activeView !== "room") {
@@ -123,6 +130,14 @@ export function App() {
     savedSettings.source,
     savedSettings.dakenCounterV3Port,
   ]);
+
+  useEffect(() => {
+    void initializeE2EObservability();
+    const stopRunner = startE2EScenarioRunner(() => activeViewRef.current);
+    return () => {
+      stopRunner();
+    };
+  }, []);
 
   function navigate(view: AppView): void {
     startTransition(() => {

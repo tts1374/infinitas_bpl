@@ -1,0 +1,12 @@
+{
+  "list": [
+    {
+      "timestamp": "YYYYMMDD-HHMMSS",
+      "difficulty": "{DIFFICULTY}",
+      "music": "{TITLE}",
+      "score": 2500,
+      "misscount": 10
+    }
+  ]
+}
+

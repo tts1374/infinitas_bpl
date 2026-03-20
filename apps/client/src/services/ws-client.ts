@@ -6,6 +6,7 @@ import {
   type ServerMessage,
   type SourceType,
 } from "@infinitas/shared";
+import { logE2EEvent } from "./e2e-observability";
 import clientPackageJson from "../../package.json";
 
 export type SocketConnectionState = "CONNECTING" | "JOINING" | "CONNECTED" | "DISCONNECTED";
@@ -130,6 +131,10 @@ export class RoomSocketClient {
     };
 
     socket.send(JSON.stringify(message));
+    void logE2EEvent("websocket_message_sent", {
+      messageType: type,
+      roomId: this.options.roomId,
+    });
   }
 
   private handleMessage(event: MessageEvent): void {

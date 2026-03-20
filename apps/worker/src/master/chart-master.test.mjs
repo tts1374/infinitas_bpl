@@ -15,6 +15,7 @@ function createSnapshot() {
     },
     charts: [
       {
+        chart_id: 101,
         play_style: "SP",
         difficulty: "HYPER",
         level: 10,
@@ -27,6 +28,7 @@ function createSnapshot() {
         inf_pack_id: null,
       },
       {
+        chart_id: 102,
         play_style: "SP",
         difficulty: "ANOTHER",
         level: 12,
@@ -39,6 +41,7 @@ function createSnapshot() {
         inf_pack_id: null,
       },
       {
+        chart_id: 103,
         play_style: "SP",
         difficulty: "NORMAL",
         level: 8,
@@ -51,6 +54,7 @@ function createSnapshot() {
         inf_pack_id: null,
       },
       {
+        chart_id: 104,
         play_style: "DP",
         difficulty: "HYPER",
         level: 10,
@@ -129,6 +133,20 @@ test("resolvePickChartKey supports direct and alias lookup", () => {
 
   const levelMismatch = master.resolvePickChartKey("SP::HYPER::blue fire", "SP", "LV12");
   assert.equal(levelMismatch, null);
+});
+
+test("resolveAliasExact matches trim-only exact aliases", () => {
+  const master = createRoomChartMaster(createSnapshot());
+
+  assert.deepEqual(master.resolveAliasExact("Blue Fire", "SP", "HYPER"), ["blue fire"]);
+  assert.deepEqual(master.resolveAliasExact(" Blue Fire ", "SP", "HYPER"), ["blue fire"]);
+  assert.deepEqual(master.resolveAliasExact("Blue Fire (Alias)", "SP", "HYPER"), ["blue fire"]);
+
+  // lower-case is not an exact match (trim-only).
+  assert.deepEqual(master.resolveAliasExact("blue fire", "SP", "HYPER"), []);
+
+  // Alias exists but chart does not for the requested difficulty.
+  assert.deepEqual(master.resolveAliasExact("NightSky", "SP", "HYPER"), []);
 });
 
 test("pickRandomUnusedChart respects preferred options and used chart keys", () => {

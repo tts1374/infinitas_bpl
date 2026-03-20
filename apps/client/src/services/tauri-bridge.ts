@@ -20,6 +20,7 @@ export interface ParsedSourceObservationPayload {
   difficulty: string;
   title: string;
   titleSearchKey: string;
+  chartId?: number | null;
   score: number;
   misscount: number;
   sourceMetaExtras?: Record<string, string | number | boolean | null>;
@@ -91,6 +92,22 @@ export interface NativeTtsSpeakRequest {
   pitch?: number;
   volume?: number;
   queueMode?: "flush" | "add";
+}
+
+export interface WriteE2eTextFileRequest {
+  filePath: string;
+  content: string;
+  append?: boolean;
+}
+
+export interface WriteE2eBinaryFileRequest {
+  filePath: string;
+  bytes: number[];
+}
+
+export interface WriteE2eFileResponse {
+  filePath: string;
+  bytesWritten: number;
 }
 
 declare global {
@@ -202,6 +219,28 @@ export async function stopNativeTts(): Promise<void> {
 
   const { invoke } = await import("@tauri-apps/api/core");
   await invoke("plugin:tts|stop");
+}
+
+export async function writeE2eTextFile(
+  request: WriteE2eTextFileRequest,
+): Promise<WriteE2eFileResponse> {
+  if (!isTauriRuntime()) {
+    throw new Error("E2E file output is available only inside the Tauri desktop app.");
+  }
+
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<WriteE2eFileResponse>("write_e2e_text_file", { request });
+}
+
+export async function writeE2eBinaryFile(
+  request: WriteE2eBinaryFileRequest,
+): Promise<WriteE2eFileResponse> {
+  if (!isTauriRuntime()) {
+    throw new Error("E2E binary output is available only inside the Tauri desktop app.");
+  }
+
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<WriteE2eFileResponse>("write_e2e_binary_file", { request });
 }
 
 function createUnavailableState(): SourceWatcherStatePayload {
