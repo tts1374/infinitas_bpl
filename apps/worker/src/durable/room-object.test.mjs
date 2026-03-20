@@ -180,6 +180,29 @@ test("reconnect replaces old socket and stale close does not mark player disconn
   assert.equal(host.connected, true);
 });
 
+test("PING receives PONG response", async () => {
+  const roomObject = await createRoomObject();
+  const hostSocket = new TestSocket();
+  await joinPlayer(roomObject, hostSocket, "host", "msg-1");
+  roomObject.roomState.readyCheckDeadline = new Date("2099-01-01T00:00:00.000Z");
+
+  await roomObject.webSocketMessage(
+    hostSocket,
+    JSON.stringify({
+      type: "PING",
+      client_msg_id: "msg-2",
+      room_id: "room-1",
+      player_id: "host",
+      payload: {},
+    }),
+  );
+
+  const lastMessage = hostSocket.sent.at(-1);
+  assert.ok(lastMessage);
+  assert.equal(lastMessage.type, "PONG");
+  assert.deepEqual(lastMessage.payload, {});
+});
+
 test("MATCH_TTL_EXPIRED closes sockets and clears sessions", async () => {
   const roomObject = await createRoomObject();
   const hostSocket = new TestSocket();
