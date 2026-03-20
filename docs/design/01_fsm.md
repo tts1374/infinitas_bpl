@@ -50,7 +50,7 @@
 - `round_soft_ttl = 5min`（`count_go` 以降。超過で未確定者をTIMEOUT確定）
 - `host_skip_unlock_seconds = 240s`（`SKIP_HOST_ASSIGN` 用の予約値。現行v1では操作を受理しない）
 - `match_ttl = 30min`（`START_MATCH` 成功時、すなわち `PICKING` 開始時から固定）
-- `rejoin_cooldown = 10s`（退出後の同一ルーム再入室抑止。ホスト非明示切断時の再接続猶予にも使用）
+- `rejoin_cooldown = 20s`（退出後の同一ルーム再入室抑止。ホスト非明示切断時の再接続猶予にも使用）
 
 ## 5. ルーム作成設定（RoomSettings / Ph1）
 - `visibility`: `PUBLIC | PRIVATE`

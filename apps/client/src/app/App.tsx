@@ -154,6 +154,18 @@ export function App() {
     roomStore.clearError();
   }
 
+  function retryReconnectFromDialog(): void {
+    const started = roomStore.retryReconnect();
+    if (!started) {
+      roomStore.clearError();
+    }
+  }
+
+  function backToLobbyFromDialog(): void {
+    roomStore.leaveRoom();
+    navigate("lobby");
+  }
+
   function resolveSourceUnresolvedDialog(action: "accept" | "skip" | "close"): void {
     sourceStore.resolveActiveUnresolvedDialog(action);
   }
@@ -221,7 +233,14 @@ export function App() {
           onAction={resolveSourceUnresolvedDialog}
         />
       ) : null}
-      {dialog ? <ErrorDialog dialog={dialog} onClose={dismissDialog} /> : null}
+      {dialog ? (
+        <ErrorDialog
+          dialog={dialog}
+          onClose={dismissDialog}
+          onRetryReconnect={retryReconnectFromDialog}
+          onReturnToLobby={backToLobbyFromDialog}
+        />
+      ) : null}
       {shouldShowSetupDialog ? (
         <div className="fixed inset-0 z-[2800] flex items-center justify-center bg-black/85 p-4 backdrop-blur-md">
           <div className="w-full max-w-[460px] overflow-hidden rounded-3xl border border-amber-500/20 bg-[#1a1a1c] shadow-[0_30px_90px_rgba(0,0,0,0.9)]">

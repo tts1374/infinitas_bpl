@@ -352,7 +352,7 @@ test("reconnect is rejected after rejoin window expires", () => {
     player_id: "host",
     display_name: "Host",
     source: "inf-notebook",
-    now: new Date("2026-03-08T00:05:11.000Z"),
+    now: new Date("2026-03-08T00:05:21.000Z"),
   });
 
   assert.deepEqual(joinResult, { ok: false, reason: "REJOIN_WINDOW_EXPIRED" });
@@ -391,7 +391,7 @@ test("HOST_DISCONNECTED closes room when cooldown expires", () => {
   const disconnectedAt = new Date("2026-03-08T00:05:00.000Z");
   state.leavePlayer("host", disconnectedAt, "HOST_DISCONNECTED");
 
-  assert.equal(state.closeHostDisconnectIfExpired(new Date("2026-03-08T00:05:11.000Z")), true);
+  assert.equal(state.closeHostDisconnectIfExpired(new Date("2026-03-08T00:05:21.000Z")), true);
 
   const snapshot = state.toSnapshot();
   assert.equal(snapshot.room_state, "CLOSED");

@@ -11,4 +11,4 @@ export const ROUND_PLAY_BEGIN_AT_SECONDS = 55;
 
 export const MATCH_TTL_MINUTES = 30;
 
-export const REJOIN_COOLDOWN_SECONDS = 10;
+export const REJOIN_COOLDOWN_SECONDS = 20;

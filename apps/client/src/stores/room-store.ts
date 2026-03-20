@@ -69,10 +69,12 @@ const requestIdsByKey = new Map<string, string>();
 const DJ_NAME_PATTERN = /^[a-zA-Z0-9.\-*&!?#$]*$/;
 const DJ_NAME_MAX_LENGTH = 6;
 const RECONNECT_DELAY_MS = 1_200;
-const RECONNECT_MAX_ATTEMPTS = 5;
+const RECONNECT_MAX_ATTEMPTS = 20;
+const RECONNECT_WINDOW_SECONDS = 20;
 let reconnectContext: RoomReconnectContext | null = null;
 let reconnectTimer: number | null = null;
 let reconnectAttempts = 0;
+let reconnectDeadlineAtMs: number | null = null;
 
 export interface MockRoomStoreState {
   scenarioId: string;
@@ -148,12 +150,44 @@ function clearReconnectTimer(): void {
 function clearReconnectContext(): void {
   clearReconnectTimer();
   reconnectAttempts = 0;
+  reconnectDeadlineAtMs = null;
   reconnectContext = null;
 }
 
 function resetReconnectAttempts(): void {
   clearReconnectTimer();
   reconnectAttempts = 0;
+  reconnectDeadlineAtMs = null;
+}
+
+function getReconnectRemainingSeconds(nowMs: number): number {
+  if (reconnectDeadlineAtMs === null) {
+    return RECONNECT_WINDOW_SECONDS;
+  }
+
+  return Math.max(0, Math.ceil((reconnectDeadlineAtMs - nowMs) / 1_000));
+}
+
+function formatReconnectDetail(attempt: number, remainingSeconds: number): string {
+  return `再接続を試しています... 残り${remainingSeconds}s (${attempt}回目)`;
+}
+
+function markReconnectTimeout(): void {
+  clearReconnectTimer();
+  reconnectAttempts = 0;
+  reconnectDeadlineAtMs = null;
+  appendEventLog("Reconnect window expired.");
+  internalStore.setState((state) => ({
+    ...state,
+    connectionStatus: "ERROR",
+    connectionDetail: "ルームに接続できませんでした。",
+  }));
+  setErrorDialog(
+    "ルームに接続できませんでした",
+    "再接続時間を超過しました。再試行するか、一覧に戻ってください。",
+    "RECONNECT_TIMEOUT",
+    true,
+  );
 }
 
 function canAutoReconnect(state: RoomStoreState): boolean {
@@ -171,7 +205,8 @@ function hasReconnectInFlight(state: RoomStoreState): boolean {
     reconnectContext !== null &&
     state.snapshot !== null &&
     state.snapshot.room_state !== "CLOSED" &&
-    (reconnectTimer !== null ||
+    (reconnectDeadlineAtMs !== null ||
+      reconnectTimer !== null ||
       reconnectAttempts > 0 ||
       state.connectionStatus === "CONNECTING" ||
       state.connectionStatus === "JOINING")
@@ -508,13 +543,14 @@ function startSocketConnection(
       connectionDetail: `Opening room ${connection.roomId}.`,
     });
   } else {
+    const remainingSeconds = getReconnectRemainingSeconds(Date.now());
     internalStore.setState((state) => ({
       ...state,
       roomId: connection.roomId,
       joinCode: connection.joinCode,
       connectionPlayerId: settings.playerId,
       connectionStatus: "CONNECTING",
-      connectionDetail: `Reconnecting room ${connection.roomId} (${reconnectAttempts}/${RECONNECT_MAX_ATTEMPTS}).`,
+      connectionDetail: formatReconnectDetail(Math.max(reconnectAttempts, 1), remainingSeconds),
     }));
   }
 
@@ -626,32 +662,40 @@ function scheduleReconnect(): void {
     return;
   }
 
+  const nowMs = Date.now();
+  if (reconnectDeadlineAtMs === null) {
+    reconnectDeadlineAtMs = nowMs + RECONNECT_WINDOW_SECONDS * 1_000;
+  }
+
+  const remainingMs = reconnectDeadlineAtMs - nowMs;
+  if (remainingMs <= 0) {
+    markReconnectTimeout();
+    return;
+  }
+
   if (reconnectAttempts >= RECONNECT_MAX_ATTEMPTS) {
-    internalStore.setState((currentState) => ({
-      ...currentState,
-      connectionStatus: "ERROR",
-      connectionDetail: "Reconnect limit reached. Rejoin the room.",
-    }));
-    setErrorDialog("Connection lost", "Reconnect limit reached. Rejoin the room.");
-    clearReconnectContext();
+    markReconnectTimeout();
     return;
   }
 
   reconnectAttempts += 1;
   const attempt = reconnectAttempts;
+  const remainingSeconds = getReconnectRemainingSeconds(nowMs);
   void logE2EEvent("reconnect_started", {
     roomId: reconnectContext?.connection.roomId ?? null,
     attempt,
+    remainingSeconds,
     maxAttempts: RECONNECT_MAX_ATTEMPTS,
   });
-  appendEventLog(`Connection lost. Reconnecting (${attempt}/${RECONNECT_MAX_ATTEMPTS})...`);
+  appendEventLog(`Connection lost. Reconnecting (${remainingSeconds}s left, attempt ${attempt}/${RECONNECT_MAX_ATTEMPTS}).`);
   internalStore.setState((currentState) => ({
     ...currentState,
     connectionStatus: "CONNECTING",
-    connectionDetail: `Reconnecting (${attempt}/${RECONNECT_MAX_ATTEMPTS})...`,
+    connectionDetail: formatReconnectDetail(attempt, remainingSeconds),
   }));
 
   clearReconnectTimer();
+  const retryDelayMs = Math.min(RECONNECT_DELAY_MS, Math.max(100, remainingMs));
   reconnectTimer = window.setTimeout(() => {
     reconnectTimer = null;
     const context = reconnectContext;
@@ -663,7 +707,7 @@ function scheduleReconnect(): void {
     if (!connected) {
       scheduleReconnect();
     }
-  }, RECONNECT_DELAY_MS);
+  }, retryDelayMs);
 }
 
 function handleServerMessage(client: RoomSocketClient, message: ServerMessage): void {
@@ -738,7 +782,15 @@ function handleServerMessage(client: RoomSocketClient, message: ServerMessage): 
     }
     case "ROOM_JOIN_REJECTED": {
       const payload = message.payload as ServerMessagePayloadMap["ROOM_JOIN_REJECTED"];
-      const { snapshot } = internalStore.getState();
+      const currentState = internalStore.getState();
+      if (payload.reason === "PLAYER_ALREADY_CONNECTED" && canAutoReconnect(currentState)) {
+        closeCurrentClient(false);
+        appendEventLog("Join rejected: PLAYER_ALREADY_CONNECTED. Retrying...");
+        scheduleReconnect();
+        return;
+      }
+
+      const { snapshot } = currentState;
       const dialog = joinRejectDialog(payload.reason, snapshot !== null);
       clearReconnectContext();
       closeCurrentClient(false);
@@ -917,6 +969,21 @@ export const roomStore = {
       ...state,
       errorDialog: null,
     }));
+  },
+  retryReconnect(): boolean {
+    const state = internalStore.getState();
+    if (!canAutoReconnect(state) || activeClient !== null) {
+      return false;
+    }
+
+    internalStore.setState((currentState) => ({
+      ...currentState,
+      errorDialog: null,
+    }));
+    reconnectAttempts = 0;
+    reconnectDeadlineAtMs = null;
+    scheduleReconnect();
+    return true;
   },
   noteLocalEvent(message: string): void {
     if (internalStore.getState().snapshot === null) {

@@ -6,9 +6,11 @@ import { AlertCircle, AlertTriangle, Database, ShieldAlert, Users } from "lucide
 interface ErrorDialogProps {
   dialog: RoomDialogState;
   onClose: () => void;
+  onRetryReconnect?: () => void;
+  onReturnToLobby?: () => void;
 }
 
-export function ErrorDialog({ dialog, onClose }: ErrorDialogProps) {
+export function ErrorDialog({ dialog, onClose, onRetryReconnect, onReturnToLobby }: ErrorDialogProps) {
   const archiveStatus = useLocalResultArchiveStore((state) => state.status);
   const archiveStorage = useLocalResultArchiveStore((state) => state.storage);
   const archivePath = useLocalResultArchiveStore((state) => state.filePath);
@@ -54,6 +56,10 @@ export function ErrorDialog({ dialog, onClose }: ErrorDialogProps) {
             };
   const headingLabel =
     dialog.code === "ROOM_CLOSED" ? "ルーム通知" : dialog.blocking ? "Blocking Event" : "Room Error";
+  const showReconnectActions =
+    dialog.code === "RECONNECT_TIMEOUT" &&
+    typeof onRetryReconnect === "function" &&
+    typeof onReturnToLobby === "function";
 
   return (
     <div
@@ -105,15 +111,34 @@ export function ErrorDialog({ dialog, onClose }: ErrorDialogProps) {
           </div>
         ) : null}
 
-        <div className="px-8 pb-8">
-          <button
-            type="button"
-            onClick={onClose}
-            className={`w-full rounded-2xl py-4 text-xs font-black uppercase tracking-widest transition-all ${variant.buttonClass}`}
-          >
-            OK
-          </button>
-        </div>
+        {showReconnectActions ? (
+          <div className="grid grid-cols-2 gap-4 px-8 pb-8">
+            <button
+              type="button"
+              onClick={onReturnToLobby}
+              className="w-full rounded-2xl border border-white/15 bg-white/5 py-4 text-xs font-black uppercase tracking-widest text-gray-200 transition-all hover:bg-white/10"
+            >
+              一覧に戻る
+            </button>
+            <button
+              type="button"
+              onClick={onRetryReconnect}
+              className={`w-full rounded-2xl py-4 text-xs font-black uppercase tracking-widest transition-all ${variant.buttonClass}`}
+            >
+              再試行
+            </button>
+          </div>
+        ) : (
+          <div className="px-8 pb-8">
+            <button
+              type="button"
+              onClick={onClose}
+              className={`w-full rounded-2xl py-4 text-xs font-black uppercase tracking-widest transition-all ${variant.buttonClass}`}
+            >
+              OK
+            </button>
+          </div>
+        )}
 
         <div className="flex items-center justify-center gap-2 border-t border-white/5 bg-white/[0.02] px-8 py-5 text-[10px] font-black uppercase tracking-widest text-gray-600">
           <AlertCircle size={12} />

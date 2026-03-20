@@ -36,7 +36,7 @@ Ph1で固定するタイマー値、制約値、表示/運用上の定数を整�
   - TTL到達時は未確定をTIMEOUTとして結果を確定し、必要なら `RESULT` または `CLOSED` へ遷移
 
 ## 1.4 再入室
-- `REJOIN_COOLDOWN_SECONDS = 10`
+- `REJOIN_COOLDOWN_SECONDS = 20`
   - 同一ルームへ退出後すぐ再入室する場合のクールダウン
   - ホストが非明示切断した場合の再接続猶予
 
