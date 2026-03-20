@@ -36,7 +36,7 @@ Ph1で固定するタイマー値、制約値、表示/運用上の定数を整�
   - TTL到達時は未確定をTIMEOUTとして結果を確定し、必要なら `RESULT` または `CLOSED` へ遷移
 
 ## 1.4 再入室
-- `REJOIN_COOLDOWN_SECONDS = 20`
+- `REJOIN_COOLDOWN_SECONDS = 40`
   - 同一ルームへ退出後すぐ再入室する場合のクールダウン
   - ホストが非明示切断した場合の再接続猶予
 
@@ -45,10 +45,10 @@ Ph1で固定するタイマー値、制約値、表示/運用上の定数を整�
 ## 2. WebSocket / 通信定数
 
 ## 2.1 疎通確認
-- `PING_INTERVAL_SECONDS = 15`
-  - クライアントからPING送信
+- `PING_INTERVAL_SECONDS = 20`
+  - `PICKING/PLAYING` 中のみ、ホストクライアントからPING送信
 - `PING_TIMEOUT_MISSES = 2`
-  - 2回無応答で切断扱い
+  - 2回無応答相当を切断検知の目安とする
 
 ## 2.2 一覧API
 - `LOBBY_POLL_INTERVAL_SECONDS = 10`

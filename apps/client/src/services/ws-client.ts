@@ -164,7 +164,7 @@ export class RoomSocketClient {
     const message = parsed as ServerMessage;
 
     if (message.type === "PONG") {
-      // Keepalive heartbeat is disabled, but tolerate legacy PONG frames.
+      // Heartbeat acknowledgment; no store update required.
       return;
     }
 
