@@ -1248,8 +1248,8 @@ export class RoomDurableObject {
           this.sendStateSnapshot(socket);
           return;
         case "PING":
-          // Keepalive heartbeat is intentionally disabled to avoid periodic wake-ups.
-          // PING remains a tolerated message type for compatibility only.
+          // Keepalive heartbeat is accepted for active phases and answered with PONG.
+          this.send(socket, "PONG", {});
           return;
         default:
           this.sendError(

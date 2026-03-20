@@ -10,7 +10,7 @@ export const CLIENT_MESSAGE_TYPES = [
   "SKIP_HOST_ASSIGN",
   "FORCE_ADVANCE",
   "STATE_GET",
-  // Keepalive heartbeat is disabled; this type is retained for compatibility/no-op handling.
+  // Keepalive heartbeat from client to DO.
   "PING",
 ] as const;
 
@@ -34,7 +34,7 @@ export const SERVER_MESSAGE_TYPES = [
   "RESULT_READY",
   "STATE_SNAPSHOT",
   "ERROR",
-  // Keepalive heartbeat is disabled; this type is retained for compatibility/no-op handling.
+  // Keepalive heartbeat response from DO to client.
   "PONG",
 ] as const;
 

@@ -11,4 +11,7 @@ export const ROUND_PLAY_BEGIN_AT_SECONDS = 55;
 
 export const MATCH_TTL_MINUTES = 30;
 
-export const REJOIN_COOLDOWN_SECONDS = 20;
+export const REJOIN_COOLDOWN_SECONDS = 40;
+
+export const PING_INTERVAL_SECONDS = 20;
+export const PING_TIMEOUT_MISSES = 2;
