@@ -3,6 +3,7 @@ import { workerChartMaster } from "../master/chart-master";
 import { asEnumValue } from "../utils/validation";
 
 export interface ChartAliasResolveResponse {
+  alias_exists: boolean;
   title_search_keys: string[];
 }
 
@@ -20,6 +21,7 @@ export function resolveChartAlias(url: URL): ChartAliasResolveResponse {
   }
 
   return {
+    alias_exists: workerChartMaster.hasAliasExact(alias),
     title_search_keys: workerChartMaster.resolveAliasExact(alias, playStyle, difficulty),
   };
 }

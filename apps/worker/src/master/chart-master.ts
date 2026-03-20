@@ -96,6 +96,7 @@ export interface RoomChartMaster {
     levelFilter: LevelFilter,
     unlockFilter?: MatchSongUnlockFilter,
   ): ResolvedMasterChart | null;
+  hasAliasExact(alias: string): boolean;
   resolveAliasExact(alias: string, playStyle: PlayStyle, difficulty: ChartDifficulty): string[];
   pickRandomUnusedChart(options: RandomUnusedChartOptions): ResolvedMasterChart | null;
   searchCharts(options: SearchChartsOptions): ChartSearchResponse;
@@ -436,14 +437,20 @@ export function createRoomChartMaster(snapshotInput: WorkerChartMasterSnapshot):
     return left.inf_pack_id - right.inf_pack_id;
   });
 
-  for (const [alias, titleSearchKey] of Object.entries(snapshot.aliases)) {
-    const normalizedAlias = normalizeLookupKey(alias);
-    const existing = aliasToTitleSearchKeys.get(normalizedAlias);
+  const addAliasLookup = (aliasLookupKey: string, titleSearchKey: string): void => {
+    if (aliasLookupKey.length === 0) {
+      return;
+    }
+    const existing = aliasToTitleSearchKeys.get(aliasLookupKey);
     if (existing) {
       existing.add(titleSearchKey);
     } else {
-      aliasToTitleSearchKeys.set(normalizedAlias, new Set([titleSearchKey]));
+      aliasToTitleSearchKeys.set(aliasLookupKey, new Set([titleSearchKey]));
     }
+  };
+
+  for (const [alias, titleSearchKey] of Object.entries(snapshot.aliases)) {
+    addAliasLookup(normalizeLookupKey(alias), titleSearchKey);
 
     const exactAlias = alias.trim();
     if (exactAlias.length > 0) {
@@ -475,6 +482,7 @@ export function createRoomChartMaster(snapshotInput: WorkerChartMasterSnapshot):
         aliasToTitleSearchKeysExact.set(exactTitle, new Set([chart.title_search_key]));
       }
     }
+    addAliasLookup(normalizeLookupKey(chart.title_search_key), chart.title_search_key);
 
     searchableCharts.push({
       chart: createChartSearchEntry(chart, chartKey),
@@ -597,6 +605,14 @@ export function createRoomChartMaster(snapshotInput: WorkerChartMasterSnapshot):
   };
 
   return {
+    hasAliasExact(alias) {
+      const exactAlias = alias.trim();
+      if (exactAlias.length === 0) {
+        return false;
+      }
+      return aliasToTitleSearchKeysExact.has(exactAlias);
+    },
+
     resolveAliasExact(alias, playStyle, difficulty) {
       const exactAlias = alias.trim();
       if (exactAlias.length === 0) {
@@ -616,7 +632,7 @@ export function createRoomChartMaster(snapshotInput: WorkerChartMasterSnapshot):
         }
       }
 
-      return resolved;
+      return Array.from(new Set(resolved)).sort((left, right) => left.localeCompare(right));
     },
 
     resolvePickChartKey(pickChartKey, playStyle, levelFilter, unlockFilter) {

@@ -14,7 +14,7 @@ use crate::{
         ParsedSourceChange, ParsedSourceObservation, ParsedSourceUnresolvedCase,
         ParsedSourceUnresolvedCaseKind, SourcePathsConfig, SourceType,
     },
-    parsers::{ParserInput, SourceParser},
+    parsers::{runtime_alias::RuntimeAliasResolver, ParserInput, SourceParser},
 };
 
 const SUMMARY_DEBOUNCE_MS: u64 = 120;
@@ -150,19 +150,28 @@ pub struct NotebookParser {
     recent_path: PathBuf,
     last_summary_snapshot: SummarySnapshot,
     alias_catalog: AliasCatalog,
+    runtime_alias_resolver: Option<RuntimeAliasResolver>,
 }
 
 impl NotebookParser {
-    pub fn new(source_paths: &SourcePathsConfig) -> Self {
-        Self::new_internal(source_paths, load_alias_catalog())
+    pub fn new(source_paths: &SourcePathsConfig, api_base_url: Option<&str>) -> Self {
+        Self::new_internal(
+            source_paths,
+            load_alias_catalog(),
+            RuntimeAliasResolver::new("inf-notebook", api_base_url),
+        )
     }
 
     #[cfg(test)]
     fn new_with_catalog(source_paths: &SourcePathsConfig, alias_catalog: AliasCatalog) -> Self {
-        Self::new_internal(source_paths, alias_catalog)
+        Self::new_internal(source_paths, alias_catalog, None)
     }
 
-    fn new_internal(source_paths: &SourcePathsConfig, alias_catalog: AliasCatalog) -> Self {
+    fn new_internal(
+        source_paths: &SourcePathsConfig,
+        alias_catalog: AliasCatalog,
+        runtime_alias_resolver: Option<RuntimeAliasResolver>,
+    ) -> Self {
         let summary_path = PathBuf::from(source_paths.notebook_records_recent_json.trim());
         let recent_path = PathBuf::from(source_paths.notebook_export_recent_json.trim());
         let last_summary_snapshot = read_summary_snapshot_once(&summary_path)
@@ -173,6 +182,7 @@ impl NotebookParser {
             recent_path,
             last_summary_snapshot,
             alias_catalog,
+            runtime_alias_resolver,
         }
     }
 }
@@ -215,6 +225,7 @@ impl SourceParser for NotebookParser {
         let resolution_results = resolve_latest_entries_with_recent_retry(
             &changed_latest_entries,
             &self.alias_catalog,
+            &mut self.runtime_alias_resolver,
             &self.recent_path,
             &mut recent_index,
         )?;
@@ -483,6 +494,7 @@ fn build_recent_timestamp_index(entries: &[NotebookRecentEntry]) -> RecentTimest
 fn resolve_latest_entries_with_recent_retry(
     changed_entries: &[SummaryLatestRecord],
     alias_catalog: &AliasCatalog,
+    runtime_alias_resolver: &mut Option<RuntimeAliasResolver>,
     recent_path: &Path,
     recent_index: &mut Option<RecentTimestampIndex>,
 ) -> Result<Vec<NotebookResolutionResult>, String> {
@@ -512,6 +524,7 @@ fn resolve_latest_entries_with_recent_retry(
         results.push(resolve_entry_with_candidates(
             entry,
             alias_catalog,
+            runtime_alias_resolver,
             &candidates,
         ));
     }
@@ -521,12 +534,32 @@ fn resolve_latest_entries_with_recent_retry(
 fn resolve_entry_with_candidates(
     entry: &SummaryLatestRecord,
     alias_catalog: &AliasCatalog,
+    runtime_alias_resolver: &mut Option<RuntimeAliasResolver>,
     recent_candidates: &[RecentIndexedRecord],
 ) -> NotebookResolutionResult {
-    let Some(title_search_key) = alias_catalog
+    let static_title_search_key = alias_catalog
         .resolve_alias_exact(entry.musicname.as_str())
         .cloned()
-    else {
+        .filter(|title_search_key| {
+            alias_catalog.has_chart(
+                entry.play_style.as_str(),
+                entry.difficulty.as_str(),
+                title_search_key.as_str(),
+            )
+        });
+
+    let title_search_key = if let Some(title_search_key) = static_title_search_key {
+        Some(title_search_key)
+    } else {
+        resolve_runtime_alias_single(
+            runtime_alias_resolver,
+            entry.musicname.as_str(),
+            entry.play_style.as_str(),
+            entry.difficulty.as_str(),
+        )
+    };
+
+    let Some(title_search_key) = title_search_key else {
         return NotebookResolutionResult {
             status: NotebookResolutionStatus::UnresolvedAlias,
             summary: entry.clone(),
@@ -536,21 +569,6 @@ fn resolve_entry_with_candidates(
             warnings: Vec::new(),
         };
     };
-
-    if !alias_catalog.has_chart(
-        entry.play_style.as_str(),
-        entry.difficulty.as_str(),
-        title_search_key.as_str(),
-    ) {
-        return NotebookResolutionResult {
-            status: NotebookResolutionStatus::UnresolvedAlias,
-            summary: entry.clone(),
-            title_search_key: None,
-            recent: None,
-            recent_candidate_count: Some(recent_candidates.len() as u32),
-            warnings: Vec::new(),
-        };
-    }
 
     match recent_candidates {
         [] => NotebookResolutionResult {
@@ -577,6 +595,25 @@ fn resolve_entry_with_candidates(
             recent_candidate_count: Some(recent_candidates.len() as u32),
             warnings: Vec::new(),
         },
+    }
+}
+
+fn resolve_runtime_alias_single(
+    runtime_alias_resolver: &mut Option<RuntimeAliasResolver>,
+    musicname: &str,
+    play_style: &str,
+    difficulty: &str,
+) -> Option<String> {
+    let resolver = runtime_alias_resolver.as_mut()?;
+    match resolver.resolve_exact(musicname, play_style, difficulty) {
+        Ok(result) => result.title_search_keys.first().cloned(),
+        Err(error) => {
+            eprintln!(
+                "inf-notebook: runtime alias resolve failed for '{}' / {} / {}: {}",
+                musicname, play_style, difficulty, error
+            );
+            None
+        }
     }
 }
 
@@ -898,6 +935,7 @@ mod tests {
     #[test]
     fn resolve_entry_classifies_0_1_2_and_alias_cases() {
         let catalog = build_test_catalog();
+        let mut runtime_alias_resolver = None;
         let summary = SummaryLatestRecord {
             musicname: "Song A".to_string(),
             play_style: "SP".to_string(),
@@ -907,7 +945,8 @@ mod tests {
             misscount: None,
         };
 
-        let partial = resolve_entry_with_candidates(&summary, &catalog, &[]);
+        let partial =
+            resolve_entry_with_candidates(&summary, &catalog, &mut runtime_alias_resolver, &[]);
         assert_eq!(partial.status, NotebookResolutionStatus::ResolvedPartial);
 
         let mismatch = RecentIndexedRecord {
@@ -917,13 +956,19 @@ mod tests {
             score: 2111,
             misscount: 22,
         };
-        let full = resolve_entry_with_candidates(&summary, &catalog, &[mismatch]);
+        let full = resolve_entry_with_candidates(
+            &summary,
+            &catalog,
+            &mut runtime_alias_resolver,
+            &[mismatch],
+        );
         assert_eq!(full.status, NotebookResolutionStatus::ResolvedFull);
         assert_eq!(full.warnings.len(), 2);
 
         let ambiguous = resolve_entry_with_candidates(
             &summary,
             &catalog,
+            &mut runtime_alias_resolver,
             &[
                 RecentIndexedRecord {
                     music: "Song A".to_string(),
@@ -951,7 +996,8 @@ mod tests {
             score: None,
             misscount: None,
         };
-        let unresolved_alias = resolve_entry_with_candidates(&unresolved, &catalog, &[]);
+        let unresolved_alias =
+            resolve_entry_with_candidates(&unresolved, &catalog, &mut runtime_alias_resolver, &[]);
         assert_eq!(
             unresolved_alias.status,
             NotebookResolutionStatus::UnresolvedAlias

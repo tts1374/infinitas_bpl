@@ -1520,6 +1520,7 @@ export const sourceStore = {
       const payload = await startSourceWatcher({
         source: settings.source,
         sourcePaths: settings.sourcePaths,
+        apiBaseUrl: settings.apiBaseUrl,
       });
 
       appliedConfigKey = nextConfigKey;

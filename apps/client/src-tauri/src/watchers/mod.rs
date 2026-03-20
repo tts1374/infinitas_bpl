@@ -43,6 +43,7 @@ struct ActiveWatcher {
 struct WatchSpec {
     source: SourceType,
     source_paths: SourcePathsConfig,
+    api_base_url: Option<String>,
     watched_paths: Vec<String>,
     watched_keys: HashSet<String>,
     parent_directories: Vec<PathBuf>,
@@ -209,6 +210,12 @@ impl WatchSpec {
         Ok(Self {
             source: request.source.clone(),
             source_paths: request.source_paths.clone(),
+            api_base_url: request
+                .api_base_url
+                .as_ref()
+                .map(|value| value.trim())
+                .filter(|value| !value.is_empty())
+                .map(str::to_string),
             watched_paths,
             watched_keys,
             parent_directories,
@@ -222,7 +229,7 @@ fn run_watcher_loop(
     spec: WatchSpec,
     shutdown_rx: mpsc::Receiver<()>,
 ) {
-    let mut parser = create_parser(&spec.source, &spec.source_paths);
+    let mut parser = create_parser(&spec.source, &spec.source_paths, spec.api_base_url.as_deref());
     let (event_tx, event_rx) = mpsc::channel::<Result<Event, notify::Error>>();
     let watcher_result = create_recommended_watcher(&spec, event_tx);
 

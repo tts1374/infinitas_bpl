@@ -17,6 +17,7 @@ tauri = { version = "2", features = [] }
 tauri-plugin-tts = "0.1.2"
 tauri-plugin-updater = "2.5.1"
 unicode-normalization = "0.1"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

@@ -41,6 +41,8 @@ pub struct SourcePathsConfig {
 pub struct StartSourceWatcherRequest {
     pub source: SourceType,
     pub source_paths: SourcePathsConfig,
+    #[serde(default)]
+    pub api_base_url: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]

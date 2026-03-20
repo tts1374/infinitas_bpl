@@ -63,6 +63,7 @@ export interface SourceWatcherEventPayload {
 interface StartSourceWatcherRequest {
   source: SourceType;
   sourcePaths: SourcePaths;
+  apiBaseUrl?: string;
 }
 
 interface ValidateSourceDirectoryRequest {

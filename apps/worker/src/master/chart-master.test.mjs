@@ -135,8 +135,33 @@ test("resolvePickChartKey supports direct and alias lookup", () => {
   assert.equal(levelMismatch, null);
 });
 
+test("resolvePickChartKey resolves compatibility-normalized title_search_key picks", () => {
+  const snapshot = createSnapshot();
+  snapshot.charts.push({
+    chart_id: 105,
+    play_style: "DP",
+    difficulty: "ANOTHER",
+    level: 11,
+    title: "♥LOVE² シュガ→♥",
+    title_qualifier: "",
+    artist: "ASY",
+    genre: "HAPPY",
+    title_search_key: "♥love² シュカ→♥",
+    inf_unlock_type: "bit",
+    inf_pack_id: null,
+  });
+  const master = createRoomChartMaster(snapshot);
+
+  const resolved = master.resolvePickChartKey("DP::ANOTHER::♥love² シュカ→♥", "DP", "ANY");
+  assert.equal(resolved?.chart_key, "DP::ANOTHER::♥love² シュカ→♥");
+});
+
 test("resolveAliasExact matches trim-only exact aliases", () => {
   const master = createRoomChartMaster(createSnapshot());
+
+  assert.equal(master.hasAliasExact("Blue Fire"), true);
+  assert.equal(master.hasAliasExact(" Blue Fire "), true);
+  assert.equal(master.hasAliasExact("blue fire"), false);
 
   assert.deepEqual(master.resolveAliasExact("Blue Fire", "SP", "HYPER"), ["blue fire"]);
   assert.deepEqual(master.resolveAliasExact(" Blue Fire ", "SP", "HYPER"), ["blue fire"]);

@@ -15,7 +15,7 @@ use crate::{
         ParsedSourceChange, ParsedSourceObservation, ParsedSourceUnresolvedCase,
         ParsedSourceUnresolvedCaseKind, SourcePathsConfig, SourceType,
     },
-    parsers::{ParserInput, SourceParser},
+    parsers::{runtime_alias::RuntimeAliasResolver, ParserInput, SourceParser},
 };
 
 const LATEST_DEBOUNCE_MS: u64 = 120;
@@ -125,22 +125,31 @@ pub struct RefluxParser {
     tracker_path: PathBuf,
     tracker_path_key: String,
     alias_catalog: AliasCatalog,
+    runtime_alias_resolver: Option<RuntimeAliasResolver>,
     tracker_cache: TrackerCache,
     last_content_hash: Option<u64>,
     last_secondary_fingerprint: Option<String>,
 }
 
 impl RefluxParser {
-    pub fn new(source_paths: &SourcePathsConfig) -> Self {
-        Self::new_internal(source_paths, load_alias_catalog())
+    pub fn new(source_paths: &SourcePathsConfig, api_base_url: Option<&str>) -> Self {
+        Self::new_internal(
+            source_paths,
+            load_alias_catalog(),
+            RuntimeAliasResolver::new("reflux", api_base_url),
+        )
     }
 
     #[cfg(test)]
     fn new_with_catalog(source_paths: &SourcePathsConfig, alias_catalog: AliasCatalog) -> Self {
-        Self::new_internal(source_paths, alias_catalog)
+        Self::new_internal(source_paths, alias_catalog, None)
     }
 
-    fn new_internal(source_paths: &SourcePathsConfig, alias_catalog: AliasCatalog) -> Self {
+    fn new_internal(
+        source_paths: &SourcePathsConfig,
+        alias_catalog: AliasCatalog,
+        runtime_alias_resolver: Option<RuntimeAliasResolver>,
+    ) -> Self {
         let latest_path = PathBuf::from(source_paths.reflux_latest_json.trim());
         let tracker_path = PathBuf::from(source_paths.reflux_tracker_tsv.trim());
         let tracker_cache =
@@ -158,6 +167,7 @@ impl RefluxParser {
             tracker_path_key: path_key(&tracker_path),
             tracker_path,
             alias_catalog,
+            runtime_alias_resolver,
             tracker_cache,
             last_content_hash: None,
             last_secondary_fingerprint: None,
@@ -212,7 +222,11 @@ impl SourceParser for RefluxParser {
         self.last_content_hash = Some(content_hash);
         self.last_secondary_fingerprint = Some(latest.secondary_fingerprint.clone());
 
-        let resolution = resolve_title_search_key(&latest, &self.alias_catalog);
+        let resolution = resolve_title_search_key(
+            &latest,
+            &self.alias_catalog,
+            self.runtime_alias_resolver.as_mut(),
+        );
         match resolution {
             Ok(title_search_key) => {
                 let chart_key = ChartIndexKey {
@@ -509,12 +523,14 @@ fn is_failed_lamp(raw_lamp: &str) -> bool {
 fn resolve_title_search_key(
     latest: &LatestRecord,
     catalog: &AliasCatalog,
+    mut runtime_alias_resolver: Option<&mut RuntimeAliasResolver>,
 ) -> Result<String, (String, u32)> {
     let primary_title = latest.title.trim();
     let fallback_title = latest.title2.trim();
 
     let primary_attempt = resolve_title_attempt(
         catalog,
+        &mut runtime_alias_resolver,
         primary_title,
         latest.play_style.as_str(),
         latest.difficulty.as_str(),
@@ -525,6 +541,7 @@ fn resolve_title_search_key(
 
     let fallback_attempt = resolve_title_attempt(
         catalog,
+        &mut runtime_alias_resolver,
         fallback_title,
         latest.play_style.as_str(),
         latest.difficulty.as_str(),
@@ -543,6 +560,7 @@ fn resolve_title_search_key(
 
 fn resolve_title_attempt(
     catalog: &AliasCatalog,
+    runtime_alias_resolver: &mut Option<&mut RuntimeAliasResolver>,
     raw_title: &str,
     play_style: &str,
     difficulty: &str,
@@ -553,9 +571,33 @@ fn resolve_title_attempt(
     } else {
         Vec::new()
     };
+    if has_alias {
+        return TitleResolutionAttempt {
+            has_alias,
+            candidates,
+        };
+    }
+
+    if let Some(resolver) = runtime_alias_resolver.as_deref_mut() {
+        match resolver.resolve_exact(raw_title, play_style, difficulty) {
+            Ok(result) => {
+                return TitleResolutionAttempt {
+                    has_alias: result.alias_exists,
+                    candidates: result.title_search_keys,
+                };
+            }
+            Err(error) => {
+                eprintln!(
+                    "reflux: runtime alias resolve failed for '{}' / {} / {}: {}",
+                    raw_title, play_style, difficulty, error
+                );
+            }
+        }
+    }
+
     TitleResolutionAttempt {
-        has_alias,
-        candidates,
+        has_alias: false,
+        candidates: Vec::new(),
     }
 }
 

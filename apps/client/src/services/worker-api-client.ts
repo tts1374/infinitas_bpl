@@ -33,6 +33,7 @@ export interface ChartAliasResolveQuery {
 }
 
 export interface ChartAliasResolveResponse {
+  alias_exists: boolean;
   title_search_keys: string[];
 }
 
