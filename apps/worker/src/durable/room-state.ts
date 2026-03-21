@@ -354,6 +354,7 @@ function normalizeSongUnlockSettings(value: SongUnlockSettings | undefined): Son
   return {
     bit_unlocked: value?.bit_unlocked === true,
     djp_unlocked: value?.djp_unlocked === true,
+    allow_leggendaria: value?.allow_leggendaria === true,
     owned_pack_ids: normalizeOwnedPackIds(value?.owned_pack_ids),
   };
 }
@@ -362,6 +363,7 @@ function cloneSongUnlockSettings(value: SongUnlockSettings): SongUnlockSettings 
   return {
     bit_unlocked: value.bit_unlocked,
     djp_unlocked: value.djp_unlocked,
+    allow_leggendaria: value.allow_leggendaria === true,
     owned_pack_ids: [...value.owned_pack_ids],
   };
 }
@@ -370,6 +372,7 @@ function cloneMatchSongUnlockFilter(value: MatchSongUnlockFilter): MatchSongUnlo
   return {
     include_bit: value.include_bit,
     include_djp: value.include_djp,
+    include_leggendaria: value.include_leggendaria === true,
     common_pack_ids: [...value.common_pack_ids],
   };
 }
@@ -379,12 +382,14 @@ function computeMatchSongUnlockFilter(players: InternalPlayer[]): MatchSongUnloc
     return {
       include_bit: false,
       include_djp: false,
+      include_leggendaria: false,
       common_pack_ids: [],
     };
   }
 
   const includeBit = players.every((player) => player.song_unlocks.bit_unlocked);
   const includeDjp = players.every((player) => player.song_unlocks.djp_unlocked);
+  const includeLeggendaria = players.every((player) => player.song_unlocks.allow_leggendaria);
 
   const commonPackIds = players
     .map((player) => new Set(player.song_unlocks.owned_pack_ids))
@@ -399,6 +404,7 @@ function computeMatchSongUnlockFilter(players: InternalPlayer[]): MatchSongUnloc
   return {
     include_bit: includeBit,
     include_djp: includeDjp,
+    include_leggendaria: includeLeggendaria,
     common_pack_ids: Array.from(commonPackIds).sort((left, right) => left - right),
   };
 }

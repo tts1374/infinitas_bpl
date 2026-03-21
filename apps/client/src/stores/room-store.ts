@@ -53,6 +53,7 @@ export interface RoomConnectionSettings {
   source: SourceType;
   bitUnlockEnabled: boolean;
   djpUnlockEnabled: boolean;
+  allowLeggendaria: boolean;
   ownedPackIds: number[];
 }
 
@@ -563,6 +564,7 @@ function startSocketConnection(
     source: settings.source,
     bitUnlockEnabled: settings.bitUnlockEnabled,
     djpUnlockEnabled: settings.djpUnlockEnabled,
+    allowLeggendaria: settings.allowLeggendaria,
     ownedPackIds: settings.ownedPackIds,
     joinCode: connection.joinCode,
     onMessage(message) {

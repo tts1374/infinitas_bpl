@@ -2593,7 +2593,7 @@ export function RoomPage() {
               </div>
               <div className="rounded-2xl border border-white/10 bg-black/20 p-4 xl:col-span-2">
                 <p className="text-[10px] font-black uppercase tracking-[0.35em] text-gray-500">Song Unlock Filter (START MATCH Fixed)</p>
-                <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
                   <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-sm font-bold text-gray-300">
                     Fixed: {snapshot.match_song_unlock_filter === null ? "NO" : "YES"}
                   </div>
@@ -2602,6 +2602,9 @@ export function RoomPage() {
                   </div>
                   <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-sm font-bold text-gray-300">
                     DJP: {snapshot.match_song_unlock_filter?.include_djp ? "ON" : "OFF"}
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-sm font-bold text-gray-300">
+                    LEGGENDARIA: {snapshot.match_song_unlock_filter?.include_leggendaria ? "ON" : "OFF"}
                   </div>
                   <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-sm font-bold text-gray-300">
                     Common Packs:{" "}
@@ -2618,7 +2621,8 @@ export function RoomPage() {
                     >
                       {player.display_name}: BIT{" "}
                       {player.song_unlocks?.bit_unlocked ? "ON" : "OFF"} / DJP{" "}
-                      {player.song_unlocks?.djp_unlocked ? "ON" : "OFF"} / PACKS{" "}
+                      {player.song_unlocks?.djp_unlocked ? "ON" : "OFF"} / LEGG{" "}
+                      {player.song_unlocks?.allow_leggendaria ? "ON" : "OFF"} / PACKS{" "}
                       {player.song_unlocks?.owned_pack_ids.length
                         ? player.song_unlocks.owned_pack_ids.join(", ")
                         : "-"}

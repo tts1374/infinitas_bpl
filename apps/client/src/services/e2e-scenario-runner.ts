@@ -34,6 +34,7 @@ function buildRoomConnectionSettings() {
     source: settings.source,
     bitUnlockEnabled: settings.bitUnlockEnabled,
     djpUnlockEnabled: settings.djpUnlockEnabled,
+    allowLeggendaria: settings.allowLeggendaria,
     ownedPackIds: settings.ownedPackIds,
   };
 }

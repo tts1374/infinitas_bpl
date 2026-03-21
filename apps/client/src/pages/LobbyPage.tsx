@@ -158,6 +158,7 @@ export function LobbyPage() {
         source: savedSettings.source,
         bitUnlockEnabled: savedSettings.bitUnlockEnabled,
         djpUnlockEnabled: savedSettings.djpUnlockEnabled,
+        allowLeggendaria: savedSettings.allowLeggendaria,
         ownedPackIds: savedSettings.ownedPackIds,
       },
     );

@@ -82,6 +82,7 @@ const BASE_SETTINGS: Omit<ClientSettings, "playerId" | "displayName" | "source" 
   enablePresentationSe: true,
   bitUnlockEnabled: false,
   djpUnlockEnabled: false,
+  allowLeggendaria: false,
   ownedPackIds: [],
 };
 

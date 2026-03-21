@@ -692,14 +692,14 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
           </div>
 
           <div className="space-y-6 rounded-2xl border border-white/5 bg-[#252526] p-6">
-            <div className="flex gap-4 border-b border-white/5 pb-6">
+            <div className="grid gap-4 border-b border-white/5 pb-6 md:grid-cols-3">
               <button
                 type="button"
                 disabled={roomJoined}
                 onClick={() => {
                   settingsStore.update("bitUnlockEnabled", !draft.bitUnlockEnabled);
                 }}
-                className={`flex flex-1 items-center justify-between rounded-xl border p-4 transition-all ${
+                className={`flex items-center justify-between rounded-xl border p-4 transition-all ${
                   draft.bitUnlockEnabled
                     ? "border-cyan-500 bg-cyan-500/10 text-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.15)]"
                     : "border-white/5 bg-[#1e1e1e] text-gray-400 hover:border-white/20"
@@ -714,7 +714,7 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
                 onClick={() => {
                   settingsStore.update("djpUnlockEnabled", !draft.djpUnlockEnabled);
                 }}
-                className={`flex flex-1 items-center justify-between rounded-xl border p-4 transition-all ${
+                className={`flex items-center justify-between rounded-xl border p-4 transition-all ${
                   draft.djpUnlockEnabled
                     ? "border-cyan-500 bg-cyan-500/10 text-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.15)]"
                     : "border-white/5 bg-[#1e1e1e] text-gray-400 hover:border-white/20"
@@ -722,6 +722,21 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
               >
                 <span className="font-bold">DJP解禁曲</span>
                 {draft.djpUnlockEnabled ? <CheckSquare size={20} /> : <Square size={20} />}
+              </button>
+              <button
+                type="button"
+                disabled={roomJoined}
+                onClick={() => {
+                  settingsStore.update("allowLeggendaria", !draft.allowLeggendaria);
+                }}
+                className={`flex items-center justify-between rounded-xl border p-4 transition-all ${
+                  draft.allowLeggendaria
+                    ? "border-cyan-500 bg-cyan-500/10 text-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.15)]"
+                    : "border-white/5 bg-[#1e1e1e] text-gray-400 hover:border-white/20"
+                } ${roomJoined ? "cursor-not-allowed opacity-70" : ""}`}
+              >
+                <span className="font-bold">LEGGENDARIA譜面</span>
+                {draft.allowLeggendaria ? <CheckSquare size={20} /> : <Square size={20} />}
               </button>
             </div>
 

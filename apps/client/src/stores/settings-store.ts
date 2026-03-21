@@ -39,6 +39,7 @@ export interface ClientSettings {
   enablePresentationSe: boolean;
   bitUnlockEnabled: boolean;
   djpUnlockEnabled: boolean;
+  allowLeggendaria: boolean;
   ownedPackIds: number[];
 }
 
@@ -63,6 +64,7 @@ interface PartialClientSettings {
   enablePresentationSe?: boolean;
   bitUnlockEnabled?: boolean;
   djpUnlockEnabled?: boolean;
+  allowLeggendaria?: boolean;
   ownedPackIds?: number[];
 }
 
@@ -300,6 +302,7 @@ function createDefaultSettings(): ClientSettings {
     enablePresentationSe: true,
     bitUnlockEnabled: false,
     djpUnlockEnabled: false,
+    allowLeggendaria: false,
     ownedPackIds: [],
   };
 }
@@ -345,6 +348,7 @@ function normalizeSettings(rawSettings: PartialClientSettings | null): ClientSet
     enablePresentationSe: rawSettings?.enablePresentationSe ?? defaults.enablePresentationSe,
     bitUnlockEnabled: rawSettings?.bitUnlockEnabled === true,
     djpUnlockEnabled: rawSettings?.djpUnlockEnabled === true,
+    allowLeggendaria: rawSettings?.allowLeggendaria === true,
     ownedPackIds,
   };
 }
