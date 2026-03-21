@@ -1,12 +1,13 @@
 {
   "name": "infinitas-arena",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "private": true,
   "workspaces": [
     "apps/*",
     "packages/*"
   ],
   "scripts": {
+    "version:bump": "node ./scripts/bump-version.mjs",
     "lint": "eslint \"apps/**/*.{ts,tsx}\" \"packages/**/*.{ts,tsx}\" --max-warnings 0",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "typecheck:client": "npm --workspace @infinitas/client run typecheck",
