@@ -412,10 +412,11 @@ function createRoundCues(roomId: string, round: CurrentRoundSnapshot): Scheduled
   }
 
   const cues: ScheduledCue[] = [];
+  const roundInstanceId = `${roomId}:${round.round_index}:${startedAtMs}`;
 
   cues.push({
     kind: "round_intro",
-    eventId: `round_intro:${roomId}:${round.round_index}`,
+    eventId: `round_intro:${roundInstanceId}`,
     dueAtMs: startedAtMs,
   });
 
@@ -423,14 +424,14 @@ function createRoundCues(roomId: string, round: CurrentRoundSnapshot): Scheduled
     const secondRemaining = 10 - offset;
     cues.push({
       kind: "count_beep",
-      eventId: `count_beep:${roomId}:${round.round_index}:music_select:${secondRemaining}`,
+      eventId: `count_beep:${roundInstanceId}:music_select:${secondRemaining}`,
       dueAtMs: startedAtMs + (ROUND_STAGE_COUNTDOWN_AT_SECONDS + offset) * 1_000,
     });
   }
 
   cues.push({
     kind: "phase_locked",
-    eventId: `phase_locked:${roomId}:${round.round_index}`,
+    eventId: `phase_locked:${roundInstanceId}`,
     dueAtMs: startedAtMs + ROUND_MUSIC_SELECT_SECONDS * 1_000,
   });
 
@@ -438,14 +439,14 @@ function createRoundCues(roomId: string, round: CurrentRoundSnapshot): Scheduled
     const secondRemaining = 3 - offset;
     cues.push({
       kind: "count_beep",
-      eventId: `count_beep:${roomId}:${round.round_index}:play_start:${secondRemaining}`,
+      eventId: `count_beep:${roundInstanceId}:play_start:${secondRemaining}`,
       dueAtMs: startedAtMs + (ROUND_START_CALL_AT_SECONDS + offset) * 1_000,
     });
   }
 
   cues.push({
     kind: "count_go",
-    eventId: `count_go:${roomId}:${round.round_index}`,
+    eventId: `count_go:${roundInstanceId}`,
     dueAtMs: startedAtMs + ROUND_PLAY_BEGIN_AT_SECONDS * 1_000,
   });
 
