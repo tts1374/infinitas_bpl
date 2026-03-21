@@ -499,8 +499,8 @@ export const settingsStore = {
       statusMessage: null,
     }));
   },
-  save(): void {
-    const normalized = normalizeSettings(internalStore.getState().draft);
+  save(nextSettings: ClientSettings = internalStore.getState().draft): ClientSettings {
+    const normalized = normalizeSettings(nextSettings);
     writeJson(SETTINGS_STORAGE_KEY, normalized);
     internalStore.setState((state) => ({
       ...state,
@@ -509,6 +509,7 @@ export const settingsStore = {
       lastSavedAt: new Date().toISOString(),
       statusMessage: "Saved local settings.",
     }));
+    return normalized;
   },
   restoreDraftFromSaved(): void {
     internalStore.setState((state) => ({

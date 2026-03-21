@@ -1,9 +1,25 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronLeft, Database, FolderOpen, MessageSquare, Save, Package, CheckSquare, Square, Check, Settings as SettingsIcon, User, Volume2, VolumeX } from "lucide-react";
+import {
+  AlertTriangle,
+  ChevronLeft,
+  Database,
+  FolderOpen,
+  MessageSquare,
+  Save,
+  Package,
+  CheckSquare,
+  CheckCircle2,
+  Square,
+  Check,
+  Loader2,
+  Settings as SettingsIcon,
+  User,
+  Volume2,
+  VolumeX,
+} from "lucide-react";
 import { pickDirectory, validateSourceDirectory } from "../services/tauri-bridge";
 import type { SongPack, SourceType } from "@infinitas/shared";
 import { listSongPacks, sendFeedback, type FeedbackRequest } from "../services/worker-api-client";
-import { sourceStore } from "../stores/source-store";
 import {
   getActiveSourceDirectory,
   getVoicePlaybackVolume,
@@ -12,6 +28,7 @@ import {
   SOURCE_PORT_MAX,
   SOURCE_PORT_MIN,
   settingsStore,
+  type ClientSettings,
   useSettingsStore,
 } from "../stores/settings-store";
 import clientPackageJson from "../../package.json";
@@ -87,15 +104,20 @@ interface FeedbackDraft {
   content: string;
 }
 
+type SaveStatus = "idle" | "saving" | "saved" | "save_error" | "validation_error";
+
+const AUTOSAVE_DEBOUNCE_MS = 500;
+const AUTOSAVE_SAVED_MESSAGE_DURATION_MS = 2_000;
+
 export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProps) {
   const draft = useSettingsStore((state) => state.draft);
-  const savedApiBaseUrl = useSettingsStore((state) => state.saved.apiBaseUrl);
+  const saved = useSettingsStore((state) => state.saved);
   const statusMessage = useSettingsStore((state) => state.statusMessage);
-  const _lastSavedAt = useSettingsStore((state) => state.lastSavedAt);
+  const savedApiBaseUrl = saved.apiBaseUrl;
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
-  const displayNameInputRef = useRef<HTMLInputElement | null>(null);
-  const sourceDirectoryInputRef = useRef<HTMLInputElement | null>(null);
-  const sourcePortInputRef = useRef<HTMLInputElement | null>(null);
+  const autosaveDebounceTimerRef = useRef<number | null>(null);
+  const autosaveSavedTimerRef = useRef<number | null>(null);
+  const latestAutosaveRequestIdRef = useRef(0);
   const [displayNameError, setDisplayNameError] = useState<string | null>(null);
   const [validationMessage, setValidationMessage] = useState<string | null>(null);
   const [focusedErrorField, setFocusedErrorField] = useState<SettingsErrorField | null>(null);
@@ -111,6 +133,28 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
   const activeOption = getSourceOption(draft.source);
   const activeDirectory = activeOption.usesDirectory ? getActiveSourceDirectory(draft) : "";
 
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
+  const saveStatusLabel =
+    saveStatus === "saving"
+      ? "セーブ中"
+      : saveStatus === "saved"
+        ? "セーブ完了"
+        : saveStatus === "save_error"
+          ? "セーブ時エラー"
+          : saveStatus === "validation_error"
+            ? "未保存（入力エラー）"
+            : null;
+  const saveStatusToneClass =
+    saveStatus === "saving"
+      ? "border-cyan-500/40 bg-cyan-500/10 text-cyan-300"
+      : saveStatus === "saved"
+        ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
+        : saveStatus === "save_error"
+          ? "border-red-500/40 bg-red-500/10 text-red-300"
+          : saveStatus === "validation_error"
+            ? "border-amber-500/40 bg-amber-500/10 text-amber-300"
+            : "border-white/15 bg-black/35 text-gray-400";
+
   const togglePack = (packId: number) => {
     const currentOwnedPackIds = draft.ownedPackIds;
     const nextOwnedPackIds = currentOwnedPackIds.includes(packId)
@@ -123,6 +167,19 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
     settingsStore.restoreDraftFromSaved();
     setDisplayNameError(null);
     setValidationMessage(null);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (autosaveDebounceTimerRef.current !== null) {
+        window.clearTimeout(autosaveDebounceTimerRef.current);
+        autosaveDebounceTimerRef.current = null;
+      }
+      if (autosaveSavedTimerRef.current !== null) {
+        window.clearTimeout(autosaveSavedTimerRef.current);
+        autosaveSavedTimerRef.current = null;
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -225,74 +282,156 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
     }
   }
 
-  async function handleSave(): Promise<void> {
+  function isLatestAutosaveRequest(requestId: number): boolean {
+    return latestAutosaveRequestIdRef.current === requestId;
+  }
+
+  function clearAutosaveSavedTimer(): void {
+    if (autosaveSavedTimerRef.current === null) {
+      return;
+    }
+    window.clearTimeout(autosaveSavedTimerRef.current);
+    autosaveSavedTimerRef.current = null;
+  }
+
+  function setSaveStatusForRequest(requestId: number, nextStatus: Exclude<SaveStatus, "saved">): void {
+    if (!isLatestAutosaveRequest(requestId)) {
+      return;
+    }
+    clearAutosaveSavedTimer();
+    setSaveStatus(nextStatus);
+  }
+
+  function markSavedForRequest(requestId: number): void {
+    if (!isLatestAutosaveRequest(requestId)) {
+      return;
+    }
+    clearAutosaveSavedTimer();
+    setSaveStatus("saved");
+    autosaveSavedTimerRef.current = window.setTimeout(() => {
+      if (!isLatestAutosaveRequest(requestId)) {
+        return;
+      }
+      setSaveStatus("idle");
+      autosaveSavedTimerRef.current = null;
+    }, AUTOSAVE_SAVED_MESSAGE_DURATION_MS);
+  }
+
+  async function performAutosave(requestId: number, draftSnapshot: ClientSettings): Promise<void> {
+    if (!isLatestAutosaveRequest(requestId)) {
+      return;
+    }
+
     settingsStore.setStatusMessage(null);
     setFocusedErrorField(null);
 
-    const nextDisplayNameError = validateDisplayName(draft.displayName);
+    const nextDisplayNameError = validateDisplayName(draftSnapshot.displayName);
     if (nextDisplayNameError !== null) {
       setDisplayNameError(nextDisplayNameError);
+      setValidationMessage(null);
       focusErrorField("display_name");
+      setSaveStatusForRequest(requestId, "validation_error");
       return;
     }
 
     setDisplayNameError(null);
 
-    if (draft.source === "daken_counter_v3") {
-      if (!isValidPortNumber(draft.dakenCounterV3Port)) {
+    if (draftSnapshot.source === "daken_counter_v3") {
+      if (!isValidPortNumber(draftSnapshot.dakenCounterV3Port)) {
         setValidationMessage(`WebSocketポートは ${SOURCE_PORT_MIN} - ${SOURCE_PORT_MAX} の整数で入力してください。`);
         focusErrorField("source_port");
+        setSaveStatusForRequest(requestId, "validation_error");
         return;
       }
-
-      settingsStore.save();
-      await sourceStore.start(settingsStore.getState().saved, { force: false });
-      return;
-    }
-
-    if (activeDirectory.trim().length === 0) {
-      setValidationMessage("先に監視元フォルダを指定してください。");
-      focusErrorField("source_directory");
-      return;
-    }
-
-    try {
       setValidationMessage(null);
-      const validation = await validateSourceDirectory({
-        source: draft.source,
-        directoryPath: activeDirectory,
-      });
-
-      if (validation.missingPaths.length > 0) {
-        setValidationMessage(`必須ファイルが見つかりません: ${validation.missingPaths.join(" / ")}`);
+    } else {
+      const activeDirectoryForSave = getActiveSourceDirectory(draftSnapshot);
+      if (activeDirectoryForSave.trim().length === 0) {
+        setValidationMessage("先に監視元フォルダを指定してください。");
         focusErrorField("source_directory");
+        setSaveStatusForRequest(requestId, "validation_error");
         return;
       }
 
-      settingsStore.save();
-      await sourceStore.start(settingsStore.getState().saved, { force: false });
-    } catch (error) {
-      setValidationMessage(formatUnknownError(error, "監視元フォルダの検証に失敗しました。"));
-      focusErrorField("source_directory");
+      try {
+        const validation = await validateSourceDirectory({
+          source: draftSnapshot.source,
+          directoryPath: activeDirectoryForSave,
+        });
+        if (!isLatestAutosaveRequest(requestId)) {
+          return;
+        }
+
+        if (validation.missingPaths.length > 0) {
+          setValidationMessage(`必須ファイルが見つかりません: ${validation.missingPaths.join(" / ")}`);
+          focusErrorField("source_directory");
+          setSaveStatusForRequest(requestId, "validation_error");
+          return;
+        }
+
+        setValidationMessage(null);
+      } catch (error) {
+        if (!isLatestAutosaveRequest(requestId)) {
+          return;
+        }
+        setValidationMessage(formatUnknownError(error, "監視元フォルダの検証に失敗しました。"));
+        focusErrorField("source_directory");
+        setSaveStatusForRequest(requestId, "validation_error");
+        return;
+      }
     }
+
+    if (!isLatestAutosaveRequest(requestId)) {
+      return;
+    }
+
+    setSaveStatusForRequest(requestId, "saving");
+    try {
+      settingsStore.save(draftSnapshot);
+    } catch (error) {
+      if (!isLatestAutosaveRequest(requestId)) {
+        return;
+      }
+      settingsStore.setStatusMessage(formatUnknownError(error, "設定の保存に失敗しました。"));
+      setSaveStatusForRequest(requestId, "save_error");
+      return;
+    }
+
+    settingsStore.setStatusMessage(null);
+    markSavedForRequest(requestId);
   }
 
-  function focusErrorField(field: SettingsErrorField): void {
-    let target: HTMLInputElement | null = null;
-    if (field === "display_name") {
-      target = displayNameInputRef.current;
-    } else if (field === "source_directory") {
-      target = sourceDirectoryInputRef.current;
-    } else {
-      target = sourcePortInputRef.current;
-    }
-
-    if (target === null) {
+  useEffect(() => {
+    if (draft === saved) {
       return;
     }
+
+    setSaveStatus((current) => (current === "saved" ? "idle" : current));
+    clearAutosaveSavedTimer();
+
+    const requestId = latestAutosaveRequestIdRef.current + 1;
+    latestAutosaveRequestIdRef.current = requestId;
+
+    if (autosaveDebounceTimerRef.current !== null) {
+      window.clearTimeout(autosaveDebounceTimerRef.current);
+      autosaveDebounceTimerRef.current = null;
+    }
+
+    autosaveDebounceTimerRef.current = window.setTimeout(() => {
+      autosaveDebounceTimerRef.current = null;
+      void performAutosave(requestId, draft);
+    }, AUTOSAVE_DEBOUNCE_MS);
+
+    return () => {
+      if (autosaveDebounceTimerRef.current !== null) {
+        window.clearTimeout(autosaveDebounceTimerRef.current);
+        autosaveDebounceTimerRef.current = null;
+      }
+    };
+  }, [draft, saved]);
+
+  function focusErrorField(field: SettingsErrorField): void {
     setFocusedErrorField(field);
-    target.focus({ preventScroll: true });
-    target.scrollIntoView({ behavior: "smooth", block: "start", inline: "nearest" });
   }
 
   async function handleSubmitFeedback(): Promise<void> {
@@ -358,6 +497,23 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
             ) : null}
           </aside>
         </div>
+          {/* 自動保存ステータスインジケーター */}
+          <div className="pointer-events-none fixed right-6 top-6 z-50" aria-live="polite" aria-atomic="true">
+            <div
+              className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-bold backdrop-blur-md transition-colors ${saveStatusToneClass}`}
+            >
+              {saveStatus === "saving" ? (
+                <Loader2 size={15} className="animate-spin" />
+              ) : saveStatus === "saved" ? (
+                <CheckCircle2 size={15} />
+              ) : saveStatus === "save_error" || saveStatus === "validation_error" ? (
+                <AlertTriangle size={15} />
+              ) : (
+                <Save size={15} />
+              )}
+              {saveStatusLabel !== null ? <span>{saveStatusLabel}</span> : null}
+            </div>
+          </div>
       </header>
 
       <div className="space-y-12">
@@ -370,7 +526,6 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
           <div className="max-w-md space-y-2">
             <label className="text-[10px] font-black uppercase text-gray-500">DJ NAME</label>
             <input
-              ref={displayNameInputRef}
               type="text"
               value={draft.displayName}
               maxLength={DJ_NAME_MAX_LENGTH}
@@ -442,7 +597,6 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
             {activeOption.usesDirectory ? (
               <div className="flex max-w-3xl flex-col gap-3 md:flex-row">
                 <input
-                  ref={sourceDirectoryInputRef}
                   type="text"
                   value={activeDirectory}
                   disabled={roomJoined}
@@ -478,7 +632,6 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
             ) : (
               <div className="max-w-md">
                 <input
-                  ref={sourcePortInputRef}
                   type="number"
                   inputMode="numeric"
                   min={SOURCE_PORT_MIN}
@@ -713,21 +866,11 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
           </div>
         </section>
 
-        <footer className="space-y-3 pt-4">
-          <p className="text-sm text-gray-400">{statusMessage ?? "Ready to save local settings."}</p>
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <button
-              type="button"
-              onClick={() => {
-                void handleSave();
-              }}
-              className="flex items-center justify-center gap-3 rounded-xl bg-cyan-500 px-10 py-4 font-black text-black shadow-[0_10px_30px_rgba(6,182,212,0.3)] transition-all active:scale-95 hover:bg-cyan-400"
-            >
-              <Save size={20} />
-              設定を保存して反映
-            </button>
-          </div>
-        </footer>
+        {statusMessage ? (
+          <footer className="pt-4">
+            <p className="text-sm text-gray-400">{statusMessage}</p>
+          </footer>
+        ) : null}
       </div>
 
       {isFeedbackModalOpen ? (
