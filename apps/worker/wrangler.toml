@@ -2,6 +2,9 @@ name = "infinitas-arena"
 main = "src/index.ts"
 compatibility_date = "2025-01-01"
 
+[observability]
+enabled = true
+
 [vars]
 REPO_OWNER_GITHUB = "tts1374"
 REPO_NAME_GITHUB = "infinitas_arena"
