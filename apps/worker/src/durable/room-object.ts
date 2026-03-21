@@ -434,6 +434,7 @@ function parseSongUnlockSettings(rawClientCapabilities: unknown): SongUnlockSett
     return {
       bit_unlocked: false,
       djp_unlocked: false,
+      allow_leggendaria: false,
       owned_pack_ids: [],
     };
   }
@@ -443,6 +444,7 @@ function parseSongUnlockSettings(rawClientCapabilities: unknown): SongUnlockSett
     return {
       bit_unlocked: false,
       djp_unlocked: false,
+      allow_leggendaria: false,
       owned_pack_ids: [],
     };
   }
@@ -450,6 +452,7 @@ function parseSongUnlockSettings(rawClientCapabilities: unknown): SongUnlockSett
   return {
     bit_unlocked: rawSongUnlocks.bit_unlocked === true,
     djp_unlocked: rawSongUnlocks.djp_unlocked === true,
+    allow_leggendaria: rawSongUnlocks.allow_leggendaria === true,
     owned_pack_ids: normalizeOwnedPackIds(rawSongUnlocks.owned_pack_ids),
   };
 }
@@ -1671,6 +1674,7 @@ export class RoomDurableObject {
               match_song_unlock_filter: {
                 include_bit: matchSongUnlockFilter.include_bit,
                 include_djp: matchSongUnlockFilter.include_djp,
+                include_leggendaria: matchSongUnlockFilter.include_leggendaria,
                 common_pack_ids: matchSongUnlockFilter.common_pack_ids,
               },
             }),

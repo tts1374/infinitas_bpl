@@ -46,7 +46,7 @@
 - `ROOM_JOIN`
   - payload: `{ join_code?: string, display_name: string, source: "inf_daken_counter"|"inf-notebook"|"daken_counter_v3"|"reflux", client_version?: string, client_capabilities?: object }`
   - 備考: WS接続直後に必ず送る（DOがJOIN完了するまでstate配信しない）
-  - 備考: `client_capabilities.song_unlocks = { bit_unlocked: boolean, djp_unlocked: boolean, owned_pack_ids: number[] }` を送ると、`START_MATCH` 時の共通解禁フィルタ計算に利用される
+  - 備考: `client_capabilities.song_unlocks = { bit_unlocked: boolean, djp_unlocked: boolean, allow_leggendaria: boolean, owned_pack_ids: number[] }` を送ると、`START_MATCH` 時の共通解禁フィルタ計算に利用される
 - `ROOM_LEAVE`
   - payload: `{}`
 
@@ -165,9 +165,9 @@
   "settings": { "...": "..." },
   "host_player_id": "string",
   "players": [
-    { "player_id": "string", "display_name": "string", "source": "inf_daken_counter|inf-notebook|daken_counter_v3|reflux", "song_unlocks": { "bit_unlocked": false, "djp_unlocked": false, "owned_pack_ids": [] }, "connected": true, "ready": false }
+    { "player_id": "string", "display_name": "string", "source": "inf_daken_counter|inf-notebook|daken_counter_v3|reflux", "song_unlocks": { "bit_unlocked": false, "djp_unlocked": false, "allow_leggendaria": false, "owned_pack_ids": [] }, "connected": true, "ready": false }
   ],
-  "match_song_unlock_filter": { "include_bit": false, "include_djp": false, "common_pack_ids": [] },
+  "match_song_unlock_filter": { "include_bit": false, "include_djp": false, "include_leggendaria": false, "common_pack_ids": [] },
   "picks": [
     { "player_id": "string", "pick_chart_key": "string", "accepted_at": "ISO8601" }
   ],

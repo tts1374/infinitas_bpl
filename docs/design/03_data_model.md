@@ -28,7 +28,7 @@
 - `closed_at: datetime|null`
 - `close_reason: ALL_ROUNDS_COMPLETED|MATCH_TTL_EXPIRED|READY_CHECK_TTL_EXPIRED|HOST_DISCONNECTED|HOST_ABORTED|PICKING_ABORTED|FORCE_CLOSED|null`
 - `result_ready_payload: object|null`（`RESULT` 中は保持し、`RESULT -> LOBBY` 復帰時にクリア。`summary.is_rated / rated_block_reason / rating_*` を含む）
-- `match_song_unlock_filter: { include_bit: bool, include_djp: bool, common_pack_ids: int[] }|null`（`START_MATCH` 成功時に固定し、マッチ中の選曲候補抽出へ適用）
+- `match_song_unlock_filter: { include_bit: bool, include_djp: bool, include_leggendaria: bool, common_pack_ids: int[] }|null`（`START_MATCH` 成功時に固定し、マッチ中の選曲候補抽出へ適用）
 - `event_seq: int`
 
 ### 2.2 RoomSettings（Ph1）
@@ -43,7 +43,7 @@
 - `player_id: string`
 - `display_name: string`
 - `source: inf_daken_counter|inf-notebook|daken_counter_v3|reflux`（端末設定）
-- `song_unlocks: { bit_unlocked: bool, djp_unlocked: bool, owned_pack_ids: int[] }`（クライアント申告。共通解禁フィルタ計算に使用）
+- `song_unlocks: { bit_unlocked: bool, djp_unlocked: bool, allow_leggendaria: bool, owned_pack_ids: int[] }`（クライアント申告。共通解禁フィルタ計算に使用）
 - `connected: bool`
 - `ready: bool`
 - `joined_at: datetime`

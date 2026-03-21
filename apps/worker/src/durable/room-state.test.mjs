@@ -9,7 +9,7 @@ function buildChart(chartKey, titleSearchKey, title, level, options = {}) {
     inf_pack_id: options.inf_pack_id ?? null,
     expected_key: {
       play_style: "SP",
-      difficulty: "HYPER",
+      difficulty: options.difficulty ?? "HYPER",
       title_search_key: titleSearchKey,
     },
     display: {
@@ -27,12 +27,17 @@ function createChartMaster() {
     buildChart("chart-bit", "chart-bit", "Chart Bit", 10, { inf_unlock_type: "bit" }),
     buildChart("chart-djp", "chart-djp", "Chart Djp", 10, { inf_unlock_type: "djp" }),
     buildChart("chart-pack-2", "chart-pack-2", "Chart Pack 2", 10, { inf_unlock_type: "pack", inf_pack_id: 2 }),
+    buildChart("chart-leg", "chart-leg", "Chart Leg", 12, { difficulty: "LEGGENDARIA" }),
   ];
   const chartsByKey = new Map(charts.map((chart) => [chart.chart_key, chart]));
 
   const canUseByUnlockFilter = (chart, unlockFilter) => {
     if (!unlockFilter) {
       return true;
+    }
+
+    if (!unlockFilter.include_leggendaria && chart.expected_key.difficulty === "LEGGENDARIA") {
+      return false;
     }
 
     switch (chart.inf_unlock_type) {
@@ -212,11 +217,13 @@ test("START_MATCH snapshot filter allows only shared unlock conditions", () => {
     host: {
       bit_unlocked: true,
       djp_unlocked: false,
+      allow_leggendaria: true,
       owned_pack_ids: [2, 3],
     },
     guest: {
       bit_unlocked: true,
       djp_unlocked: true,
+      allow_leggendaria: false,
       owned_pack_ids: [2],
     },
   });
@@ -229,6 +236,7 @@ test("START_MATCH snapshot filter allows only shared unlock conditions", () => {
   assert.deepEqual(pickingSnapshot.match_song_unlock_filter, {
     include_bit: true,
     include_djp: false,
+    include_leggendaria: false,
     common_pack_ids: [2],
   });
 
@@ -237,7 +245,59 @@ test("START_MATCH snapshot filter allows only shared unlock conditions", () => {
     state.submitPick("guest", "chart-djp", new Date("2026-03-08T00:01:11.000Z")),
     { ok: false, reason: "INVALID_PICK_CHART_KEY" },
   );
+  assert.deepEqual(
+    state.submitPick("guest", "chart-leg", new Date("2026-03-08T00:01:11.500Z")),
+    { ok: false, reason: "INVALID_PICK_CHART_KEY" },
+  );
   assert.equal(state.submitPick("guest", "chart-pack-2", new Date("2026-03-08T00:01:12.000Z")).ok, true);
+});
+
+test("START_MATCH filter stays fixed after reconnect capability change", () => {
+  const state = createState({}, {
+    host: {
+      bit_unlocked: true,
+      djp_unlocked: true,
+      allow_leggendaria: false,
+      owned_pack_ids: [2],
+    },
+    guest: {
+      bit_unlocked: true,
+      djp_unlocked: true,
+      allow_leggendaria: false,
+      owned_pack_ids: [2],
+    },
+  });
+
+  assert.equal(state.setPlayerReady("host", true).ok, true);
+  assert.equal(state.setPlayerReady("guest", true).ok, true);
+  assert.deepEqual(state.startMatch("host", new Date("2026-03-08T00:01:00.000Z")), { ok: true });
+
+  const startSnapshot = state.toSnapshot();
+  assert.equal(startSnapshot.match_song_unlock_filter?.include_leggendaria, false);
+
+  const disconnected = state.markPlayerDisconnected("guest", new Date("2026-03-08T00:01:10.000Z"));
+  assert.equal(disconnected.changed, true);
+
+  const reconnect = state.joinPlayer({
+    player_id: "guest",
+    display_name: "Guest",
+    source: "inf_daken_counter",
+    song_unlocks: {
+      bit_unlocked: true,
+      djp_unlocked: true,
+      allow_leggendaria: true,
+      owned_pack_ids: [2],
+    },
+    now: new Date("2026-03-08T00:01:12.000Z"),
+  });
+  assert.deepEqual(reconnect, { ok: true, join_type: "RECONNECT" });
+
+  assert.equal(state.submitPick("host", "chart-1", new Date("2026-03-08T00:01:20.000Z")).ok, true);
+  assert.deepEqual(
+    state.submitPick("guest", "chart-leg", new Date("2026-03-08T00:01:21.000Z")),
+    { ok: false, reason: "INVALID_PICK_CHART_KEY" },
+  );
+  assert.equal(state.submitPick("guest", "chart-2", new Date("2026-03-08T00:01:22.000Z")).ok, true);
 });
 
 test("RESULT -> LOBBY clears ready and match transient state without auto-start", () => {

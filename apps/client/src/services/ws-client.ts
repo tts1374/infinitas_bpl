@@ -21,6 +21,7 @@ interface RoomSocketClientOptions {
   source: SourceType;
   bitUnlockEnabled: boolean;
   djpUnlockEnabled: boolean;
+  allowLeggendaria: boolean;
   ownedPackIds: number[];
   joinCode?: string | null;
   onMessage: (message: ServerMessage) => void;
@@ -71,6 +72,7 @@ export class RoomSocketClient {
           song_unlocks: {
             bit_unlocked: this.options.bitUnlockEnabled,
             djp_unlocked: this.options.djpUnlockEnabled,
+            allow_leggendaria: this.options.allowLeggendaria,
             owned_pack_ids: this.options.ownedPackIds,
           },
         },
