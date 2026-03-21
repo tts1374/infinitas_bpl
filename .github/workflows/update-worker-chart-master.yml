@@ -2,6 +2,11 @@ name: Update Worker chart master
 
 on:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Deploy base tag. Empty = use latest release tag
+        required: false
+        type: string
   schedule:
     - cron: "10 18 * * *"
 
@@ -12,70 +17,350 @@ concurrency:
   group: update-worker-chart-master
   cancel-in-progress: false
 
+env:
+  GENERATED_FILE: apps/worker/src/master/generated/iidx-song-master.json
+  METADATA_FILE: worker-chart-master-deploy-metadata.json
+  WORKER_DIR: apps/worker
+  WORKER_NAME: infinitas-arena
+  WORKER_SMOKE_PATH: /api/charts?play_style=SP&level_filter=ANY
+
 jobs:
-  update:
+  update-and-deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Generate GitHub App installation token
-        id: app_token
-        uses: actions/create-github-app-token@v3
-        with:
-          app-id: ${{ secrets.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-      - name: Check out repository
+      - name: Resolve target tag
+        id: resolve_tag
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag || '' }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          input_tag="$(printf '%s' "${INPUT_TAG}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+          release_source="manual_input"
+          latest_release_id=""
+          latest_release_name=""
+
+          if [[ -z "${input_tag}" ]]; then
+            release_source="latest_release_api"
+            latest_release_json="$(curl -fsSL \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+              "https://api.github.com/repos/${{ github.repository }}/releases/latest")"
+
+            input_tag="$(printf '%s' "${latest_release_json}" | python3 -c "import json,sys; print(json.load(sys.stdin).get('tag_name', ''))")"
+            latest_release_id="$(printf '%s' "${latest_release_json}" | python3 -c "import json,sys; value=json.load(sys.stdin).get('id'); print('' if value is None else value)")"
+            latest_release_name="$(printf '%s' "${latest_release_json}" | python3 -c "import json,sys; value=json.load(sys.stdin).get('name'); print('' if value is None else value)")"
+            latest_release_name="${latest_release_name//$'\n'/ }"
+
+            if [[ -z "${input_tag}" || "${input_tag}" == "null" ]]; then
+              echo "Failed to resolve tag_name from latest release API." >&2
+              exit 1
+            fi
+          fi
+
+          safe_tag="$(printf '%s' "${input_tag}" | tr '/:@ ' '____' | tr -cd '[:alnum:]_.-')"
+          if [[ -z "${safe_tag}" ]]; then
+            safe_tag="tag"
+          fi
+          artifact_name="worker-chart-master-${safe_tag}-${{ github.run_id }}"
+
+          {
+            echo "target_tag=${input_tag}"
+            echo "release_source=${release_source}"
+            echo "latest_release_id=${latest_release_id}"
+            echo "latest_release_name=${latest_release_name}"
+            echo "artifact_name=${artifact_name}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Check out repository at resolved tag
         uses: actions/checkout@v4
         with:
-          ref: v1
-          token: ${{ steps.app_token.outputs.token }}
+          ref: ${{ steps.resolve_tag.outputs.target_tag }}
+          fetch-depth: 0
+
+      - name: Log checkout commit and tag
+        id: checkout_info
+        run: |
+          set -euo pipefail
+
+          base_sha="$(git rev-parse HEAD)"
+          exact_tag="$(git describe --tags --exact-match)"
+          target_tag="${{ steps.resolve_tag.outputs.target_tag }}"
+          normalized_target_tag="${target_tag#refs/tags/}"
+
+          echo "git rev-parse HEAD => ${base_sha}"
+          echo "git describe --tags --exact-match => ${exact_tag}"
+
+          if [[ "${exact_tag}" != "${normalized_target_tag}" ]]; then
+            echo "::warning::Resolved input tag (${target_tag}) and exact checkout tag (${exact_tag}) differ."
+          fi
+
+          {
+            echo "base_sha=${base_sha}"
+            echo "exact_tag=${exact_tag}"
+          } >> "${GITHUB_OUTPUT}"
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Rebuild worker chart master snapshot
-        run: python scripts/build_worker_chart_master.py
+      - name: Capture Python version
+        id: python_info
+        run: echo "python_version=$(python --version | awk '{print $2}')" >> "${GITHUB_OUTPUT}"
 
-      - name: Create pull request when snapshot changes
-        id: create_pr
-        uses: peter-evans/create-pull-request@v6
-        with:
-          token: ${{ steps.app_token.outputs.token }}
-          base: v1
-          branch: bot/update-worker-chart-master
-          delete-branch: true
-          commit-message: "chore(worker): update generated iidx song master"
-          title: "chore(worker): update generated iidx song master"
-          body: |
-            ## Summary
-            - Rebuilt `apps/worker/src/master/generated/iidx-song-master.json` from the latest `tts1374/iidx_all_songs_master` release.
-            - This PR was created automatically by `.github/workflows/update-worker-chart-master.yml`.
-
-            ## Run details
-            - Trigger: `${{ github.event_name }}`
-            - Workflow run: `${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}`
-          add-paths: |
-            apps/worker/src/master/generated/iidx-song-master.json
-
-      - name: Enable auto-merge for update PR
-        if: steps.create_pr.outputs.pull-request-number != ''
-        env:
-          GH_TOKEN: ${{ steps.app_token.outputs.token }}
+      - name: Capture pre-generation hash
+        id: pre_hash
         run: |
           set -euo pipefail
 
-          pr_number="${{ steps.create_pr.outputs.pull-request-number }}"
-          repo_auto_merge_enabled="$(gh api repos/${{ github.repository }} --jq '.allow_auto_merge')"
-
-          if [[ "${repo_auto_merge_enabled}" != "true" ]]; then
-            echo "::warning::Repository auto-merge is disabled. Enable 'Allow auto-merge' in repository settings to activate this step."
-            exit 0
+          if [[ -f "${GENERATED_FILE}" ]]; then
+            echo "pre_exists=true" >> "${GITHUB_OUTPUT}"
+            echo "pre_sha=$(sha256sum "${GENERATED_FILE}" | awk '{print $1}')" >> "${GITHUB_OUTPUT}"
+          else
+            echo "pre_exists=false" >> "${GITHUB_OUTPUT}"
+            echo "pre_sha=" >> "${GITHUB_OUTPUT}"
           fi
 
-          if [[ "$(gh pr view "${pr_number}" --json autoMergeRequest --jq '.autoMergeRequest != null')" == "true" ]]; then
-            echo "Auto-merge already enabled for PR #${pr_number}."
-            exit 0
+      - name: Rebuild worker chart master snapshot
+        run: python scripts/build_worker_chart_master.py
+
+      - name: Detect generated file changes
+        id: detect_diff
+        env:
+          PRE_SHA: ${{ steps.pre_hash.outputs.pre_sha }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! -f "${GENERATED_FILE}" ]]; then
+            echo "Generated file not found: ${GENERATED_FILE}" >&2
+            exit 1
           fi
 
-          gh pr merge --auto --squash "${pr_number}"
+          post_sha="$(sha256sum "${GENERATED_FILE}" | awk '{print $1}')"
+          diff_detected="true"
+
+          if [[ -n "${PRE_SHA}" && "${PRE_SHA}" == "${post_sha}" ]]; then
+            diff_detected="false"
+          fi
+
+          git_diff_detected="true"
+          if git diff --quiet -- "${GENERATED_FILE}"; then
+            git_diff_detected="false"
+          fi
+
+          echo "Generated file SHA256: ${post_sha}"
+          echo "Diff detected (hash): ${diff_detected}"
+          echo "Diff detected (git): ${git_diff_detected}"
+
+          if [[ "${diff_detected}" != "${git_diff_detected}" ]]; then
+            echo "::warning::Hash-based diff and git diff result differ. Proceeding with hash-based result."
+          fi
+
+          {
+            echo "post_sha=${post_sha}"
+            echo "diff_detected=${diff_detected}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Write deploy provenance metadata
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag || '' }}
+          RESOLVED_TAG: ${{ steps.resolve_tag.outputs.target_tag }}
+          RELEASE_SOURCE: ${{ steps.resolve_tag.outputs.release_source }}
+          LATEST_RELEASE_ID: ${{ steps.resolve_tag.outputs.latest_release_id }}
+          LATEST_RELEASE_NAME: ${{ steps.resolve_tag.outputs.latest_release_name }}
+          APP_COMMIT_SHA: ${{ steps.checkout_info.outputs.base_sha }}
+          PYTHON_VERSION: ${{ steps.python_info.outputs.python_version }}
+          GENERATED_FILE_SHA256: ${{ steps.detect_diff.outputs.post_sha }}
+          DIFF_DETECTED: ${{ steps.detect_diff.outputs.diff_detected }}
+          WORKFLOW_RUN_ID: ${{ github.run_id }}
+          WORKFLOW_RUN_ATTEMPT: ${{ github.run_attempt }}
+          APP_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          python - <<'PY'
+          import datetime
+          import json
+          import os
+
+          release_id_raw = os.environ.get("LATEST_RELEASE_ID", "")
+          latest_release_id = int(release_id_raw) if release_id_raw.isdigit() else None
+          latest_release_name = os.environ.get("LATEST_RELEASE_NAME") or None
+          input_tag = os.environ.get("INPUT_TAG", "")
+
+          payload = {
+              "app_repository": os.environ["APP_REPOSITORY"],
+              "resolved_tag": os.environ["RESOLVED_TAG"],
+              "app_commit_sha": os.environ["APP_COMMIT_SHA"],
+              "workflow_run_id": os.environ["WORKFLOW_RUN_ID"],
+              "workflow_run_attempt": os.environ["WORKFLOW_RUN_ATTEMPT"],
+              "generated_at_utc": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+              "generated_file": os.environ["GENERATED_FILE"],
+              "generated_file_sha256": os.environ["GENERATED_FILE_SHA256"],
+              "diff_detected": os.environ.get("DIFF_DETECTED", "").lower() == "true",
+              "release_source": os.environ["RELEASE_SOURCE"],
+              "python_version": os.environ["PYTHON_VERSION"],
+              "latest_release_id": latest_release_id,
+              "latest_release_name": latest_release_name,
+              "trigger_event": os.environ.get("GITHUB_EVENT_NAME"),
+              "input_tag": input_tag if input_tag else None,
+          }
+
+          with open(os.environ["METADATA_FILE"], "w", encoding="utf-8", newline="\n") as fh:
+              json.dump(payload, fh, indent=2, ensure_ascii=False)
+              fh.write("\n")
+          PY
+
+      - name: Upload generated chart master and metadata artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.resolve_tag.outputs.artifact_name }}
+          if-no-files-found: error
+          path: |
+            ${{ env.GENERATED_FILE }}
+            ${{ env.METADATA_FILE }}
+
+      - name: Set up Node.js
+        if: steps.detect_diff.outputs.diff_detected == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Validate deploy configuration
+        if: steps.detect_diff.outputs.diff_detected == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN_WORKER: ${{ secrets.CLOUDFLARE_API_TOKEN_WORKER }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_WORKERS_SUBDOMAIN: ${{ vars.CLOUDFLARE_WORKERS_SUBDOMAIN }}
+          ISSUE_TOKEN: ${{ secrets.ISSUE_TOKEN }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          set -euo pipefail
+
+          required_vars=(
+            CLOUDFLARE_API_TOKEN_WORKER
+            CLOUDFLARE_ACCOUNT_ID
+            CLOUDFLARE_WORKERS_SUBDOMAIN
+            ISSUE_TOKEN
+            DISCORD_WEBHOOK_URL
+          )
+
+          for name in "${required_vars[@]}"; do
+            if [[ -z "${!name}" ]]; then
+              echo "Missing required configuration: ${name}" >&2
+              exit 1
+            fi
+          done
+
+      - name: Install dependencies
+        if: steps.detect_diff.outputs.diff_detected == 'true'
+        run: npm ci
+
+      - name: Put Worker secret ISSUE_TOKEN
+        if: steps.detect_diff.outputs.diff_detected == 'true'
+        working-directory: ${{ env.WORKER_DIR }}
+        env:
+          CLOUDFLARE_API_TOKEN_WORKER: ${{ secrets.CLOUDFLARE_API_TOKEN_WORKER }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          ISSUE_TOKEN: ${{ secrets.ISSUE_TOKEN }}
+        run: |
+          set -euo pipefail
+          printf "%s" "${ISSUE_TOKEN}" | CLOUDFLARE_API_TOKEN="${CLOUDFLARE_API_TOKEN_WORKER}" npx wrangler secret put ISSUE_TOKEN
+
+      - name: Put Worker secret DISCORD_WEBHOOK_URL
+        if: steps.detect_diff.outputs.diff_detected == 'true'
+        working-directory: ${{ env.WORKER_DIR }}
+        env:
+          CLOUDFLARE_API_TOKEN_WORKER: ${{ secrets.CLOUDFLARE_API_TOKEN_WORKER }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          set -euo pipefail
+          printf "%s" "${DISCORD_WEBHOOK_URL}" | CLOUDFLARE_API_TOKEN="${CLOUDFLARE_API_TOKEN_WORKER}" npx wrangler secret put DISCORD_WEBHOOK_URL
+
+      - name: Deploy Worker with Wrangler
+        id: deploy_worker
+        if: steps.detect_diff.outputs.diff_detected == 'true'
+        working-directory: ${{ env.WORKER_DIR }}
+        env:
+          CLOUDFLARE_API_TOKEN_WORKER: ${{ secrets.CLOUDFLARE_API_TOKEN_WORKER }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          CLOUDFLARE_API_TOKEN="${CLOUDFLARE_API_TOKEN_WORKER}" npx wrangler deploy
+
+      - name: Smoke check workers.dev deployment
+        if: steps.detect_diff.outputs.diff_detected == 'true'
+        env:
+          WORKER_SMOKE_URL: https://${{ env.WORKER_NAME }}.${{ vars.CLOUDFLARE_WORKERS_SUBDOMAIN }}.workers.dev${{ env.WORKER_SMOKE_PATH }}
+        run: |
+          set -euo pipefail
+
+          body_file="$(mktemp)"
+
+          for attempt in 1 2 3 4 5; do
+            status_code="$(curl --silent --show-error --output "${body_file}" --write-out "%{http_code}" "${WORKER_SMOKE_URL}")"
+
+            if [[ "${status_code}" == 2* ]]; then
+              echo "Smoke check passed on attempt ${attempt}: ${WORKER_SMOKE_URL}"
+              exit 0
+            fi
+
+            if [[ "${attempt}" -eq 5 ]]; then
+              echo "Smoke check failed with HTTP ${status_code}: ${WORKER_SMOKE_URL}" >&2
+              cat "${body_file}" >&2
+              exit 1
+            fi
+
+            sleep 5
+          done
+
+      - name: Write workflow summary
+        if: always()
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag || '' }}
+          RESOLVED_TAG: ${{ steps.resolve_tag.outputs.target_tag }}
+          BASE_SHA: ${{ steps.checkout_info.outputs.base_sha }}
+          GENERATED_FILE_SHA256: ${{ steps.detect_diff.outputs.post_sha }}
+          DIFF_DETECTED: ${{ steps.detect_diff.outputs.diff_detected }}
+          DEPLOY_OUTCOME: ${{ steps.deploy_worker.outcome }}
+          ARTIFACT_NAME: ${{ steps.resolve_tag.outputs.artifact_name }}
+        run: |
+          set -euo pipefail
+
+          input_tag_display="${INPUT_TAG}"
+          if [[ -z "${input_tag_display}" ]]; then
+            input_tag_display="(empty)"
+          fi
+
+          change_status="no changes"
+          deploy_status="skipped"
+
+          if [[ "${DIFF_DETECTED}" == "true" ]]; then
+            change_status="diff detected"
+            if [[ "${DEPLOY_OUTCOME}" == "success" ]]; then
+              deploy_status="executed"
+            elif [[ -n "${DEPLOY_OUTCOME}" ]]; then
+              deploy_status="${DEPLOY_OUTCOME}"
+            else
+              deploy_status="skipped"
+            fi
+          fi
+
+          {
+            echo "## Update Worker chart master"
+            echo ""
+            echo "- Trigger: \`${GITHUB_EVENT_NAME}\`"
+            echo "- Input tag: \`${input_tag_display}\`"
+            echo "- Resolved tag: \`${RESOLVED_TAG}\`"
+            echo "- Base commit SHA: \`${BASE_SHA}\`"
+            echo "- Generated file path: \`${GENERATED_FILE}\`"
+            echo "- Generated file SHA256: \`${GENERATED_FILE_SHA256}\`"
+            echo "- Change detection: \`${change_status}\`"
+            echo "- Deploy: \`${deploy_status}\`"
+            echo "- Artifact: \`${ARTIFACT_NAME}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
