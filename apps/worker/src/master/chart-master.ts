@@ -205,6 +205,10 @@ function canUseChartByUnlockFilter(
     return true;
   }
 
+  if (!unlockFilter.include_leggendaria && chart.difficulty === "LEGGENDARIA") {
+    return false;
+  }
+
   switch (normalizeUnlockType(chart.inf_unlock_type)) {
     case "initial":
       return true;

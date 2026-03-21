@@ -240,7 +240,21 @@ test("pickRandomUnusedChart respects preferred options and used chart keys", () 
 });
 
 test("unlock filter applies to search and resolve", () => {
-  const master = createRoomChartMaster(createSnapshot());
+  const snapshot = createSnapshot();
+  snapshot.charts.push({
+    chart_id: 105,
+    play_style: "SP",
+    difficulty: "LEGGENDARIA",
+    level: 12,
+    title: "Legend Star",
+    title_qualifier: "",
+    artist: "Unit C",
+    genre: "HARDCORE",
+    title_search_key: "legend star",
+    inf_unlock_type: "initial",
+    inf_pack_id: null,
+  });
+  const master = createRoomChartMaster(snapshot);
 
   const filteredSearch = master.searchCharts({
     play_style: "SP",
@@ -248,6 +262,7 @@ test("unlock filter applies to search and resolve", () => {
     unlock_filter: {
       include_bit: true,
       include_djp: false,
+      include_leggendaria: false,
       common_pack_ids: [],
     },
   });
@@ -263,6 +278,7 @@ test("unlock filter applies to search and resolve", () => {
     {
       include_bit: true,
       include_djp: false,
+      include_leggendaria: false,
       common_pack_ids: [],
     },
   );
@@ -275,8 +291,24 @@ test("unlock filter applies to search and resolve", () => {
     {
       include_bit: true,
       include_djp: false,
+      include_leggendaria: false,
       common_pack_ids: [],
     },
   );
   assert.equal(rejected, null);
+
+  const leggendariaAllowed = master.searchCharts({
+    play_style: "SP",
+    level_filter: "ANY",
+    unlock_filter: {
+      include_bit: true,
+      include_djp: false,
+      include_leggendaria: true,
+      common_pack_ids: [],
+    },
+  });
+  assert.equal(
+    leggendariaAllowed.charts.some((chart) => chart.chart_key === "SP::LEGGENDARIA::legend star"),
+    true,
+  );
 });
