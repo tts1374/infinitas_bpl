@@ -380,8 +380,7 @@ function resetDakenCounterV3SnapshotTracking(): void {
 
 function resetDakenCounterV3MatchTracking(): void {
   dakenCounterV3MonitoringEnabled = false;
-  dakenCounterV3HasSnapshotBaseline = false;
-  dakenCounterV3SnapshotFingerprintCounts = new Map<string, number>();
+  // Keep baseline across rematches so the first PLAYING update is still diffed/submitted.
   dakenCounterV3SocketMessageQueue = Promise.resolve();
   clearDakenCounterV3AliasResolveCache();
   dakenCounterV3ProcessedFingerprints.clear();
