@@ -134,6 +134,22 @@ function getRemainingSeconds(targetAtMs: number | null, nowMs: number): number |
   return Math.max(0, Math.ceil((targetAtMs - nowMs) / 1_000));
 }
 
+function resolveArenaMatchStartAtMs(snapshot: RoomStateSnapshot): number | null {
+  const matchDeadlineAtMs = getIsoTimeMs(snapshot.timers.match_deadline);
+  if (matchDeadlineAtMs !== null) {
+    return matchDeadlineAtMs - MATCH_TTL_MINUTES * 60 * 1_000;
+  }
+
+  const playedRoundStartedAtMs = snapshot.frozen_rounds
+    .map((round) => getIsoTimeMs(round.started_at))
+    .filter((value): value is number => value !== null);
+  if (playedRoundStartedAtMs.length > 0) {
+    return Math.min(...playedRoundStartedAtMs);
+  }
+
+  return getIsoTimeMs(snapshot.created_at);
+}
+
 function getNextClockTickDelayMs(nowMs: number, anchorAtMs: number | null): number {
   if (anchorAtMs === null) {
     const offset = nowMs % 1_000;
@@ -2198,13 +2214,13 @@ export function RoomPage() {
       : clockNowMs;
   const arenaFinalDurationReferenceMs =
     snapshot.room_state === "RESULT" ? clockNowMs : arenaFinalEndAtMs;
-  const arenaCreatedAtMs = getIsoTimeMs(snapshot.created_at);
+  const arenaMatchStartedAtMs = resolveArenaMatchStartAtMs(snapshot);
   const arenaFinalDurationLabel = formatDurationLabel(
-    arenaCreatedAtMs === null
+    arenaMatchStartedAtMs === null
       ? null
       : Math.max(
           0,
-          MATCH_TTL_MINUTES * 60 - Math.floor((arenaFinalDurationReferenceMs - arenaCreatedAtMs) / 1_000),
+          MATCH_TTL_MINUTES * 60 - Math.floor((arenaFinalDurationReferenceMs - arenaMatchStartedAtMs) / 1_000),
         ),
   );
   const arenaRoomName = formatRoomTitle(
