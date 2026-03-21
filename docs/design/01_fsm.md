@@ -50,7 +50,7 @@
 - `round_soft_ttl = 5min`（`count_go` 以降。超過で未確定者をTIMEOUT確定）
 - `host_skip_unlock_seconds = 240s`（`SKIP_HOST_ASSIGN` 用の予約値。現行v1では操作を受理しない）
 - `match_ttl = 30min`（`START_MATCH` 成功時、すなわち `PICKING` 開始時から固定）
-- `rejoin_cooldown = 20s`（退出後の同一ルーム再入室抑止。ホスト非明示切断時の再接続猶予にも使用）
+- `rejoin_cooldown = 40s`（退出後の同一ルーム再入室抑止。ホスト非明示切断時の再接続猶予にも使用）
 
 ## 5. ルーム作成設定（RoomSettings / Ph1）
 - `visibility`: `PUBLIC | PRIVATE`
@@ -101,6 +101,7 @@
 - `players < 2` の間は `START_MATCH` 成功不可
 - `ready=false` の参加者が 1 人でもいる間は `START_MATCH` 成功不可
 - `START_MATCH` はホストのみ
+- `START_MATCH` 成功時に参加者全員の `song_unlocks` から `match_song_unlock_filter` を確定し、そのマッチ中の選曲候補・ランダム抽選に固定適用する
 - `START_MATCH` 実行で以後参加不可（席ロック）。退出は可能（退出者は以後TIMEOUT扱い）
 - 前マッチ揮発状態が未クリアなら `START_MATCH` を拒否する
 
@@ -117,9 +118,9 @@
 - ARENA: 参加人数 = ラウンド数（各自1譜面）
 - BPL: 3 STAGE固定
   - 2人想定: `P1指名 + P2指名 + ランダム1`（同フィルタ・未使用、かつ P1/P2 の選曲レベル最小〜最大の範囲で抽選）
-  - Ph1暫定: DO内に譜面マスタを持たない間は、ランダム枠に一意なプレースホルダ expected_key を割り当てる
 - 凍結時に各ラウンドへ `expected_key` を確定して埋める
-  - `expected_key = (play_style, difficulty, title_search_key)`
+  - `expected_key = (play_style, difficulty, title_search_key, chart_id?)`
+  - `chart_id` が確定できる場合は優先し、欠落時は従来キーで後方互換運用する
 
 ## 9. PLAYING（ラウンド進行）
 ### 9.1 ラウンド確定状態（PlayerRoundState）
@@ -131,6 +132,8 @@
 ### 9.2 expected一致（誤採用防止）
 - 各ラウンドに `expected_key` を保持
 - 受理するリザルトは `observed_key == expected_key` のみ
+  - `play_style/difficulty/title_search_key` は常に一致必須
+  - `chart_id` は双方に存在する場合のみ一致必須（`daken_counter_v3` は `expected_key.chart_id` がある場合、`observed_key.chart_id` 欠落を不受理）
 - 許容窓: `accept_window_rounds = 0`（当該ラウンドのみ）
 
 ### 9.3 提出採用（初回のみ）

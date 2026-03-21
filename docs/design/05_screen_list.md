@@ -34,14 +34,25 @@ Ph1 の画面は以下とする。
 - `display_name`
 - `player_id`（表示のみ / コピー可能）
 - `source`
-  - `inf_daken_counter`
   - `inf-notebook`
+  - `daken_counter_v3`
+  - `reflux`
+  - `inf_daken_counter`（legacy / 通常UI非表示）
 - 監視対象ファイルパス
-  - `inf_daken_counter`
-    - `today_update.xml`
   - `inf-notebook`
     - `export/recent.json`
-    - 必要なら `records/recent.json`
+    - `records/summary.json`
+  - `reflux`
+    - `latest.json`
+    - `tracker.tsv`
+  - `daken_counter_v3`
+    - `ws://localhost:{port}`（default `8767`）
+  - `inf_daken_counter`（legacy）
+    - `today_update.xml`
+- 楽曲解禁設定
+  - BIT解禁 ON/OFF
+  - DJP解禁 ON/OFF
+  - 所有 song pack 一覧
 - 監視状態表示
   - 正常
   - 未検出
@@ -52,7 +63,8 @@ Ph1 の画面は以下とする。
 ## 2.3 主な操作
 - display_name 編集
 - source 選択
-- 監視対象ファイルパス選択
+- 監視対象ディレクトリ/ポート選択
+- 楽曲解禁設定の編集
 - 保存
 - 接続テスト / 監視テスト（任意、Ph1では未実装でも可）
 
@@ -256,7 +268,6 @@ Ph1 の画面は以下とする。
 ## 8.3 主な操作
 - 自分でSKIP
 - ホスト:
-  - 代理SKIP（4分以降）
   - 強制進行（確認ダイアログあり）
 
 ## 8.4 演出仕様
@@ -289,7 +300,7 @@ Ph1 の画面は以下とする。
   - metric 値
   - status（PLAYED / SKIPPED / TIMEOUT）
   - reason
-- 代理SKIPログ
+- rated / unrated と block reason
 - 強制進行の有無
 
 ## 9.3 主な操作
@@ -364,6 +375,8 @@ Ph1 の画面は以下とする。
 - `HOST_SKIP_LOCKED`
 - `ROOM_STATE_LOST`
 - `SOURCE_UNAVAILABLE`
+- `CLIENT_VERSION_UNSUPPORTED`
+- `PLAYER_ALREADY_CONNECTED`（再接続中の一時拒否表示）
 
 ## 12.2 表示方針
 - 操作失敗系はダイアログ

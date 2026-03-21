@@ -21,14 +21,14 @@ Ph1で固定するタイマー値、制約値、表示/運用上の定数を整�
   - START音声時点から5分で未確定者をTIMEOUT確定
 - `HOST_SKIP_UNLOCK_SECONDS = 240`
   - 現行v1では代理SKIP無効のため、将来拡張用の予約値
-- `ROUND_MUSIC_SELECT_SECONDS = 60`
-  - ROUND_BEGINから60秒間は `MUSIC SELECT`
-- `ROUND_STAGE_COUNTDOWN_AT_SECONDS = 50`
-  - ROUND_BEGINから50秒後に残り10秒カウント開始（`count_beep`）
-- `ROUND_START_CALL_AT_SECONDS = 72`
-  - ROUND_BEGINから72秒後に残り3秒カウント開始（`count_beep`）
-- `ROUND_PLAY_BEGIN_AT_SECONDS = 75`
-  - ROUND_BEGINから75秒後に実プレイ開始（`count_go`）
+- `ROUND_MUSIC_SELECT_SECONDS = 45`
+  - ROUND_BEGINから45秒間は `MUSIC SELECT`
+- `ROUND_STAGE_COUNTDOWN_AT_SECONDS = 35`
+  - ROUND_BEGINから35秒後に残り10秒カウント開始（`count_beep`）
+- `ROUND_START_CALL_AT_SECONDS = 52`
+  - ROUND_BEGINから52秒後に残り3秒カウント開始（`count_beep`）
+- `ROUND_PLAY_BEGIN_AT_SECONDS = 55`
+  - ROUND_BEGINから55秒後に実プレイ開始（`count_go`）
 
 ## 1.3 マッチ全体
 - `MATCH_TTL_MINUTES = 30`
@@ -109,8 +109,9 @@ Ph1で固定するタイマー値、制約値、表示/運用上の定数を整�
 ## 5. ソース監視定数
 
 ## 5.1 source options
-- `SOURCE_OPTIONS = ["inf_daken_counter", "inf-notebook", "daken_counter_v3"]`
-- 設定UIでの選択対象は `inf-notebook` / `daken_counter_v3`（`inf_daken_counter` はlegacy非表示）
+- `SOURCE_OPTIONS = ["inf_daken_counter", "inf-notebook", "daken_counter_v3", "reflux"]`
+- 設定UIでの選択対象は `inf-notebook` / `daken_counter_v3` / `reflux`（`inf_daken_counter` はlegacy非表示）
+- `DAKEN_COUNTER_V3_DEFAULT_PORT = 8767`
 
 ## 5.2 source制約
 - `SOURCE_FIXED_PER_DEVICE = true`

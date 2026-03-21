@@ -11,6 +11,10 @@
 - `POST /api/rooms`（HTTP）: ルーム作成（room_id払い出し、RoomDO初期化、LobbyDirectoryDO登録）
 - `GET /api/lobby`（HTTP）: 公開ロビー一覧（LobbyDirectoryDO読み）
 - `GET /api/rooms/:room_id/ws?join_code=...`（WS Upgrade）: ルームへ接続（Workerがroom_idのDOへルーティング）
+- `GET /api/charts`（HTTP）: 全体譜面検索（設定条件での候補取得）
+- `GET /api/rooms/:room_id/charts`（HTTP）: ルーム文脈付き譜面検索（`match_song_unlock_filter` を反映）
+- `GET /api/song-packs`（HTTP）: 楽曲パック一覧取得
+- `GET /api/chart-aliases/resolve`（HTTP）: alias exact 解決（runtime alias）
 
 ## 2. 共通Envelope
 
@@ -40,8 +44,9 @@
 
 ### 3.1 ルーム
 - `ROOM_JOIN`
-  - payload: `{ join_code?: string, display_name: string, source: "inf_daken_counter"|"inf-notebook"|"daken_counter_v3", client_version?: string, client_capabilities?: object }`
+  - payload: `{ join_code?: string, display_name: string, source: "inf_daken_counter"|"inf-notebook"|"daken_counter_v3"|"reflux", client_version?: string, client_capabilities?: object }`
   - 備考: WS接続直後に必ず送る（DOがJOIN完了するまでstate配信しない）
+  - 備考: `client_capabilities.song_unlocks = { bit_unlocked: boolean, djp_unlocked: boolean, owned_pack_ids: number[] }` を送ると、`START_MATCH` 時の共通解禁フィルタ計算に利用される
 - `ROOM_LEAVE`
   - payload: `{}`
 
@@ -73,6 +78,7 @@
   - payload: `{}`
 - `PING`
   - payload: `{}`
+  - 備考: 現行クライアント実装では `PICKING/PLAYING` かつ host のみ送信
 
 ## 4. メッセージ一覧（DO -> Client）
 
@@ -117,7 +123,7 @@
 - `RESULT_READY`
   - payload: `{ summary: { match_id, mode, win_metric, total_rounds, completed_rounds, winner_player_ids, is_draw, is_rated, rated_block_reason, rating_before, rating_after, rating_delta }, per_round: object, per_player: object }`
   - 備考: `per_round.rounds[].results[]` には `status / metric_value / reason / submitted_at / submitted_by / source_meta?` を含めてもよい
-  - 備考: `rated_block_reason` は最低限 `missing_submission | mismatch_observed_key | incomplete_match | skip_occurred | timeout_occurred | force_advanced | result_conflict` を扱う
+  - 備考: `rated_block_reason` は最低限 `private_room | missing_submission | mismatch_observed_key | incomplete_match | skip_occurred | timeout_occurred | force_advanced | result_conflict` を扱う
   - 備考: v1 では `RESULT_READY.summary.is_rated` がレート適用可否の権威情報
   - 備考: v1 では `RESULT_READY.summary.match_id` を統計識別子の正本とし、欠落時のみ `room_id` fallback を許容
   - 備考: 通常フローでは `PLAYING -> RESULT` 遷移時に配信し、`RESULT -> LOBBY` 復帰まで保持して表示する
@@ -137,7 +143,8 @@
 {
   "play_style": "SP|DP",
   "difficulty": "NORMAL|HYPER|ANOTHER|LEGGENDARIA|...",
-  "title_search_key": "string"
+  "title_search_key": "string",
+  "chart_id": "number|null (optional)"
 }
 ```
 
@@ -145,7 +152,7 @@
 ```json
 {
   "round_index": 0,
-  "expected_key": { "play_style":"DP","difficulty":"NORMAL","title_search_key":"..." },
+  "expected_key": { "play_style":"DP","difficulty":"NORMAL","title_search_key":"...", "chart_id": 12345 },
   "display": { "title":"string", "level": 12 }
 }
 ```
@@ -158,13 +165,14 @@
   "settings": { "...": "..." },
   "host_player_id": "string",
   "players": [
-    { "player_id": "string", "display_name": "string", "source": "inf_daken_counter|inf-notebook|daken_counter_v3", "connected": true, "ready": false }
+    { "player_id": "string", "display_name": "string", "source": "inf_daken_counter|inf-notebook|daken_counter_v3|reflux", "song_unlocks": { "bit_unlocked": false, "djp_unlocked": false, "owned_pack_ids": [] }, "connected": true, "ready": false }
   ],
+  "match_song_unlock_filter": { "include_bit": false, "include_djp": false, "common_pack_ids": [] },
   "picks": [
     { "player_id": "string", "pick_chart_key": "string", "accepted_at": "ISO8601" }
   ],
   "frozen_rounds": [
-    { "round_index": 0, "expected_key": { "play_style":"DP","difficulty":"NORMAL","title_search_key":"..." }, "display": { "title":"...", "level":12 } }
+    { "round_index": 0, "expected_key": { "play_style":"DP","difficulty":"NORMAL","title_search_key":"...", "chart_id": 12345 }, "display": { "title":"...", "level":12 } }
   ],
   "current_round": {
     "round_index": 0,
@@ -195,8 +203,11 @@
 - `SKIP_HOST_ASSIGN`: 現行v1では `INVALID_STATE` を返して受理しない
 - `FORCE_ADVANCE`: `room_state=PLAYING` かつ未確定者ありのときのみ許可し、未確定者を `TIMEOUT` / `submitted_by=SYSTEM` で確定する
 - START_MATCH: `players >= 2` かつ `room_state=LOBBY` かつ全員READY かつ前マッチ揮発状態クリア済みのみ
+- START_MATCH: 成功時に `match_song_unlock_filter` を固定し、そのマッチ中は選曲候補とランダム抽選へ適用する
 - RETURN_TO_LOBBY: `room_state=RESULT` のみ。復帰時は全員readyと前マッチ揮発状態をリセットする
 - RESULT_SUBMIT: `observed_key == expected_key` かつ `round_index == current_round_index` のみ採用（accept_window=0）
+  - `play_style/difficulty/title_search_key` は常に一致必須
+  - `chart_id` は双方にある場合のみ一致必須。`expected_key.chart_id` がある `daken_counter_v3` 観測で `observed_key.chart_id` 欠落時は不採用
 - ROOM_JOIN: `client_version >= MIN_SUPPORTED_CLIENT_VERSION` を満たさない場合は `ROOM_JOIN_REJECTED` を返す
 - PICKING timeout: 未pickプレイヤーへランダム割当を行ってから `PICK_FROZEN` / `ROUND_BEGIN` を配信
 - `RESULT_READY` 生成後の `RESULT` / `CLOSED` では提出系はすべて拒否（勝敗改変防止）

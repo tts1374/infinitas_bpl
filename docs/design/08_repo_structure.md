@@ -27,8 +27,9 @@ repo-root/
   docs/
     design/
   scripts/
+  testdata/
   .github/
-````
+```
 
 ---
 
@@ -54,22 +55,24 @@ Windows デスクトップアプリとして動作し、以下を担当する。
 apps/client/
   src/
     app/
-    pages/
     components/
+    debug/
+    dev/
     features/
     hooks/
+    pages/
+    runtime/
     services/
     stores/
-    types/
     utils/
   src-tauri/
     src/
-      main.rs
       commands/
-      watchers/
-      parsers/
       models/
-      storage/
+      parsers/
+      watchers/
+      lib.rs
+      main.rs
   public/
   package.json
   tsconfig.json
@@ -90,6 +93,7 @@ apps/client/
 * `SettingsPage`
 * `LobbyPage`
 * `RoomPage`
+* `StatsPage`
 
 ### components
 
@@ -97,12 +101,9 @@ apps/client/
 
 想定:
 
-* PlayerList
-* RoomSummary
-* TimerView
-* RoundStatus
-* ErrorDialog
-* SourceStatusBadge
+* `AppSidebar`
+* `ErrorDialog`
+* `SourceUnresolvedDialog`
 
 ### features
 
@@ -110,11 +111,8 @@ apps/client/
 
 想定:
 
-* room
-* lobby
-* settings
-* voice
-* result-export
+* `stats`
+* `settings`
 
 ### hooks
 
@@ -122,10 +120,9 @@ apps/client/
 
 想定:
 
-* useWebSocket
-* useRoomState
-* useVoiceQueue
-* useSourceStatus
+* `useSettingsStore`
+* `useRoomStore`
+* `useSourceStore`
 
 ### services
 
@@ -133,11 +130,14 @@ apps/client/
 
 想定:
 
-* wsClient
-* localSettingsService
-* localResultStore
-* workerApiClient（HTTP）
-* tauriBridge
+* `ws-client`
+* `worker-api-client`
+* `source-submission`
+* `voice-announcer`
+* `result-archive`
+* `stats-archive`
+* `tauri-bridge`
+* `e2e-observability`
 
 ### stores
 
@@ -171,8 +171,7 @@ Tauri command 定義。
 
 想定:
 
-* `inf_daken_counter_watcher.rs`
-* `inf_notebook_watcher.rs`
+* `watchers/mod.rs`（source別 watch 対象解決と manager を集約）
 
 ### parsers
 
@@ -180,9 +179,10 @@ Tauri command 定義。
 
 想定:
 
-* `today_update_xml_parser.rs`
-* `export_recent_json_parser.rs`
-* `records_recent_json_parser.rs`
+* `daken.rs`
+* `notebook.rs`
+* `reflux.rs`
+* `runtime_alias.rs`
 
 ### models
 
@@ -246,14 +246,29 @@ HTTP / WS Upgrade の入口。
 
   * `POST /api/rooms`
   * `GET /api/rooms/:room_id/ws`
+  * `GET /api/rooms/:room_id/charts`
 * `lobby.ts`
 
   * `GET /api/lobby`
+* `charts.ts`
+
+  * `GET /api/charts`
+* `song-packs.ts`
+
+  * `GET /api/song-packs`
+* `chart-aliases.ts`
+
+  * `GET /api/chart-aliases/resolve`
+* `feedback.ts`
+
+  * `POST /api/feedback`
 
 ### services
 
 * room 作成補助
-* join_code 生成
+* 譜面検索 / song pack 一覧
+* alias exact 解決
+* feedback 受付・通知
 * request validation
 * LobbyDirectoryDO 呼び出し
 
@@ -324,11 +339,9 @@ packages/shared/
   src/
     constants/
     enums/
+    errors/
     models/
     ws/
-    room/
-    source/
-    errors/
   package.json
   tsconfig.json
 ```
@@ -365,6 +378,8 @@ packages/shared/
 * Submission
 * RoomStateSnapshot
 * UnmatchedTitleLog
+* SongUnlockSettings / MatchSongUnlockFilter
+* ChartSearch / SongPack
 
 ### ws
 
@@ -372,18 +387,6 @@ packages/shared/
 * Client->Server envelope
 * Server->Client envelope
 * メッセージ種別定義
-
-### room
-
-* FSM関連の共有型
-* 集計結果型
-* ラウンド状態型
-
-### source
-
-* 監視イベント型
-* source設定型
-* parser出力型
 
 ### errors
 
@@ -408,7 +411,7 @@ packages/shared/
 * `06_source_io_spec.md`
 * `07_constants.md`
 * `08_repo_structure.md`
-* `09_implementation_plan.md`
+* `09_implementation_plan.md`（historical / frozen）
 
 ---
 
@@ -420,11 +423,18 @@ packages/shared/
 
 想定:
 
-* ローカル起動補助
-* lint / format / typecheck 実行
-* join_code テスト
-* fixture 生成
-* source監視テスト
+* `build_worker_chart_master.py`
+* `run-local-e2e.ps1`
+* `start-local-two-clients.ps1`
+* `start-daken-counter-v3-mock.ps1`
+* `apply-notebook-unresolved-fixture.ps1`
+* `verify-notebook-unresolved-dialogs.ps1`
+* `scripts/release/*`
+
+## 7.2 testdata
+
+ローカルE2E用 fixture を `testdata/e2e/` に配置する。
+source別（reflux / daken_counter_v3 / inf-notebook / mixed）の再現データを保持する。
 
 ---
 
@@ -465,8 +475,9 @@ Ph1 想定:
 
 ## 10.1 source監視
 
-* 実体は `apps/client/src-tauri/watchers` に配置
-* React 側は watcher 実装詳細を知らず、イベントだけ受け取る
+* file watcher 実体は `apps/client/src-tauri/watchers/mod.rs` に配置（`inf-notebook` / `reflux` / legacy `inf_daken_counter`）
+* `daken_counter_v3` は React/TS 側 `source-store` が local WebSocket で監視する
+* React 側は parser/watcher 実装詳細を知らず、イベントだけ受け取る
 
 ## 10.2 Worker/DO
 
@@ -490,7 +501,7 @@ Ph1 想定:
 * 認証基盤
 * D1/R2 利用
 * 複数端末同一プレイヤー統合
-* 未同定手動補正UI
+* 恒久的な alias 学習/管理UI
 * 画像共有
 * OBS専用UIの作り込み
 * 高度な監査ログ

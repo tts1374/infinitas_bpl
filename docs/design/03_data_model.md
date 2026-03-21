@@ -28,6 +28,7 @@
 - `closed_at: datetime|null`
 - `close_reason: ALL_ROUNDS_COMPLETED|MATCH_TTL_EXPIRED|READY_CHECK_TTL_EXPIRED|HOST_DISCONNECTED|HOST_ABORTED|PICKING_ABORTED|FORCE_CLOSED|null`
 - `result_ready_payload: object|null`（`RESULT` 中は保持し、`RESULT -> LOBBY` 復帰時にクリア。`summary.is_rated / rated_block_reason / rating_*` を含む）
+- `match_song_unlock_filter: { include_bit: bool, include_djp: bool, common_pack_ids: int[] }|null`（`START_MATCH` 成功時に固定し、マッチ中の選曲候補抽出へ適用）
 - `event_seq: int`
 
 ### 2.2 RoomSettings（Ph1）
@@ -41,7 +42,8 @@
 ### 2.3 Player
 - `player_id: string`
 - `display_name: string`
-- `source: inf_daken_counter|inf-notebook|daken_counter_v3`（端末設定）
+- `source: inf_daken_counter|inf-notebook|daken_counter_v3|reflux`（端末設定）
+- `song_unlocks: { bit_unlocked: bool, djp_unlocked: bool, owned_pack_ids: int[] }`（クライアント申告。共通解禁フィルタ計算に使用）
 - `connected: bool`
 - `ready: bool`
 - `joined_at: datetime`
@@ -149,11 +151,14 @@ type LobbyRoomSummary = {
 - `play_style: SP|DP`
 - `difficulty: NORMAL|HYPER|ANOTHER|LEGGENDARIA|...`
 - `title_search_key: string`（入力側 normalize_title_input() の結果）
+- `chart_id: int|null`（任意。存在する場合は同名異曲の識別を優先）
 
 ### 4.2 提出受理条件（Ph1）
 - `accept_window_rounds = 0`
 - `round_index == current_round_index` のみ採用
 - `observed_key == expected_key` のみ `PLAYED` として採用
+  - `play_style/difficulty/title_search_key` は常に一致必須
+  - `chart_id` は双方に存在する場合のみ一致必須（`daken_counter_v3` は `expected.chart_id` ありで `observed.chart_id` 欠落を不採用）
 - 1プレイヤー1ラウンドは初回のみ採用（以後は拒否/ログのみ）
 
 ## 5. 勝敗判定
@@ -175,9 +180,8 @@ type LobbyRoomSummary = {
 ### 5.4 BPL（3 round）
 - 3ラウンド固定
 - 各ラウンド勝者が1勝
-- 先に2勝で勝利
 - 同点は勝ち数加算なし
-- 終了時に同勝ち数なら総合引き分け
+- 3ラウンド終了時の総勝ち数で勝敗を決め、同勝ち数なら総合引き分け
 
 ## 6. タイトル同定（Ph1 v1）
 
@@ -186,6 +190,7 @@ type LobbyRoomSummary = {
 - `music_title_alias` の exact 一致のみで解決する
   - `alias_scope = 'inf' AND alias = ?`
 - `alias_norm` / case-fold / fuzzy は使わない
+- runtime alias API（`/api/chart-aliases/resolve`）が利用可能な場合は trim exact で候補補完し、短TTLキャッシュで追従する
 
 ### 6.2 inf_daken_counter
 従来どおり `normalize_title_input(raw_title)` を同定処理側で実施する。
@@ -204,7 +209,7 @@ type LobbyRoomSummary = {
 
 ## 7. 監視ソース別の抽出仕様（Ph1）
 
-### 7.1 リザルト手帳
+### 7.1 リザルト手帳（inf-notebook）
 入力:
 - `records/summary.json`
 - `export/recent.json.list[]`（補完専用）
@@ -227,7 +232,35 @@ type LobbyRoomSummary = {
 補助:
 - `recent.music` / `recent.difficulty` は warning 用（採否条件には使わない）
 
-### 7.2 打鍵カウンタ
+### 7.2 打鍵カウンタv3（daken_counter_v3）
+入力:
+- local WebSocket `ws://localhost:{port}`（default `8767`）
+使用:
+- SCORE: `score`
+- MISSCOUNT: `bp`
+同定:
+- `difficulty` 略記を `play_style + difficulty` へ変換
+- `chart_id` が得られる場合は `ExpectedKey.chart_id` と突合
+- `battle == 1` は v1 非対応として破棄
+新規イベント判定:
+- `today_updates` の前回スナップショットとの差分のみ候補化
+- LOBBY は採用せず baseline 更新のみ、PLAYING でのみ採用判定を実施
+
+### 7.3 Reflux
+入力:
+- `latest.json`
+- `tracker.tsv`
+使用:
+- SCORE: `exscore`
+- MISSCOUNT: `bad + poor`
+同定:
+- `title` 優先、未解決時 `title2` フォールバック
+- `diff` と `playtype` から譜面同定（不整合は warning）
+- `tracker.tsv` から譜面単位 best（score/bp）を補助情報として参照
+新規イベント判定:
+- `latest.json` 内容ハッシュで重複抑止
+
+### 7.4 打鍵カウンタ（legacy: inf_daken_counter）
 入力:
 - `today_update.xml`
 使用:

@@ -90,12 +90,12 @@ Ph1 では以下を重視する。
 - ローカル設定保存
 - ローカル結果保存（JSON）
 - 音声再生
-- 監視対象ファイルの変更検知
+- 監視対象（file / local WebSocket）のイベント検知
 - 監視データの解析結果をフロントへ通知
 
 ### Rust 側の責務
-- file watcher
-- JSON/XML 読み取り
+- file watcher（`inf-notebook` / `reflux` / legacy `inf_daken_counter`）
+- JSON/XML/TSV 読み取り
 - 新規イベント判定
 - フロントエンドへのイベント通知
 
@@ -103,6 +103,7 @@ Ph1 では以下を重視する。
 - 画面描画
 - 状態管理
 - WebSocket 通信
+- `daken_counter_v3` local WebSocket 監視
 - 音声通知
 - ローカル設定UI
 - ローカル保存JSONの管理
@@ -142,11 +143,13 @@ Ph1 では以下を重視する。
 
 ## 5. ソース監視方針
 
-Ph1 では **2ソース対応** とする。
+Ph1 では **3ソース対応（+legacy互換）** とする。
 
 ### 対応ソース
-- `inf_daken_counter`
 - `inf-notebook`
+- `daken_counter_v3`
+- `reflux`
+- `inf_daken_counter`（legacy / 設定UIでは通常非表示）
 
 ### 制約
 - **1端末1ソース固定**
@@ -202,7 +205,7 @@ Ph1 では認証を導入しない。
 
 ### 切断
 - プレイヤー切断時は状態更新
-- ホスト切断時はルーム解散
+- ホスト非明示切断時は再接続猶予（`rejoin_cooldown`）を経て解散判定
 
 ---
 
@@ -226,9 +229,11 @@ Ph1 では認証を導入しない。
 
 - Workers: 1
 - Durable Object Namespace: 2（RoomDO / LobbyDirectoryDO）
+- KV: `FEEDBACK_KV`（feedback `other` 保存用）
 - D1: 使用しない
 - R2: 使用しない
 - Queue: 使用しない
+- Worker observability logs: 有効（sample rate 10%）
 
 ---
 

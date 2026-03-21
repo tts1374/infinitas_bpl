@@ -6,15 +6,17 @@ Ph1で対応するローカル監視ソースについて、
 
 Ph1では以下を前提とする。
 
-- 対応ソースは 2種類
+- 対応ソースは 3種類（+ legacy）
   - `inf-notebook`
   - `daken_counter_v3`
-  - `inf_daken_counter` は legacy（設定UIでは非表示）
+  - `reflux`
+  - `inf_daken_counter` は legacy（設定UIでは通常非表示）
 - **1端末1ソース固定**
 - ソースは事前設定で選択
 - ルーム参加中は変更不可
 - 監視方式はソースごとに固定
   - `inf-notebook`: **file watcher**
+  - `reflux`: **file watcher**
   - `daken_counter_v3`: **local WebSocket** (`ws://localhost:{port}`)
 - 監視異常時は `SOURCE_UNAVAILABLE` を表示し、TECHスキップ誘導とする
 
@@ -46,10 +48,11 @@ Ph1では以下を前提とする。
 - `play_style`
 - `difficulty`
 - `title_search_key`
+- `chart_id`（任意。存在時は優先判定）
 
 ### expected_key
 ```text
-(play_style, difficulty, title_search_key)
+(play_style, difficulty, title_search_key, chart_id?)
 ```
 
 ### observed_key
@@ -59,6 +62,8 @@ Ph1では以下を前提とする。
 - `observed_key == expected_key`
 - `round_index == current_round_index`
 - 当該プレイヤーの当該ラウンドが未確定
+- `chart_id` は双方にある場合のみ一致必須
+- `daken_counter_v3` は `expected_key.chart_id` がある場合、`observed_key.chart_id` 欠落を不採用
 
 これを満たす場合のみ `PLAYED` として採用する。
 
@@ -72,6 +77,12 @@ Ph1(v1) ではソースごとに同定方式を分ける。
 - `music_title_alias` は **exact 一致のみ**で参照する
   - `alias_scope = 'inf' AND alias = ?`
 - `alias_norm` / 大文字小文字の正規化検索 / fuzzy 検索は行わない
+- runtime alias API（`/api/chart-aliases/resolve`）が有効な場合は trim exact 候補で補完し、短TTLキャッシュで追従する
+
+### reflux
+- `title` を優先し、必要時 `title2` をフォールバックに使う
+- `diff` / `playtype` から `play_style` / `difficulty` を導出する
+- alias 解決は inf-notebook と同様に exact 優先、必要時 runtime alias 補完を使う
 
 ### inf_daken_counter
 従来どおり `normalize_title_input(raw_title)` を同定処理側で行う。
@@ -359,11 +370,30 @@ Ph1では以下を採用する。
 
 ---
 
+## 3.8 ソース: Reflux（Ph1 v1）
+
+入力:
+- `latest.json`（監視対象）
+- `tracker.tsv`（best補助 / 再読込対象）
+
+受信:
+- `latest.json` は短時間リトライ付きで安全読込する
+- 同一内容の再処理を避けるため、内容ハッシュで重複抑止する
+
+採用:
+- SCORE: `exscore`
+- MISSCOUNT: `bad + poor`
+- `diff` と `playtype` を照合し、矛盾は warning として扱う
+- `tracker.tsv` は譜面単位の best 補助値（`best_score` / `best_bp`）として `source_meta` へ付与してよい
+
+---
+
 ## 4. ソース設定UIとの対応
 
 ## 4.1 設定値
 - `inf-notebook`
 - `daken_counter_v3`
+- `reflux`
 - `inf_daken_counter` は legacy 非推奨（既存設定が残っていても利用しない）
 
 ## 4.2 制約
@@ -381,6 +411,10 @@ Ph1では以下を採用する。
 ### daken_counter_v3
 - `ws://localhost:{port}`（default: `8767`）
 
+### reflux
+- `latest.json`
+- `tracker.tsv`
+
 ---
 
 ## 5. 採用フロー（共通）
@@ -393,7 +427,7 @@ Ph1では以下を採用する。
 ### 5.2 監視イベント検出時
 1. ソースごとの新規イベント判定
 2. observed_key 生成
-3. `observed_key == expected_key` を確認
+3. `observed_key == expected_key` を確認（`chart_id` が双方にある場合は一致必須）
 4. 勝敗モードに応じた `metric_value` 抽出
 5. `RESULT_SUBMIT` を送信
 
@@ -407,15 +441,10 @@ Ph1では以下を採用する。
 ## 6. 未同定時の扱い
 未同定（title解決失敗）は以下とする。
 
-- そのイベントは提出しない
-- `UnmatchedTitleLog` に記録
-- ラウンドが進行した場合は最終的に
-  - 本人SKIP
-  - `FORCE_ADVANCE` による `TIMEOUT` 確定
-  - TIMEOUT
-  のいずれかで確定
-
-Ph1では未同定を手動補正して再投入する機能は持たない。
+- `unresolved_alias` はダイアログを表示し、現在ラウンドへの今回限り登録を明示承認した場合のみ送信する
+- `resolved_partial` / `ambiguous_recent` は採用せず通知のみ行う
+- 未承認または解決不能の場合は提出しない
+- ラウンドが進行した場合は最終的に `SKIP_SELF` / `FORCE_ADVANCE` / `TIMEOUT` のいずれかで確定する
 
 ---
 
