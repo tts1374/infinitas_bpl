@@ -1915,7 +1915,7 @@ dependencies = [
 
 [[package]]
 name = "infinitas-arena-client"
-version = "1.1.0"
+version = "1.1.1"
 dependencies = [
  "notify",
  "reqwest 0.12.28",
