@@ -29,6 +29,30 @@
       "request": "launch",
       "command": "powershell -NoProfile -ExecutionPolicy Bypass -Command '& { $env:INFINITAS_INSTANCE_ID = ''cf-prod-player2''; $env:CARGO_TARGET_DIR = ''${workspaceFolder}\\testdata\\runtime\\cargo-target\\cf-prod-player2''; npm exec --workspace @infinitas/client -- tauri dev --no-dev-server-wait --config ''${workspaceFolder}\\.vscode\\tauri.cf-prod.player2.json'' }'",
       "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "INFINITAS ARENA Web (LP)",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "npm run dev:web",
+      "cwd": "${workspaceFolder}",
+      "serverReadyAction": {
+        "action": "openExternally",
+        "pattern": "https?://localhost:1430/?",
+        "uriFormat": "%s"
+      }
+    },
+    {
+      "name": "INFINITAS ARENA Web (Join)",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "npm run dev:web",
+      "cwd": "${workspaceFolder}",
+      "serverReadyAction": {
+        "action": "openExternally",
+        "pattern": "https?://localhost:1430/?",
+        "uriFormat": "http://localhost:1430/join?r=demo-open"
+      }
     }
   ],
   "compounds": [

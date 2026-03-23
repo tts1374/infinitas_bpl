@@ -1,0 +1,66 @@
+name: Deploy INFINITAS ARENA Web to GitHub Pages
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: deploy-web-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Set up GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Resolve Vite base path for Pages
+        shell: bash
+        run: |
+          repo_name="${GITHUB_REPOSITORY#*/}"
+          owner_name="${GITHUB_REPOSITORY%/*}"
+
+          if [[ "${repo_name}" == "${owner_name}.github.io" ]]; then
+            vite_base="/"
+          else
+            vite_base="/${repo_name}/"
+          fi
+
+          echo "VITE_WEB_BASE=${vite_base}" >> "${GITHUB_ENV}"
+          echo "Using VITE_WEB_BASE=${vite_base}"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build web app
+        run: npm run build:web
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: apps/web/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

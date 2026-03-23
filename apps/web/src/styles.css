@@ -1,0 +1,39 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background-color: #111116;
+  color: #ffffff;
+}
+
+.hero-perspective {
+  perspective: 1500px;
+}
+
+.hero-visual-stack {
+  transform: rotateY(-10deg) rotateX(5deg);
+  transform-style: preserve-3d;
+  transition: transform 700ms ease-out;
+}
+
+.hero-visual-stack:hover {
+  transform: rotateY(0deg) rotateX(0deg);
+}
+
+.hero-floating-shot {
+  transform: translate3d(0, 0, 50px) rotateY(5deg);
+}
+
+@media (max-width: 768px) {
+  .hero-floating-shot {
+    position: static;
+    width: 100%;
+    transform: none;
+  }
+}
