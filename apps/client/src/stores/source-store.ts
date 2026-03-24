@@ -1043,6 +1043,7 @@ function syncDakenCounterV3RoomLifecycle(snapshot: RoomStateSnapshot | null): vo
   if (!isDakenCounterV3SocketOpen()) {
     dakenCounterV3MonitoringEnabled = false;
     roomStore.reportSourceUnavailable(DAKEN_COUNTER_V3_WARNING_MESSAGE);
+    roomStore.setSourceAvailability(false);
     console.warn(
       `${DAKEN_COUNTER_V3_ORIGIN_LABEL}: monitoring is disabled because the connection was unavailable at PLAYING start.`,
     );
@@ -1050,6 +1051,7 @@ function syncDakenCounterV3RoomLifecycle(snapshot: RoomStateSnapshot | null): vo
   }
 
   dakenCounterV3MonitoringEnabled = true;
+  roomStore.setSourceAvailability(true);
 }
 
 function nextUnresolvedDialogId(): string {
@@ -1225,6 +1227,7 @@ function handleWatcherError(payload: SourceWatcherEventPayload): void {
   }
 
   roomStore.reportSourceUnavailable(payload.detail);
+  roomStore.setSourceAvailability(false);
 }
 
 function handleWatcherEvent(payload: SourceWatcherEventPayload): void {
@@ -1246,6 +1249,7 @@ function handleWatcherEvent(payload: SourceWatcherEventPayload): void {
     }
     return;
   }
+  roomStore.setSourceAvailability(true);
   void logE2EEvent("file_detected", {
     source: payload.parserOutput.source,
     filePath: payload.filePath,
@@ -1506,6 +1510,7 @@ export const sourceStore = {
         },
       }));
       roomStore.reportSourceUnavailable(missingPathMessage);
+      roomStore.setSourceAvailability(false);
       return;
     }
 
@@ -1527,6 +1532,7 @@ export const sourceStore = {
         ...state,
         watcherState: mapWatcherState(payload),
       }));
+      roomStore.setSourceAvailability(true);
       void logE2EEvent("watcher_started", {
         source: settings.source,
         watchedPaths: payload.watchedPaths,
@@ -1546,6 +1552,7 @@ export const sourceStore = {
         },
       }));
       roomStore.reportSourceUnavailable(errorMessage);
+      roomStore.setSourceAvailability(false);
     }
   },
   async stop(): Promise<void> {

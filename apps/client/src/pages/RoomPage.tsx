@@ -1,4 +1,5 @@
 import {
+  AUTO_REMATCH_RESULT_SECONDS,
   CHART_DIFFICULTIES,
   CHART_SEARCH_PAGE_SIZE,
   HOST_SKIP_UNLOCK_SECONDS,
@@ -217,6 +218,23 @@ function getDifficultyPresentation(difficulty: string | null | undefined): Diffi
 
 function getDifficultyId(difficulty: string | null | undefined): string {
   return getDifficultyPresentation(difficulty).shortLabel;
+}
+
+function describeAutoRematchBlockReason(reason: string | null | undefined): string {
+  switch (reason) {
+    case "LAST_MATCH_NOT_NORMAL":
+      return "直前マッチが自動再戦条件を満たさなかったため停止しました。";
+    case "HOST_DISCONNECTED":
+      return "ホストの切断を検知したため停止しました。";
+    case "INSUFFICIENT_PLAYERS":
+      return "参加対象プレイヤーが2人未満のため停止しました。";
+    case "SOURCE_UNAVAILABLE":
+      return "source 異常を検知したため停止しました。";
+    case "AUTO_REMATCH_STOPPED":
+      return "ホストが自動再戦を停止しました。";
+    default:
+      return "自動再戦は停止中です。";
+  }
 }
 
 function getDifficultyFromId(difficultyId: string | null): (typeof CHART_DIFFICULTIES)[number] | null {
@@ -1312,6 +1330,21 @@ export function RoomPage() {
   const pickingCountdown = getRemainingSeconds(getIsoTimeMs(snapshot.timers.picking_deadline), clockNowMs);
   const playingCountdown = currentRound === null ? null : getPlayingCountdown(currentRound, clockNowMs);
   const resultCountdown = getRemainingSeconds(getIsoTimeMs(snapshot.timers.result_deadline), clockNowMs);
+  const privateAutoRematchEnabled =
+    snapshot.settings.visibility === "PRIVATE" && snapshot.settings.auto_rematch === true;
+  const autoRematchDueAtMs = getIsoTimeMs(snapshot.auto_rematch_due_at);
+  const autoRematchCountdownSeconds =
+    getRemainingSeconds(autoRematchDueAtMs, clockNowMs) ??
+    (privateAutoRematchEnabled && snapshot.room_state === "RESULT" && snapshot.auto_rematch_cancelled !== true
+      ? AUTO_REMATCH_RESULT_SECONDS
+      : null);
+  const autoRematchOptOutSet = new Set(snapshot.next_match_opt_out_player_ids ?? []);
+  const meOptedOut = me !== null && autoRematchOptOutSet.has(me.player_id);
+  const autoRematchPanelVisible = privateAutoRematchEnabled && snapshot.room_state === "RESULT";
+  const autoRematchActive =
+    autoRematchPanelVisible &&
+    snapshot.auto_rematch_cancelled !== true &&
+    autoRematchDueAtMs !== null;
 
   const isBpl = snapshot.settings.mode === "BPL";
   const leaveRoomDisabled = snapshot.room_state === "PICKING" || snapshot.room_state === "PLAYING";
@@ -2481,6 +2514,59 @@ export function RoomPage() {
   return (
     <section id="visual-capture-root" className="flex h-full min-h-0 w-full flex-col text-white font-sans">
       {roomSurface}
+
+      {autoRematchPanelVisible ? (
+        <div className="pointer-events-none fixed left-1/2 top-4 z-[145] w-full max-w-[760px] -translate-x-1/2 px-4">
+          <div className="pointer-events-auto rounded-2xl border border-cyan-500/30 bg-[#0d1820]/95 p-4 shadow-[0_16px_48px_rgba(0,0,0,0.45)] backdrop-blur-sm">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div className="space-y-1">
+                <p className="text-[10px] font-black uppercase tracking-[0.25em] text-cyan-300">Auto Rematch</p>
+                <p className="text-sm font-bold text-white">
+                  {autoRematchActive
+                    ? `次戦まで ${autoRematchCountdownSeconds ?? AUTO_REMATCH_RESULT_SECONDS} 秒`
+                    : describeAutoRematchBlockReason(snapshot.auto_rematch_block_reason)}
+                </p>
+                {meOptedOut ? (
+                  <p className="text-xs font-semibold text-amber-300">今回は不参加に設定済みです。</p>
+                ) : null}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => roomStore.stopAutoRematch()}
+                  disabled={!isHost || snapshot.auto_rematch_cancelled === true}
+                  className={`rounded-xl border px-3 py-2 text-xs font-black uppercase tracking-[0.15em] transition-all ${
+                    !isHost || snapshot.auto_rematch_cancelled === true
+                      ? "cursor-not-allowed border-white/10 bg-black/20 text-gray-500"
+                      : "border-red-400/50 bg-red-500/15 text-red-200 hover:bg-red-500/25"
+                  }`}
+                >
+                  自動再戦を停止
+                </button>
+                <button
+                  type="button"
+                  onClick={() => roomStore.optOutNextMatch()}
+                  disabled={me === null || meOptedOut || snapshot.auto_rematch_cancelled === true}
+                  className={`rounded-xl border px-3 py-2 text-xs font-black uppercase tracking-[0.15em] transition-all ${
+                    me === null || meOptedOut || snapshot.auto_rematch_cancelled === true
+                      ? "cursor-not-allowed border-white/10 bg-black/20 text-gray-500"
+                      : "border-amber-400/40 bg-amber-500/15 text-amber-100 hover:bg-amber-500/25"
+                  }`}
+                >
+                  今回は不参加
+                </button>
+                <button
+                  type="button"
+                  onClick={requestLeaveRoom}
+                  className="rounded-xl border border-white/20 bg-black/20 px-3 py-2 text-xs font-black uppercase tracking-[0.15em] text-gray-200 transition-all hover:border-white/35 hover:bg-white/10"
+                >
+                  退出
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {snapshot.room_state !== "CLOSED" ? (
         <div className="pointer-events-none fixed right-4 top-4 z-[140]">

@@ -1117,6 +1117,27 @@ export const roomStore = {
       request_id: getOrCreateRequestId("RETURN_TO_LOBBY"),
     });
   },
+  stopAutoRematch(): boolean {
+    return this.send("AUTO_REMATCH_STOP", {
+      request_id: getOrCreateRequestId("AUTO_REMATCH_STOP"),
+    });
+  },
+  optOutNextMatch(): boolean {
+    return this.send("AUTO_REMATCH_OPT_OUT", {
+      request_id: getOrCreateRequestId("AUTO_REMATCH_OPT_OUT"),
+    });
+  },
+  setSourceAvailability(available: boolean): boolean {
+    const snapshot = internalStore.getState().snapshot;
+    if (snapshot === null || snapshot.room_state === "CLOSED") {
+      return false;
+    }
+
+    return this.send("SOURCE_STATUS_SET", {
+      request_id: `SOURCE_STATUS_SET:${available ? "1" : "0"}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
+      available,
+    });
+  },
   submitPick(pickChartKey: string): boolean {
     return this.send("PICK_SUBMIT", {
       request_id: getOrCreateRequestId(`PICK_SUBMIT:${pickChartKey}`),
