@@ -33,6 +33,7 @@
 - `PLAYING` -> `PLAYING`（全員確定で次ラウンドへ）
 - `PLAYING` -> `RESULT`（全ラウンド消化時。`RESULT_READY` を保持）
 - `RESULT` -> `LOBBY`（ホスト操作。再戦準備のため ready / 揮発状態をリセット）
+- `RESULT` -> `LOBBY` -> `PICKING`（`visibility=PRIVATE` かつ `settings.auto_rematch=true` の場合、20秒カウント満了で内部イベントにより次戦開始）
 - 任意状態 -> `CLOSED`（ホスト切断/終了、lobby ready ttl超過、異常終了）
 - `current_match_id` は `START_MATCH` / 自動再戦開始時に新規発行し、`RESULT`/`CLOSED` まで固定する。`RESULT -> LOBBY` 復帰時は `room_id` に戻す
 
@@ -59,6 +60,7 @@
 ## 5. ルーム作成設定（RoomSettings / Ph1）
 - `visibility`: `PUBLIC | PRIVATE`
 - `join_code`: string|null
+- `auto_rematch`: boolean（`PRIVATE` のみ有効）
 - `mode`: `ARENA | BPL`
 - `win_metric`: `SCORE | MISSCOUNT`
 - `play_style`: `SP | DP`
@@ -211,6 +213,12 @@
 - ホスト操作で `RESULT -> LOBBY` に戻せる
 - 復帰時は前マッチの ready / round / pick / aggregation / `match_ttl` をすべてクリアする
 - room_id / member 構成 / host / battle context は維持する
+- `visibility=PRIVATE` かつ `auto_rematch=true` の場合は `RESULT` 開始時に 20 秒の自動再戦カウントを開始し、条件を満たすと内部イベントで次戦へ遷移する
+- 自動再戦中に以下が発生した場合は通常の `RESULT` 待機へフォールバックする
+  - ホスト切断
+  - 参加対象プレイヤーが2人未満
+  - 参加対象の source 異常
+  - ホストによる停止操作
 
 ### 10.5 rated / unrated 判定（v1）
 - rated 判定は DO が一元管理し、`RESULT_READY.summary.is_rated` を権威情報とする

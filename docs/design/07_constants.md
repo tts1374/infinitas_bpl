@@ -37,6 +37,8 @@ Ph1で固定するタイマー値、制約値、表示/運用上の定数を整�
 - `MATCH_TTL_MINUTES = 30`
   - マッチ全体の寿命
   - TTL到達時は未確定をTIMEOUTとして結果を確定し、必要なら `RESULT` または `CLOSED` へ遷移
+- `AUTO_REMATCH_RESULT_SECONDS = 20`
+  - `PRIVATE` + `auto_rematch=true` の `RESULT` で次戦開始まで待機する秒数
 
 ## 1.4 再入室
 - `REJOIN_COOLDOWN_SECONDS = 40`

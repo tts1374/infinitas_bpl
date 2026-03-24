@@ -58,6 +58,14 @@
 - `RETURN_TO_LOBBY`（ホスト）
   - payload: `{ request_id: string }`
 
+### 3.2.1 RESULT（自動再戦）
+- `AUTO_REMATCH_STOP`（ホスト）
+  - payload: `{ request_id: string }`
+- `AUTO_REMATCH_OPT_OUT`（本人）
+  - payload: `{ request_id: string }`
+- `SOURCE_STATUS_SET`（本人）
+  - payload: `{ request_id: string, available: boolean }`
+
 ### 3.3 PICKING
 - `PICK_SUBMIT`
   - payload: `{ request_id: string, pick_chart_key: string }`
@@ -168,6 +176,14 @@
   "current_match_id": "string",
   "room_state": "LOBBY|PICKING|PLAYING|RESULT|CLOSED",
   "settings": { "...": "..." },
+  "auto_rematch_enabled": false,
+  "auto_rematch_countdown_started_at": "ISO8601|null",
+  "auto_rematch_due_at": "ISO8601|null",
+  "auto_rematch_generation": 0,
+  "auto_rematch_cancelled": false,
+  "auto_rematch_block_reason": "string|null",
+  "next_match_opt_out_player_ids": [],
+  "last_match_end_reason": "string|null",
   "host_player_id": "string",
   "players": [
     { "player_id": "string", "display_name": "string", "source": "inf_daken_counter|inf-notebook|daken_counter_v3|reflux", "song_unlocks": { "bit_unlocked": false, "djp_unlocked": false, "allow_leggendaria": false, "owned_pack_ids": [] }, "connected": true, "ready": false }
@@ -223,6 +239,9 @@
 - START_MATCH: 成功時に `current_match_id` を新規発行し、同一ルーム内の再戦と統計識別を分離する
 - RETURN_TO_LOBBY: `room_state=RESULT` のみ。復帰時は全員readyと前マッチ揮発状態をリセットする
 - RETURN_TO_LOBBY: 復帰時は `current_match_id=room_id` に戻す（次戦開始までは provisional 識別子）
+- AUTO_REMATCH_STOP: `room_state=RESULT` かつホストのみ許可
+- AUTO_REMATCH_OPT_OUT: `room_state=RESULT` のみ許可（本人のみ）
+- SOURCE_STATUS_SET: 本人の source 可用性を更新し、`available=false` が自動再戦中に届いた場合は自動再戦を停止する
 - RESULT_SUBMIT: `observed_key == expected_key` かつ `round_index == current_round_index` のみ採用（accept_window=0）
   - `play_style/difficulty/title_search_key` は常に一致必須
   - `chart_id` は双方にある場合のみ一致必須。`expected_key.chart_id` がある `daken_counter_v3` 観測で `observed_key.chart_id` 欠落時は不採用
