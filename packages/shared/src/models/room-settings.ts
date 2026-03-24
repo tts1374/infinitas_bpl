@@ -4,6 +4,7 @@ import type { LevelFilter, Mode, PlayStyle, Visibility, WinMetric } from "../enu
 export interface RoomSettings {
   visibility: Visibility;
   join_code: string | null;
+  auto_rematch?: boolean;
   mode: Mode;
   win_metric: WinMetric;
   play_style: PlayStyle;
