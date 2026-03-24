@@ -16,6 +16,8 @@
 - ホスト: ルーム作成者（固定。非明示切断時は `rejoin_cooldown` 以内の再接続を許容し、超過で解散）
 - プレイヤー: 参加者（最大4）
 - ラウンド: PLAYING中の1譜面単位（譜面リストのindex）
+- Round Result（曲別リザルト）: 1ラウンド単位の結果表示（UIフェーズ）
+- Match Result（最終結果 / RESULT）: マッチ全体の最終集計表示（`room_state=RESULT`）
 
 ## 3. ルーム状態（RoomState）
 - `LOBBY`
@@ -179,6 +181,11 @@
 - PLAYING中に退出したプレイヤーは、その時点で未確定なら `TIMEOUT`、以後のラウンドも `TIMEOUT` として扱う
 - ホスト切断（`HOST_DISCONNECTED`）: `rejoin_cooldown` 経過まで再接続猶予。超過で `CLOSED`
 
+### 9.9 Round Result（曲別リザルト）表示フェーズ
+- Round Result は FSM の独立状態ではなく、クライアント表示フェーズとして扱う
+- 各ラウンド確定後、クライアントは `round_result_seconds` だけ Round Result を表示する
+- 非最終ラウンドの表示順序は `PLAYING -> Round Result -> PLAYING` とする
+
 ## 10. RESULT（集計 payload）
 ### 10.1 勝敗指標
 - `win_metric=SCORE`: EX SCOREが大きいほど勝ち
@@ -215,6 +222,10 @@
   - マッチが途中終了していない
   - 最終勝者が一意に確定している
 - 上記のいずれかを満たさない場合は `RESULT_READY` 自体は生成するが `is_rated = false` とし、`rated_block_reason` を設定する
+
+### 10.6 最終ラウンド時の表示順序
+- 最終ラウンド完了時は `PLAYING -> RESULT` 遷移後、`RESULT` 内で `Final Round Result -> Match Result` の順に表示する
+- Final Round Result の表示は省略せず、`round_result_seconds` 以上を保証する
 
 ## 11. CLOSED（解散）
 - ホスト操作で即 `CLOSED` も可

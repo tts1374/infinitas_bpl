@@ -301,7 +301,8 @@ type LobbyRoomSummary = {
     - `match_id`
     - `started_at`
     - `ended_at`
-    - `battle_type: ARENA|BPL|PRIVATE`
+    - `battle_type: ARENA|BPL`
+    - `visibility: PUBLIC|PRIVATE`
     - `play_mode: SP|DP`
     - `opponent_count`
     - `opponent_id / opponent_name`
@@ -319,7 +320,8 @@ type LobbyRoomSummary = {
     - `played_at`
     - `game_index`
     - `chart_id`
-    - `battle_type: ARENA|BPL|PRIVATE`
+    - `battle_type: ARENA|BPL`
+    - `visibility: PUBLIC|PRIVATE`
     - `play_mode: SP|DP`
     - `game_result: WIN|LOSE|DRAW`
     - `round_point`
@@ -331,7 +333,8 @@ type LobbyRoomSummary = {
   - `play_results`
     - `play_result_id`
     - `played_at`
-    - `battle_type: ARENA|BPL|PRIVATE`
+    - `battle_type: ARENA|BPL`
+    - `visibility: PUBLIC|PRIVATE`
     - `play_mode: SP|DP`
     - `chart_id`
     - `my_ex_score`
@@ -348,6 +351,7 @@ type LobbyRoomSummary = {
   - 進行中セッション識別は `RoomStateSnapshot.current_match_id`（server-authoritative）を使用する
   - 結果確定時の統計識別子は `RESULT_READY.summary.match_id` を使用し、`RoomStateSnapshot.current_match_id` と一致させる
   - 互換 fallback は `current_match_id` 欠落時のみ `RESULT_READY.summary.match_id`、双方欠落時のみ `room_id` を使用する
+  - 統計UIのフィルタ軸は `battle_type + play_mode` とし、`visibility` は履歴表示の除外条件に使わない
   - レート系列は `ARENA_SP` / `ARENA_DP` / `BPL_SP` / `BPL_DP` を分離する
   - レート更新は `matches` を基準にマッチ単位で行う
   - ARENA は `match_games` を集約して最終順位を決め、pairwise 擬似対戦で `matches.rating_delta` を算出する

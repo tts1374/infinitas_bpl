@@ -4,6 +4,16 @@
 Ph1で実装対象とする画面・状態・主要操作を整理する。  
 ワイヤーフレームではなく、画面責務と表示要素の一覧を定義する。
 
+## 0.1 用語（本書）
+- `Round Result`（曲別リザルト）:
+  - 1ラウンド単位の結果表示。対象曲、各プレイヤーの metric、勝者、status を示す。
+- `Match Result`（最終結果 / RESULT）:
+  - マッチ全体の最終集計表示。総合順位/勝敗、合計ポイント、rated/unrated を示す。
+- `Round History`:
+  - ルーム画面内で表示する、当該マッチ内ラウンド履歴。
+- `Match History`:
+  - 統計画面で表示する過去マッチ履歴（`matches`）。
+
 ---
 
 ## 1. 画面構成一覧
@@ -263,6 +273,8 @@ Ph1 の画面は以下とする。
   - Stage
   - countdown
   - START
+- Round History（当該マッチ内ラウンド履歴）
+- Round Result（曲別リザルト）
 
 ## 8.3 主な操作
 - 自分でSKIP
@@ -282,6 +294,10 @@ Ph1 の画面は以下とする。
 - 提出は自動監視で反映
 - expected一致しないものは採用しない
 - 状態遷移時は未再生音声キュー破棄、再生中音声停止
+- Round Result は RoomState ではなく表示フェーズとして扱う
+- 各ラウンド確定後に `ROUND_RESULT_SECONDS` だけ Round Result を表示する
+- 非最終ラウンドは `PLAYING -> Round Result -> PLAYING` で次ラウンドへ進む
+- Round History は `current_match_id` 単位で表示し、`current_match_id` 更新時にクリアする
 
 ---
 
@@ -312,6 +328,8 @@ Ph1 の画面は以下とする。
 - 正常終了時は `RESULT_READY` を保持したまま `RESULT`
 - `RESULT -> LOBBY` 復帰時は全員 ready と前マッチ揮発データをクリアする
 - ホスト解散や timeout close の場合は `CLOSED` へ遷移し、結果未確定の可能性がある
+- 最終ラウンド完了時の表示順序は `Final Round Result -> Match Result` とする
+- 最終ラウンドの Round Result は省略せず、`ROUND_RESULT_SECONDS` 以上表示する
 
 ---
 
@@ -349,6 +367,7 @@ Ph1 の画面は以下とする。
 - 履歴は `matches` を基準に `ended_at desc` で表示する
 - 曲別勝率ランキングは `match_games` を基準に `battle_type + play_mode + chart_id` で集計する
 - 安定度は `play_results` と `personal_bests` を基準に集計し、`PRIVATE` を含めてよい
+- 本節の「履歴」は Match History（統計履歴）を指し、Room内の Round History とは別概念とする
 - データ不足時は以下を表示する
   - レート未計測: `--`
   - 履歴なし: `データなし`

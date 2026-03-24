@@ -118,6 +118,8 @@
   - payload: `{ round_index: number }`
 - `FORCE_ADVANCE_APPLIED`
   - payload: `{ round_index: number, timed_out_players: string[] }`
+- 備考: Round Result（曲別リザルト）は専用WSメッセージを持たず、`ROUND_ENDED` と `STATE_SNAPSHOT/ROOM_UPDATED` を用いたクライアント表示フェーズで扱う
+- 備考: 非最終ラウンドは `PLAYING -> Round Result -> PLAYING` の表示順序で次ラウンドへ進む
 
 ### 4.5 RESULT
 - `RESULT_READY`
@@ -128,6 +130,7 @@
   - 備考: v1 では `RESULT_READY.summary.match_id` を結果確定時の統計識別子の正本とし、欠落時のみ `room_id` fallback を許容
   - 備考: 進行中セッション識別は `RoomStateSnapshot.current_match_id` を正本とする（`RESULT_READY.summary.match_id` と同一であること）
   - 備考: 通常フローでは `PLAYING -> RESULT` 遷移時に配信し、`RESULT -> LOBBY` 復帰まで保持して表示する
+  - 備考: 最終ラウンド完了時は `RESULT` 内で `Final Round Result -> Match Result` の順で表示する（Round Result は表示フェーズであり追加メッセージは不要）
 
 ### 4.6 同期/エラー
 - `STATE_SNAPSHOT`

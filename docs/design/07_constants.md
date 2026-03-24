@@ -19,6 +19,9 @@ Ph1で固定するタイマー値、制約値、表示/運用上の定数を整�
 ## 1.2 ラウンド進行
 - `ROUND_SOFT_TTL_SECONDS = 300`
   - START音声時点から5分で未確定者をTIMEOUT確定
+- `ROUND_RESULT_SECONDS = 10`
+  - 各ラウンド確定後の Round Result（曲別リザルト）表示秒数
+  - 最終ラウンド/非最終ラウンドで同一値を使用する
 - `HOST_SKIP_UNLOCK_SECONDS = 240`
   - 現行v1では代理SKIP無効のため、将来拡張用の予約値
 - `ROUND_MUSIC_SELECT_SECONDS = 45`
