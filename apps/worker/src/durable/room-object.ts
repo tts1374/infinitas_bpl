@@ -317,10 +317,14 @@ function parseRoomSettings(value: unknown): RoomSettings | null {
   if (joinCodeRaw !== null && typeof joinCodeRaw !== "string") {
     return null;
   }
+  if ("auto_rematch" in value && typeof value.auto_rematch !== "boolean") {
+    return null;
+  }
 
   return {
     visibility,
     join_code: joinCodeRaw,
+    auto_rematch: visibility === "PRIVATE" && value.auto_rematch === true,
     mode,
     win_metric: winMetric,
     play_style: playStyle,
@@ -504,6 +508,22 @@ function parseRequestIdPayload(payload: unknown): RequestIdPayload | null {
 
   return {
     request_id: requestId,
+  };
+}
+
+function parseSourceStatusSetPayload(payload: unknown): { request_id: string; available: boolean } | null {
+  if (!isRecord(payload)) {
+    return null;
+  }
+
+  const requestId = asOptionalString(payload.request_id)?.trim() ?? "";
+  if (requestId.length === 0 || typeof payload.available !== "boolean") {
+    return null;
+  }
+
+  return {
+    request_id: requestId,
+    available: payload.available,
   };
 }
 
@@ -1232,6 +1252,15 @@ export class RoomDurableObject {
         case "RETURN_TO_LOBBY":
           await this.handleReturnToLobby(session, message as ClientMessage<"RETURN_TO_LOBBY">);
           return;
+        case "AUTO_REMATCH_STOP":
+          await this.handleAutoRematchStop(session, message as ClientMessage<"AUTO_REMATCH_STOP">);
+          return;
+        case "AUTO_REMATCH_OPT_OUT":
+          await this.handleAutoRematchOptOut(session, message as ClientMessage<"AUTO_REMATCH_OPT_OUT">);
+          return;
+        case "SOURCE_STATUS_SET":
+          await this.handleSourceStatusSet(session, message as ClientMessage<"SOURCE_STATUS_SET">);
+          return;
         case "PICK_SUBMIT":
           await this.handlePickSubmit(session, message as ClientMessage<"PICK_SUBMIT">);
           return;
@@ -1536,6 +1565,7 @@ export class RoomDurableObject {
     }
 
     await this.persistRoomRecord();
+    await this.syncAlarm();
     await this.syncLobbyDirectory();
     this.broadcastRoomUpdated();
     if (closeSocket) {
@@ -1746,6 +1776,181 @@ export class RoomDurableObject {
       },
     }));
     this.broadcastRoomUpdated();
+  }
+
+  private async handleAutoRematchStop(
+    session: RoomSocketSession,
+    message: ClientMessage<"AUTO_REMATCH_STOP">,
+  ): Promise<void> {
+    if (session.playerId === null) {
+      this.sendError(session.socket, "INVALID_STATE", "Send ROOM_JOIN before this message.", this.buildMessageLogInput(message));
+      return;
+    }
+
+    const payload = parseRequestIdPayload(message.payload);
+    if (payload === null) {
+      this.sendError(session.socket, "INVALID_STATE", "AUTO_REMATCH_STOP payload is invalid.", this.buildMessageLogInput(message, {
+        detail: {
+          validation: "invalid_request_id_payload",
+        },
+      }));
+      return;
+    }
+
+    if (this.isDuplicateRequest(session.playerId, message.type, payload.request_id)) {
+      this.logRoomEvent(this.buildMessageLogInput(message, {
+        event: "ws.duplicate",
+        request_id: payload.request_id,
+        outcome: "duplicate",
+        detail: {
+          dedupe_key: "request_id",
+        },
+      }));
+      this.sendStateSnapshot(session.socket);
+      return;
+    }
+
+    const result = this.roomState.stopAutoRematch(session.playerId);
+    if (!result.ok) {
+      if (result.reason === "NOT_HOST") {
+        this.sendError(session.socket, "NOT_HOST", "Only the host can stop auto rematch.", this.buildMessageLogInput(message, {
+          request_id: payload.request_id,
+        }));
+        return;
+      }
+
+      this.sendError(session.socket, "INVALID_STATE", "AUTO_REMATCH_STOP is unavailable in the current state.", this.buildMessageLogInput(message, {
+        request_id: payload.request_id,
+        detail: {
+          reason: result.reason ?? "INVALID_STATE",
+        },
+      }));
+      return;
+    }
+
+    this.rememberRequest(session.playerId, message.type, payload.request_id);
+    await this.persistRoomRecord();
+    await this.syncAlarm();
+    this.logRoomEvent(this.buildMessageLogInput(message, {
+      event: "auto_rematch.stop",
+      request_id: payload.request_id,
+      outcome: "ok",
+    }));
+    this.broadcastRoomUpdated();
+  }
+
+  private async handleAutoRematchOptOut(
+    session: RoomSocketSession,
+    message: ClientMessage<"AUTO_REMATCH_OPT_OUT">,
+  ): Promise<void> {
+    if (session.playerId === null) {
+      this.sendError(session.socket, "INVALID_STATE", "Send ROOM_JOIN before this message.", this.buildMessageLogInput(message));
+      return;
+    }
+
+    const payload = parseRequestIdPayload(message.payload);
+    if (payload === null) {
+      this.sendError(session.socket, "INVALID_STATE", "AUTO_REMATCH_OPT_OUT payload is invalid.", this.buildMessageLogInput(message, {
+        detail: {
+          validation: "invalid_request_id_payload",
+        },
+      }));
+      return;
+    }
+
+    if (this.isDuplicateRequest(session.playerId, message.type, payload.request_id)) {
+      this.logRoomEvent(this.buildMessageLogInput(message, {
+        event: "ws.duplicate",
+        request_id: payload.request_id,
+        outcome: "duplicate",
+        detail: {
+          dedupe_key: "request_id",
+        },
+      }));
+      this.sendStateSnapshot(session.socket);
+      return;
+    }
+
+    const result = this.roomState.optOutNextMatch(session.playerId);
+    if (!result.ok) {
+      this.sendError(session.socket, "INVALID_STATE", "AUTO_REMATCH_OPT_OUT is unavailable in the current state.", this.buildMessageLogInput(message, {
+        request_id: payload.request_id,
+        detail: {
+          reason: result.reason ?? "INVALID_STATE",
+        },
+      }));
+      return;
+    }
+
+    this.rememberRequest(session.playerId, message.type, payload.request_id);
+    await this.persistRoomRecord();
+    await this.syncAlarm();
+    this.logRoomEvent(this.buildMessageLogInput(message, {
+      event: "auto_rematch.opt_out",
+      request_id: payload.request_id,
+      outcome: "ok",
+    }));
+    this.broadcastRoomUpdated();
+  }
+
+  private async handleSourceStatusSet(
+    session: RoomSocketSession,
+    message: ClientMessage<"SOURCE_STATUS_SET">,
+  ): Promise<void> {
+    if (session.playerId === null) {
+      this.sendError(session.socket, "INVALID_STATE", "Send ROOM_JOIN before this message.", this.buildMessageLogInput(message));
+      return;
+    }
+
+    const payload = parseSourceStatusSetPayload(message.payload);
+    if (payload === null) {
+      this.sendError(session.socket, "INVALID_STATE", "SOURCE_STATUS_SET payload is invalid.", this.buildMessageLogInput(message, {
+        detail: {
+          validation: "invalid_source_status_payload",
+        },
+      }));
+      return;
+    }
+
+    if (this.isDuplicateRequest(session.playerId, message.type, payload.request_id)) {
+      this.logRoomEvent(this.buildMessageLogInput(message, {
+        event: "ws.duplicate",
+        request_id: payload.request_id,
+        outcome: "duplicate",
+        detail: {
+          dedupe_key: "request_id",
+        },
+      }));
+      this.sendStateSnapshot(session.socket);
+      return;
+    }
+
+    const result = this.roomState.setPlayerSourceAvailability(session.playerId, payload.available);
+    if (!result.ok) {
+      this.sendError(session.socket, "INVALID_STATE", "SOURCE_STATUS_SET rejected.", this.buildMessageLogInput(message, {
+        request_id: payload.request_id,
+        detail: {
+          reason: result.reason ?? "INVALID_STATE",
+        },
+      }));
+      return;
+    }
+
+    this.rememberRequest(session.playerId, message.type, payload.request_id);
+    await this.persistRoomRecord();
+    await this.syncAlarm();
+    if (result.changed) {
+      this.broadcastRoomUpdated();
+    }
+    this.logRoomEvent(this.buildMessageLogInput(message, {
+      event: "source.status_set",
+      request_id: payload.request_id,
+      outcome: "ok",
+      detail: {
+        available: payload.available,
+        changed: result.changed,
+      },
+    }));
   }
 
   private async handlePickSubmit(session: RoomSocketSession, message: ClientMessage<"PICK_SUBMIT">): Promise<void> {
@@ -2524,6 +2729,41 @@ export class RoomDurableObject {
           trigger: "match_ttl",
         },
       });
+      return false;
+    }
+
+    const previousAutoRematchState = this.roomState.getRoomState();
+    const autoRematchTransition = this.roomState.expireAutoRematchIfNeeded(now);
+    if (autoRematchTransition !== null) {
+      await this.persistRoomRecord();
+      await this.syncAlarm();
+      await this.syncLobbyDirectory();
+      if (autoRematchTransition.kind === "STARTED") {
+        this.broadcast("ROOM_NOTIFICATION", {
+          kind: "match_found",
+          event_id: this.nextEventId("match_found"),
+          scheduled_at: new Date().toISOString(),
+        });
+        this.logTransitionIfChanged(previousAutoRematchState, {
+          outcome: "ok",
+          detail: {
+            trigger: "auto_rematch_due",
+            generation: autoRematchTransition.generation,
+            participant_count: autoRematchTransition.participant_player_ids?.length ?? 0,
+          },
+        });
+      } else {
+        this.logRoomEvent({
+          event: "auto_rematch.cancelled",
+          outcome: "ok",
+          detail: {
+            trigger: "auto_rematch_due",
+            generation: autoRematchTransition.generation,
+            reason: autoRematchTransition.reason ?? null,
+          },
+        });
+      }
+      this.broadcastRoomUpdated();
       return false;
     }
 
