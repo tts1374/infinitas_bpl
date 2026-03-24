@@ -212,6 +212,23 @@ function playCurrentRound(state, roundIndex, hostMetric, guestMetric, nowBase) {
   assert.equal(guestResult.ok, true);
 }
 
+function finishMatchToResult(state, baseAt = "2026-03-08T00:02:00.000Z") {
+  const baseMs = Date.parse(baseAt);
+  assert.equal(Number.isFinite(baseMs), true);
+  let step = 0;
+  while (state.getRoomState() === "PLAYING") {
+    const snapshot = state.toSnapshot();
+    assert.ok(snapshot.current_round, "current round should exist");
+    const round = snapshot.current_round;
+    const hostAt = new Date(baseMs + step * 10_000);
+    const guestAt = new Date(baseMs + step * 10_000 + 1_000);
+    assert.equal(state.submitResult("host", round.round_index, round.expected_key, 2000 - step, null, hostAt).ok, true);
+    assert.equal(state.submitResult("guest", round.round_index, round.expected_key, 1500 - step, null, guestAt).ok, true);
+    step += 1;
+  }
+  assert.equal(state.getRoomState(), "RESULT");
+}
+
 test("START_MATCH snapshot filter allows only shared unlock conditions", () => {
   const state = createState({}, {
     host: {
@@ -371,6 +388,69 @@ test("RESULT -> LOBBY clears ready and match transient state without auto-start"
   assert.equal(typeof secondStartSnapshot.current_match_id, "string");
   assert.notEqual(secondStartSnapshot.current_match_id, "room-1");
   assert.notEqual(secondStartSnapshot.current_match_id, firstMatchId);
+});
+
+test("PRIVATE auto_rematch starts next match from RESULT after countdown", () => {
+  const state = createState({ visibility: "PRIVATE", auto_rematch: true, max_players: 2 });
+  prepareMatch(state, { startAt: "2026-03-08T00:01:00.000Z" });
+  finishMatchToResult(state, "2026-03-08T00:02:00.000Z");
+
+  const resultSnapshot = state.toSnapshot();
+  assert.equal(resultSnapshot.auto_rematch_enabled, true);
+  assert.equal(resultSnapshot.auto_rematch_cancelled, false);
+  assert.notEqual(resultSnapshot.auto_rematch_due_at, null);
+
+  const dueAtMs = Date.parse(resultSnapshot.auto_rematch_due_at ?? "");
+  assert.equal(Number.isFinite(dueAtMs), true);
+  assert.equal(state.expireAutoRematchIfNeeded(new Date(dueAtMs - 1_000)), null);
+
+  const transition = state.expireAutoRematchIfNeeded(new Date(dueAtMs + 1));
+  assert.ok(transition);
+  assert.equal(transition.kind, "STARTED");
+  assert.equal(state.getRoomState(), "PICKING");
+
+  const restartedSnapshot = state.toSnapshot();
+  assert.equal(restartedSnapshot.auto_rematch_due_at, null);
+  assert.equal(restartedSnapshot.auto_rematch_cancelled, false);
+});
+
+test("opt-out cancels auto_rematch when remaining participants become less than two", () => {
+  const state = createState({ visibility: "PRIVATE", auto_rematch: true, max_players: 2 });
+  prepareMatch(state, { startAt: "2026-03-08T00:01:00.000Z" });
+  finishMatchToResult(state, "2026-03-08T00:02:00.000Z");
+
+  assert.deepEqual(state.optOutNextMatch("guest"), { ok: true });
+  const snapshot = state.toSnapshot();
+  assert.equal(snapshot.auto_rematch_cancelled, true);
+  assert.equal(snapshot.auto_rematch_block_reason, "INSUFFICIENT_PLAYERS");
+  assert.deepEqual(snapshot.next_match_opt_out_player_ids, ["guest"]);
+  assert.equal(state.expireAutoRematchIfNeeded(new Date("2026-03-08T00:03:00.000Z")), null);
+  assert.equal(state.getRoomState(), "RESULT");
+});
+
+test("SOURCE_STATUS unavailable during RESULT cancels auto_rematch", () => {
+  const state = createState({ visibility: "PRIVATE", auto_rematch: true, max_players: 2 });
+  prepareMatch(state, { startAt: "2026-03-08T00:01:00.000Z" });
+  finishMatchToResult(state, "2026-03-08T00:02:00.000Z");
+
+  assert.deepEqual(state.setPlayerSourceAvailability("guest", false), { ok: true, changed: true });
+  const snapshot = state.toSnapshot();
+  assert.equal(snapshot.auto_rematch_cancelled, true);
+  assert.equal(snapshot.auto_rematch_block_reason, "SOURCE_UNAVAILABLE");
+  assert.equal(state.expireAutoRematchIfNeeded(new Date("2026-03-08T00:03:00.000Z")), null);
+  assert.equal(state.getRoomState(), "RESULT");
+});
+
+test("host can stop auto_rematch during RESULT", () => {
+  const state = createState({ visibility: "PRIVATE", auto_rematch: true, max_players: 2 });
+  prepareMatch(state, { startAt: "2026-03-08T00:01:00.000Z" });
+  finishMatchToResult(state, "2026-03-08T00:02:00.000Z");
+
+  assert.deepEqual(state.stopAutoRematch("guest"), { ok: false, reason: "NOT_HOST" });
+  assert.deepEqual(state.stopAutoRematch("host"), { ok: true });
+  const snapshot = state.toSnapshot();
+  assert.equal(snapshot.auto_rematch_cancelled, true);
+  assert.equal(snapshot.auto_rematch_block_reason, "AUTO_REMATCH_STOPPED");
 });
 
 test("HOST_ABORTED closes room immediately", () => {
