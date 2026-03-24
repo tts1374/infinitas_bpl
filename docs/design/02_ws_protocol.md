@@ -121,8 +121,8 @@
 
 ### 4.5 RESULT
 - `RESULT_READY`
-  - payload: `{ summary: { match_id, mode, win_metric, total_rounds, completed_rounds, winner_player_ids, is_draw, is_rated, rated_block_reason, rating_before, rating_after, rating_delta }, per_round: object, per_player: object }`
-  - 備考: `per_round.rounds[].results[]` には `status / metric_value / reason / submitted_at / submitted_by / source_meta?` を含めてもよい
+  - payload: `{ summary: { match_id, mode, win_metric, total_rounds, completed_rounds, winner_player_ids, is_draw, is_rated, rated_block_reason, rating_before, rating_after, rating_delta }, per_round: { rounds: RoundResult[] }, per_player: { players: PlayerResult[] } }`
+  - 備考: `per_round.rounds[].results[]` には `status / metric_value / reason / submitted_at / submitted_by / source_meta?` を必須で含める
   - 備考: `rated_block_reason` は最低限 `private_room | missing_submission | mismatch_observed_key | incomplete_match | skip_occurred | timeout_occurred | force_advanced | result_conflict` を扱う
   - 備考: v1 では `RESULT_READY.summary.is_rated` がレート適用可否の権威情報
   - 備考: v1 では `RESULT_READY.summary.match_id` を結果確定時の統計識別子の正本とし、欠落時のみ `room_id` fallback を許容
@@ -196,6 +196,17 @@
 ```
 
 - `timers.result_deadline` は Ph1 現行フローでは通常 `null` 固定の予約欄
+
+### 5.4 CloseReason
+`ROOM_CLOSED.close_reason` / `RoomStateSnapshot.close_reason` は以下を扱う。
+- `ALL_ROUNDS_COMPLETED`
+- `MATCH_TTL_EXPIRED`
+- `READY_CHECK_TTL_EXPIRED`
+- `HOST_DISCONNECTED`
+- `HOST_ABORTED`
+- `PICKING_ABORTED`
+- `FORCE_CLOSED`
+- `ROOM_STATE_LOST`
 
 ## 6. DO側ガード（必須）
 - 状態ガード: 状態に合わない操作は `ERROR` または `*_REJECTED`

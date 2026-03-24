@@ -112,6 +112,8 @@ Ph1で固定するタイマー値、制約値、表示/運用上の定数を整�
 - `SOURCE_OPTIONS = ["inf_daken_counter", "inf-notebook", "daken_counter_v3", "reflux"]`
 - 設定UIでの選択対象は `inf-notebook` / `daken_counter_v3` / `reflux`（`inf_daken_counter` はlegacy非表示）
 - `DAKEN_COUNTER_V3_DEFAULT_PORT = 8767`
+- `DEPRECATED_SOURCE_OPTIONS = ["inf_daken_counter"]`
+- `SOURCE_DEPRECATED_JOIN_REJECT = true`（legacy source 無効構成では `ROOM_JOIN` を拒否）
 
 ## 5.2 source制約
 - `SOURCE_FIXED_PER_DEVICE = true`

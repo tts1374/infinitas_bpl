@@ -349,6 +349,11 @@ function roomClosedDialog(reason: CloseReason): {
         title: "ルームが終了しました",
         description: "ルームが強制的に終了されました。",
       };
+    case "ROOM_STATE_LOST":
+      return {
+        title: "ルーム状態を復元できませんでした",
+        description: "サーバ側の状態喪失によりルームを終了しました。保存済みの結果を確認してください。",
+      };
     default:
       return {
         title: "ルームが終了しました",

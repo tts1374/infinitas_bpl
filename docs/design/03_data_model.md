@@ -356,3 +356,11 @@ type LobbyRoomSummary = {
   - unrated でも `matches / match_games / play_results` は保存し、`matches.invalid_reason` に block 理由を保持する
   - 曲別勝率ランキングは `match_games` を基準に集計する
   - 曲識別は表示名ではなく `chart_id` を正とする
+
+## 9. 互換/移行ルール（Ph1）
+
+- ローカル保存は `schema_version` を必須とする。
+- 互換を壊す変更（必須項目の削除/型変更/意味変更）は `schema_version` を更新する。
+- 読み込み側は「現行 + 直前 schema_version」のみサポートし、それ以前は空アーカイブへフォールバックする。
+- 加法的変更（optional項目追加）は同一 schema_version で許容する。
+- 互換 fallback（`current_match_id -> RESULT_READY.summary.match_id -> room_id`）は維持し、順序を変更しない。

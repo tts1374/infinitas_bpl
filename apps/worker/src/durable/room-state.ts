@@ -15,6 +15,8 @@ import {
   type JsonObject,
   type PlayerRole,
   type ResultReadyPayload,
+  type ResultReadyArenaRoundPlayerResult,
+  type ResultReadyBplRoundPlayerResult,
   type RoomSettings,
   type RoomState,
   type RoomStateSnapshot,
@@ -2028,18 +2030,16 @@ export class RoomLobbyState {
 
   private buildResultReadyPayload(): ResultReadyPayload {
     const matchId = this.currentMatchId ?? this.roomId;
-    const perPlayerRounds = new Map<string, Array<Record<string, unknown>>>();
-    for (const playerId of this.matchPlayerIds) {
-      perPlayerRounds.set(playerId, []);
-    }
 
     const completedRounds = this.frozenRounds.filter((round) => round.started_at !== null).length;
 
     if (this.settings.mode === "ARENA") {
+      const perPlayerRounds = new Map<string, ResultReadyArenaRoundPlayerResult[]>();
       const totalPoints = new Map<string, number>();
       const totalExScore = new Map<string, number | null>();
       const lastConfirmedAt = new Map<string, string | null>();
       for (const playerId of this.matchPlayerIds) {
+        perPlayerRounds.set(playerId, []);
         totalPoints.set(playerId, 0);
         totalExScore.set(playerId, 0);
         lastConfirmedAt.set(playerId, null);
@@ -2104,7 +2104,7 @@ export class RoomLobbyState {
             lastConfirmedAt.set(playerId, confirmation.submitted_at);
           }
 
-          const roundResult = {
+          const roundResult: ResultReadyArenaRoundPlayerResult = {
             round_index: round.round_index,
             player_id: playerId,
             display_name: this.getPlayerDisplayName(playerId),
@@ -2183,6 +2183,11 @@ export class RoomLobbyState {
       };
     }
 
+    const perPlayerRounds = new Map<string, ResultReadyBplRoundPlayerResult[]>();
+    for (const playerId of this.matchPlayerIds) {
+      perPlayerRounds.set(playerId, []);
+    }
+
     const roundWins = this.computeBplWins(this.frozenRounds.length - 1);
     const rounds = this.frozenRounds.map((round) => {
       const roundConfirmations = this.roundConfirmations.get(round.round_index) ?? [];
@@ -2190,7 +2195,7 @@ export class RoomLobbyState {
       const winnerPlayerId = this.getBplRoundWinnerPlayerId(round.round_index);
       const results = this.matchPlayerIds.map((playerId) => {
         const confirmation = confirmationByPlayer.get(playerId);
-        const roundResult = {
+        const roundResult: ResultReadyBplRoundPlayerResult = {
           round_index: round.round_index,
           player_id: playerId,
           display_name: this.getPlayerDisplayName(playerId),

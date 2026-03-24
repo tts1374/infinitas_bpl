@@ -411,6 +411,7 @@ packages/shared/
 * `06_source_io_spec.md`
 * `07_constants.md`
 * `08_repo_structure.md`
+* `10_regression_guard_addendum.md`
 * `09_implementation_plan.md`（historical / frozen）
 
 ---

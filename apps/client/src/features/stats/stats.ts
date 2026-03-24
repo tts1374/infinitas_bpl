@@ -16,6 +16,7 @@ import {
   MIN_RANKING_MATCH_COUNT,
   RECENT_HISTORY_LIMIT,
   RECENT_STABILITY_LIMIT,
+  STATS_SUPPORTED_SCHEMA_VERSIONS,
   type ChartRankingEntry,
   type DetailedMatchHistoryEntry,
   type DetailedMatchHistoryGameEntry,
@@ -1076,9 +1077,12 @@ export function reduceArchiveWithClosedMatch(
 
 export function createArchiveFromStorage(rawArchive: unknown): StatsArchive {
   const archive = asRecord(rawArchive);
+  const schemaVersion =
+    archive !== null && typeof archive.schema_version === "number" ? archive.schema_version : null;
   if (
     archive === null ||
-    archive.schema_version !== 1 ||
+    schemaVersion === null ||
+    !STATS_SUPPORTED_SCHEMA_VERSIONS.includes(schemaVersion as (typeof STATS_SUPPORTED_SCHEMA_VERSIONS)[number]) ||
     !Array.isArray(archive.matches) ||
     !Array.isArray(archive.match_games) ||
     !Array.isArray(archive.play_results) ||

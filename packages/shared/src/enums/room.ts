@@ -16,6 +16,7 @@ export const CLOSE_REASONS = [
   "HOST_ABORTED",
   "PICKING_ABORTED",
   "FORCE_CLOSED",
+  "ROOM_STATE_LOST",
 ] as const;
 
 export type CloseReason = (typeof CLOSE_REASONS)[number];

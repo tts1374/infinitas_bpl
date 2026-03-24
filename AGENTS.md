@@ -62,10 +62,11 @@ Unless the task explicitly requires it:
 - `LobbyDirectoryDO`（公開ロビー一覧の軽量サマリ正本）
 
 ### 2.3 Sources (fixed per device)
-- `inf_daken_counter` (today_update.xml)
-- `inf-notebook` (export/recent.json; records/recent.json optional)
+- SourceType: `inf_daken_counter` / `inf-notebook` / `daken_counter_v3` / `reflux`
+- `inf_daken_counter` は legacy/deprecated（無効構成では `ROOM_JOIN` を拒否可能）
 
 Source is selected before joining a room and MUST NOT be changed while in a room.
+Detailed source compatibility/deprecation profile is defined in `docs/design/10_regression_guard_addendum.md`.
 
 ---
 
@@ -81,6 +82,7 @@ These design docs are normative. Implementation MUST match them.
 - docs/design/06_source_io_spec.md
 - docs/design/07_constants.md
 - docs/design/08_repo_structure.md
+- docs/design/10_regression_guard_addendum.md
 
 Historical only:
 - docs/design/09_implementation_plan.md (frozen reference; not a normative spec source)

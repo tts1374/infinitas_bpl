@@ -48,7 +48,9 @@
 
 ## 4. 監視ソース検証（該当変更時のみ必須）
 - inf-notebook: export/recent.json から SCORE/MISSCOUNT 抽出できる
-- inf_daken_counter: today_update.xml から SCORE/MISSCOUNT 抽出できる
+- daken_counter_v3: local WS から SCORE/MISSCOUNT 抽出できる
+- reflux: latest.json/tracker.tsv から SCORE/MISSCOUNT 抽出できる
+- inf_daken_counter（legacy有効構成のみ）: today_update.xml から SCORE/MISSCOUNT 抽出できる
 - observed_key == expected_key のみ採用される
 - 監視異常時に SOURCE_UNAVAILABLE を出し、TECHスキップ誘導できる
 

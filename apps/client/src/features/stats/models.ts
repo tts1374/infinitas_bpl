@@ -12,6 +12,7 @@ import type {
 } from "@infinitas/shared";
 
 export const STATS_SCHEMA_VERSION = 1;
+export const STATS_SUPPORTED_SCHEMA_VERSIONS = [STATS_SCHEMA_VERSION] as const;
 export const STATS_STORAGE_KEY = "infinitas.client.stats.v1";
 export const INITIAL_ELO_RATING = 1500;
 export const ELO_K_FACTOR = 24;

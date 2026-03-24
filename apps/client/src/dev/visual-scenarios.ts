@@ -372,6 +372,81 @@ function createResultReady(args: {
     }>;
   }>;
 }): ResultReadyPayload {
+  const perPlayer =
+    args.mode === "ARENA"
+      ? {
+          players: args.players.map((player) => ({
+            player_id: player.playerId,
+            display_name: player.displayName,
+            total_points: player.totalPoints,
+            total_ex_score: player.totalExScore,
+            last_confirmed_at: null,
+            rounds: [],
+          })),
+        }
+      : {
+          players: args.players.map((player) => ({
+            player_id: player.playerId,
+            display_name: player.displayName,
+            round_wins: player.roundWins,
+            rounds: [],
+          })),
+        };
+
+  const perRound: ResultReadyPayload["per_round"] =
+    args.mode === "ARENA"
+      ? {
+          rounds: args.rounds.map((round) => ({
+            round_index: round.roundIndex,
+            display: {
+              title: round.chart.title,
+              level: round.chart.level,
+            },
+            expected_key: createExpectedKey(round.chart),
+            round_started_at: null,
+            played: true,
+            winner_player_ids: round.winnerPlayerIds,
+            results: round.results.map((result, index) => ({
+              round_index: round.roundIndex,
+              player_id: result.playerId,
+              display_name: result.displayName,
+              status: "PLAYED" as const,
+              metric_value: result.metricValue,
+              reason: null,
+              submitted_at: null,
+              submitted_by: null,
+              source_meta: null,
+              rank: index + 1,
+              arena_points: result.arenaPoints,
+            })),
+          })),
+        }
+      : {
+          rounds: args.rounds.map((round) => ({
+            round_index: round.roundIndex,
+            display: {
+              title: round.chart.title,
+              level: round.chart.level,
+            },
+            expected_key: createExpectedKey(round.chart),
+            round_started_at: null,
+            played: true,
+            winner_player_ids: round.winnerPlayerIds,
+            results: round.results.map((result) => ({
+              round_index: round.roundIndex,
+              player_id: result.playerId,
+              display_name: result.displayName,
+              status: "PLAYED" as const,
+              metric_value: result.metricValue,
+              reason: null,
+              submitted_at: null,
+              submitted_by: null,
+              source_meta: null,
+              round_win: round.winnerPlayerIds.includes(result.playerId),
+            })),
+          })),
+        };
+
   return {
     summary: {
       match_id: `${args.mode.toLowerCase()}-visual-match`,
@@ -387,33 +462,8 @@ function createResultReady(args: {
       rating_after: null,
       rating_delta: null,
     },
-    per_player: {
-      players: args.players.map((player) => ({
-        player_id: player.playerId,
-        display_name: player.displayName,
-        total_points: player.totalPoints,
-        total_ex_score: player.totalExScore,
-        round_wins: player.roundWins,
-      })),
-    },
-    per_round: {
-      rounds: args.rounds.map((round) => ({
-        round_index: round.roundIndex,
-        display: {
-          title: round.chart.title,
-          artist: round.chart.artist,
-          level: round.chart.level,
-        },
-        expected_key: createExpectedKey(round.chart),
-        winner_player_ids: round.winnerPlayerIds,
-        results: round.results.map((result) => ({
-          player_id: result.playerId,
-          display_name: result.displayName,
-          metric_value: result.metricValue,
-          arena_points: result.arenaPoints,
-        })),
-      })),
-    },
+    per_player: perPlayer,
+    per_round: perRound,
   };
 }
 

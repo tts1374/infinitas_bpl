@@ -5,6 +5,9 @@ import { readJson, writeJson } from "./local-storage";
 import { isTauriRuntime, saveLocalResultJson } from "./tauri-bridge";
 
 const ROOM_RESULT_ARCHIVE_STORAGE_KEY = "infinitas.client.room-results.v1";
+const LOCAL_RESULT_ARCHIVE_SCHEMA_VERSION = 1;
+const LOCAL_RESULT_ARCHIVE_SUPPORTED_SCHEMA_VERSIONS = [LOCAL_RESULT_ARCHIVE_SCHEMA_VERSION] as const;
+type LocalResultArchiveSchemaVersion = (typeof LOCAL_RESULT_ARCHIVE_SUPPORTED_SCHEMA_VERSIONS)[number];
 
 export type LocalResultArchiveStatus = "IDLE" | "SAVING" | "READY" | "ERROR";
 export type LocalResultArchiveStorage = "NONE" | "TAURI_FILE" | "LOCAL_STORAGE";
@@ -16,7 +19,7 @@ export interface LocalResultArchiveEntry {
 }
 
 export interface LocalResultArchive {
-  schema_version: 1;
+  schema_version: LocalResultArchiveSchemaVersion;
   room_id: string;
   created_at: string | null;
   updated_at: string;
@@ -60,8 +63,26 @@ function buildFallbackKey(roomId: string): string {
   return `${ROOM_RESULT_ARCHIVE_STORAGE_KEY}:${roomId}`;
 }
 
+function isCompatibleLocalResultArchive(value: unknown): value is LocalResultArchive {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  const record = value as Record<string, unknown>;
+  if (!LOCAL_RESULT_ARCHIVE_SUPPORTED_SCHEMA_VERSIONS.includes(record.schema_version as LocalResultArchiveSchemaVersion)) {
+    return false;
+  }
+
+  return (
+    typeof record.room_id === "string" &&
+    Array.isArray(record.entries) &&
+    typeof record.updated_at === "string"
+  );
+}
+
 function loadFallbackArchive(roomId: string): LocalResultArchive | null {
-  return readJson<LocalResultArchive | null>(buildFallbackKey(roomId), null);
+  const rawArchive = readJson<unknown>(buildFallbackKey(roomId), null);
+  return isCompatibleLocalResultArchive(rawArchive) ? rawArchive : null;
 }
 
 function buildArchive(
@@ -72,7 +93,7 @@ function buildArchive(
   const savedAt = new Date().toISOString();
 
   const nextArchive: LocalResultArchive = {
-    schema_version: 1,
+    schema_version: LOCAL_RESULT_ARCHIVE_SCHEMA_VERSION,
     room_id: snapshot.room_id,
     created_at: snapshot.created_at ?? existingArchive?.created_at ?? null,
     updated_at: savedAt,

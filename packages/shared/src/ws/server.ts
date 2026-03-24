@@ -106,10 +106,76 @@ export interface ResultReadySummary {
   rating_delta: number | null;
 }
 
+export interface ResultReadyRoundPlayerResult {
+  round_index: number;
+  player_id: string;
+  display_name: string;
+  status: SubmissionStatus | null;
+  metric_value: number | null;
+  reason: SubmissionReason;
+  submitted_at: ISO8601String | null;
+  submitted_by: SubmittedBy | null;
+  source_meta: JsonObject | null;
+}
+
+export interface ResultReadyArenaRoundPlayerResult extends ResultReadyRoundPlayerResult {
+  rank: number | null;
+  arena_points: number;
+}
+
+export interface ResultReadyBplRoundPlayerResult extends ResultReadyRoundPlayerResult {
+  round_win: boolean;
+}
+
+export interface ResultReadyRoundBase {
+  round_index: number;
+  expected_key: ExpectedKey;
+  display: FrozenRound["display"];
+  round_started_at: ISO8601String | null;
+  played: boolean;
+  winner_player_ids: string[];
+}
+
+export interface ResultReadyArenaRound extends ResultReadyRoundBase {
+  results: ResultReadyArenaRoundPlayerResult[];
+}
+
+export interface ResultReadyBplRound extends ResultReadyRoundBase {
+  results: ResultReadyBplRoundPlayerResult[];
+}
+
+export type ResultReadyRound = ResultReadyArenaRound | ResultReadyBplRound;
+
+export interface ResultReadyArenaPlayer {
+  player_id: string;
+  display_name: string;
+  total_points: number;
+  total_ex_score: number | null;
+  last_confirmed_at: ISO8601String | null;
+  rounds: ResultReadyArenaRoundPlayerResult[];
+}
+
+export interface ResultReadyBplPlayer {
+  player_id: string;
+  display_name: string;
+  round_wins: number;
+  rounds: ResultReadyBplRoundPlayerResult[];
+}
+
+export type ResultReadyPlayer = ResultReadyArenaPlayer | ResultReadyBplPlayer;
+
+export interface ResultReadyPerRound {
+  rounds: ResultReadyRound[];
+}
+
+export interface ResultReadyPerPlayer {
+  players: ResultReadyPlayer[];
+}
+
 export interface ResultReadyPayload {
   summary: ResultReadySummary;
-  per_round: JsonObject;
-  per_player: JsonObject;
+  per_round: ResultReadyPerRound;
+  per_player: ResultReadyPerPlayer;
 }
 
 export interface StateSnapshotPayload {

@@ -42,6 +42,7 @@
 - `HOST_ABORTED`
 - `PICKING_ABORTED`
 - `FORCE_CLOSED`
+- `ROOM_STATE_LOST`
 
 `CLOSED` の UI/SE 分岐は `RoomState` ではなく `close_reason` を正とする。
 
@@ -221,3 +222,4 @@
 - 部分結果は各クライアントのローカル保存（snapshot）で表示可能とする
 - `CLOSED` 遷移時に `LobbyDirectoryDO` のロビー情報を削除する
 - `cancel` SE は `close_reason != ALL_ROUNDS_COMPLETED` のときのみ1回だけ鳴らす
+- `close_reason = ROOM_STATE_LOST` の場合、クライアントはブロッキングエラーを表示する
