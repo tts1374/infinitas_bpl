@@ -6,6 +6,8 @@ param(
   [string]$RuntimeRoot = "testdata/runtime",
   [switch]$E2E,
   [string]$Scenario = "manual",
+  [ValidateRange(1, 5)]
+  [int]$E2EMatchCount = 1,
   [string]$RoomId = "",
   [string]$JoinCode = "",
   [ValidateSet("inf-notebook", "reflux", "daken_counter_v3", "inf_daken_counter")]
@@ -241,6 +243,7 @@ function Build-QueryString([pscustomobject]$Spec) {
     $queryParams["INF_ARENA_PROFILE"] = $Spec.Id
     $queryParams["INF_ARENA_ROLE"] = $Spec.Role
     $queryParams["INF_ARENA_DATASOURCE"] = $Spec.Source
+    $queryParams["INF_ARENA_E2E_MATCH_COUNT"] = [string]$E2EMatchCount
     $queryParams["INF_ARENA_WATCH_DIR"] = $Spec.WatchRoot
     $queryParams["INF_ARENA_RUNTIME_DIR"] = $Spec.RuntimeDir
     $queryParams["INF_ARENA_LOG_DIR"] = $Spec.LogDir

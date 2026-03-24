@@ -23,6 +23,15 @@ pwsh -File scripts/run-local-e2e.ps1 -Scenario reflux-reflux-full
 pwsh -File scripts/run-local-e2e.ps1 -Scenario mixed-daken-v3-notebook
 ```
 
+### 3. 再戦まで含む（2マッチ連続）
+
+```powershell
+pwsh -File scripts/run-local-e2e.ps1 -Scenario reflux-reflux-full -MatchCount 2
+```
+
+- `-MatchCount 2` を指定すると、host が RESULT で `RETURN_TO_LOBBY` を自動送信して次戦へ進みます。
+- summary には `observed_match_ids` が記録され、再戦で match 識別子が分離されていることを確認できます。
+
 ## 2クライアント起動のみ（手動確認用）
 
 ```powershell
@@ -51,4 +60,3 @@ pwsh -File scripts/start-local-two-clients.ps1 `
 
 - `INF_ARENA_E2E=1` は Tauri プロセス環境変数として起動スクリプトが自動設定します。
 - 通常起動では E2E 用 command/API は無効です。
-

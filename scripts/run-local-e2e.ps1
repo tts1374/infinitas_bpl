@@ -1,6 +1,8 @@
 param(
   [ValidateSet("reflux-reflux-full", "mixed-daken-v3-notebook")]
   [string]$Scenario = "reflux-reflux-full",
+  [ValidateRange(1, 3)]
+  [int]$MatchCount = 1,
   [string]$RuntimeRoot = "",
   [int]$TimeoutSeconds = 240,
   [switch]$SkipWorker,
@@ -335,30 +337,33 @@ function Write-DakenCounterV3Payload(
   [string]$Title,
   [string]$PlayStyle,
   [string]$Difficulty,
+  [int]$ChartId = 0,
   [int]$Score,
   [int]$Misscount,
   [string]$FixtureArchiveDir
 ) {
   $diff = Build-DiffCode -PlayStyle $PlayStyle -Difficulty $Difficulty
+  $item = @{
+    battle = 0
+    title = $Title
+    difficulty = $diff
+    score = $Score
+    bp = $Misscount
+    pre_score = [Math]::Max($Score - 60, 0)
+    pre_bp = $Misscount + 8
+    lamp = "EXH-CLEAR"
+    pre_lamp = "H-CLEAR"
+    opt = "RANDOM"
+    playspeed = "2.50"
+    notes = 2000
+  }
+  if ($ChartId -gt 0) {
+    $item.chart_id = $ChartId
+  }
   $payload = @{
     type = "today_updates"
     data = @{
-      items = @(
-        @{
-          battle = 0
-          title = $Title
-          difficulty = $diff
-          score = $Score
-          bp = $Misscount
-          pre_score = [Math]::Max($Score - 60, 0)
-          pre_bp = $Misscount + 8
-          lamp = "EXH-CLEAR"
-          pre_lamp = "H-CLEAR"
-          opt = "RANDOM"
-          playspeed = "2.50"
-          notes = 2000
-        }
-      )
+      items = @($item)
     }
   }
 
@@ -457,6 +462,7 @@ $sourceB = if ($Scenario -eq "reflux-reflux-full") { "reflux" } else { "inf-note
   -RuntimeRoot $runtimeRootPath `
   -E2E `
   -Scenario $Scenario `
+  -E2EMatchCount $MatchCount `
   -RoomId $roomId `
   -JoinCode $roomJoinCode `
   -ClientASource $sourceA `
@@ -571,128 +577,194 @@ if ($sourceA -eq "daken_counter_v3") {
 
 $normalizeLineA = 0
 $normalizeLineB = 0
+$resultLineA = 0
+$resultLineB = 0
 $unresolvedChecked = $false
+$observedMatchIds = @()
 
 try {
   Wait-E2EEvent -LogPath $eventLogA -EventName "room_join_succeeded" -WaitSeconds $TimeoutSeconds | Out-Null
   Wait-E2EEvent -LogPath $eventLogB -EventName "room_join_succeeded" -WaitSeconds $TimeoutSeconds | Out-Null
 
-  Wait-StateDump `
-    -StatePath $statePathA `
-    -Description "client-a enters PLAYING" `
-    -WaitSeconds $TimeoutSeconds `
-    -Predicate { param($state) $state.state.roomSnapshot -and $state.state.roomSnapshot.room_state -eq "PLAYING" } | Out-Null
-
-  for ($roundAttempt = 0; $roundAttempt -lt 5; $roundAttempt++) {
-    $stateA = Wait-StateDump `
+  $previousMatchId = $null
+  for ($matchAttempt = 0; $matchAttempt -lt $MatchCount; $matchAttempt++) {
+    $matchLabel = "match-$($matchAttempt + 1)"
+    $playingState = Wait-StateDump `
       -StatePath $statePathA `
-      -Description "client-a playing or result" `
-      -WaitSeconds $TimeoutSeconds `
-      -Predicate {
-        param($state)
-        $roomSnapshot = $state.state.roomSnapshot
-        if (-not $roomSnapshot) {
-          return $false
-        }
-        return @("PLAYING", "RESULT", "CLOSED") -contains $roomSnapshot.room_state
-      }
-
-    $roomSnapshot = $stateA.state.roomSnapshot
-    if ($roomSnapshot.room_state -ne "PLAYING") {
-      break
-    }
-
-    $currentRound = $roomSnapshot.current_round
-    if (-not $currentRound) {
-      Start-Sleep -Milliseconds 500
-      continue
-    }
-
-    $roundIndex = [int]$currentRound.round_index
-    $expected = $currentRound.expected_key
-    $title = Resolve-ChartTitle -ExpectedKey $expected
-    $scoreA = 2500 + ($roundIndex * 10)
-    $scoreB = 2520 + ($roundIndex * 10)
-    $missA = [Math]::Max(10 - $roundIndex, 0)
-    $missB = [Math]::Max(12 - $roundIndex, 0)
-
-    $roundArchiveA = Join-Path $fixtureArchiveRoot "$clientA\round-$roundIndex"
-    $roundArchiveB = Join-Path $fixtureArchiveRoot "$clientB\round-$roundIndex"
-
-    if ($Scenario -eq "reflux-reflux-full") {
-      Write-RefluxFixture -WatchDir $watchDirA -Title $title -PlayStyle $expected.play_style -Difficulty $expected.difficulty -Score $scoreA -Misscount $missA -FixtureArchiveDir $roundArchiveA
-      Write-RefluxFixture -WatchDir $watchDirB -Title $title -PlayStyle $expected.play_style -Difficulty $expected.difficulty -Score $scoreB -Misscount $missB -FixtureArchiveDir $roundArchiveB
-    } else {
-      $dakenTitle = if ([string]::IsNullOrWhiteSpace([string]$expected.title_search_key)) {
-        $title
-      } else {
-        [string]$expected.title_search_key
-      }
-      Write-DakenCounterV3Payload -ControlFilePath $dakenControlPath -Title $dakenTitle -PlayStyle $expected.play_style -Difficulty $expected.difficulty -Score $scoreA -Misscount $missA -FixtureArchiveDir $roundArchiveA
-      if (-not $unresolvedChecked) {
-        $unresolvedTitle = Resolve-NotebookUnresolvedAliasTitle -ExpectedKey $expected -ExpectedTitle $title
-        $unresolvedArchive = Join-Path $fixtureArchiveRoot "$clientB\unresolved_alias"
-        Write-NotebookUnresolvedAliasFixture `
-          -WatchDir $watchDirB `
-          -Title $unresolvedTitle `
-          -PlayStyle $expected.play_style `
-          -Difficulty $expected.difficulty `
-          -Score ($scoreB + 10) `
-          -Misscount ($missB + 10) `
-          -FixtureArchiveDir $unresolvedArchive
-        $unresolvedEvent = Wait-E2EEvent `
-          -LogPath $eventLogB `
-          -EventName "unresolved_alias_dialog_opened" `
-          -AfterLine $normalizeLineB `
-          -WaitSeconds $TimeoutSeconds
-        $normalizeLineB = [Math]::Max($normalizeLineB, $unresolvedEvent.Line)
-        $unresolvedChecked = $true
-      }
-      Write-NotebookFixture -WatchDir $watchDirB -Title $title -PlayStyle $expected.play_style -Difficulty $expected.difficulty -Score $scoreB -Misscount $missB -FixtureArchiveDir $roundArchiveB
-    }
-
-    $normalizedA = Wait-E2EEvent `
-      -LogPath $eventLogA `
-      -EventName "normalize_succeeded" `
-      -AfterLine $normalizeLineA `
-      -WaitSeconds $TimeoutSeconds
-    $normalizeLineA = $normalizedA.Line
-
-    $normalizedB = Wait-E2EEvent `
-      -LogPath $eventLogB `
-      -EventName "normalize_succeeded" `
-      -AfterLine $normalizeLineB `
-      -WaitSeconds $TimeoutSeconds
-    $normalizeLineB = $normalizedB.Line
-
-    Wait-StateDump `
-      -StatePath $statePathA `
-      -Description "round transition after $roundIndex" `
+      -Description "client-a enters PLAYING ($matchLabel)" `
       -WaitSeconds $TimeoutSeconds `
       -Predicate {
         param($state)
         $snapshot = $state.state.roomSnapshot
-        if (-not $snapshot) {
-          return $false
+        return $snapshot -and $snapshot.room_state -eq "PLAYING"
+      }
+
+    $playingSnapshot = $playingState.state.roomSnapshot
+    $playingMatchId = [string]$playingSnapshot.current_match_id
+    if ([string]::IsNullOrWhiteSpace($playingMatchId)) {
+      $playingMatchId = [string]$playingSnapshot.room_id
+    }
+    if ($previousMatchId -and $playingMatchId -eq $previousMatchId) {
+      throw "Rematch did not rotate current_match_id before PLAYING. match_id=$playingMatchId"
+    }
+
+    for ($roundAttempt = 0; $roundAttempt -lt 5; $roundAttempt++) {
+      $stateA = Wait-StateDump `
+        -StatePath $statePathA `
+        -Description "client-a playing or result ($matchLabel)" `
+        -WaitSeconds $TimeoutSeconds `
+        -Predicate {
+          param($state)
+          $roomSnapshot = $state.state.roomSnapshot
+          if (-not $roomSnapshot) {
+            return $false
+          }
+          return @("PLAYING", "RESULT", "CLOSED") -contains $roomSnapshot.room_state
         }
-        if ($snapshot.room_state -ne "PLAYING") {
-          return $true
+
+      $roomSnapshot = $stateA.state.roomSnapshot
+      if ($roomSnapshot.room_state -ne "PLAYING") {
+        break
+      }
+
+      $currentRound = $roomSnapshot.current_round
+      if (-not $currentRound) {
+        Start-Sleep -Milliseconds 500
+        continue
+      }
+
+      $roundIndex = [int]$currentRound.round_index
+      $expected = $currentRound.expected_key
+      $title = Resolve-ChartTitle -ExpectedKey $expected
+      $scoreA = 2500 + ($roundIndex * 10)
+      $scoreB = 2520 + ($roundIndex * 10)
+      $missA = [Math]::Max(10 - $roundIndex, 0)
+      $missB = [Math]::Max(12 - $roundIndex, 0)
+
+      $roundArchiveA = Join-Path $fixtureArchiveRoot "$clientA\$matchLabel\round-$roundIndex"
+      $roundArchiveB = Join-Path $fixtureArchiveRoot "$clientB\$matchLabel\round-$roundIndex"
+
+      if ($Scenario -eq "reflux-reflux-full") {
+        Write-RefluxFixture -WatchDir $watchDirA -Title $title -PlayStyle $expected.play_style -Difficulty $expected.difficulty -Score $scoreA -Misscount $missA -FixtureArchiveDir $roundArchiveA
+        Write-RefluxFixture -WatchDir $watchDirB -Title $title -PlayStyle $expected.play_style -Difficulty $expected.difficulty -Score $scoreB -Misscount $missB -FixtureArchiveDir $roundArchiveB
+      } else {
+        $expectedChartId = 0
+        try {
+          $parsedChartId = [int]$expected.chart_id
+          if ($parsedChartId -gt 0) {
+            $expectedChartId = $parsedChartId
+          }
+        } catch {
+          $expectedChartId = 0
         }
-        if (-not $snapshot.current_round) {
-          return $false
+        Write-DakenCounterV3Payload -ControlFilePath $dakenControlPath -Title $title -PlayStyle $expected.play_style -Difficulty $expected.difficulty -ChartId $expectedChartId -Score $scoreA -Misscount $missA -FixtureArchiveDir $roundArchiveA
+        if (-not $unresolvedChecked) {
+          $unresolvedTitle = Resolve-NotebookUnresolvedAliasTitle -ExpectedKey $expected -ExpectedTitle $title
+          $unresolvedArchive = Join-Path $fixtureArchiveRoot "$clientB\unresolved_alias"
+          Write-NotebookUnresolvedAliasFixture `
+            -WatchDir $watchDirB `
+            -Title $unresolvedTitle `
+            -PlayStyle $expected.play_style `
+            -Difficulty $expected.difficulty `
+            -Score ($scoreB + 10) `
+            -Misscount ($missB + 10) `
+            -FixtureArchiveDir $unresolvedArchive
+          $unresolvedEvent = Wait-E2EEvent `
+            -LogPath $eventLogB `
+            -EventName "unresolved_alias_dialog_opened" `
+            -AfterLine $normalizeLineB `
+            -WaitSeconds $TimeoutSeconds
+          $normalizeLineB = [Math]::Max($normalizeLineB, $unresolvedEvent.Line)
+          $unresolvedChecked = $true
         }
-        return [int]$snapshot.current_round.round_index -gt $roundIndex
-      } | Out-Null
+        Write-NotebookFixture -WatchDir $watchDirB -Title $title -PlayStyle $expected.play_style -Difficulty $expected.difficulty -Score $scoreB -Misscount $missB -FixtureArchiveDir $roundArchiveB
+      }
+
+      $normalizedA = Wait-E2EEvent `
+        -LogPath $eventLogA `
+        -EventName "normalize_succeeded" `
+        -AfterLine $normalizeLineA `
+        -WaitSeconds $TimeoutSeconds
+      $normalizeLineA = $normalizedA.Line
+
+      $normalizedB = Wait-E2EEvent `
+        -LogPath $eventLogB `
+        -EventName "normalize_succeeded" `
+        -AfterLine $normalizeLineB `
+        -WaitSeconds $TimeoutSeconds
+      $normalizeLineB = $normalizedB.Line
+
+      Wait-StateDump `
+        -StatePath $statePathA `
+        -Description "round transition after $roundIndex ($matchLabel)" `
+        -WaitSeconds $TimeoutSeconds `
+        -Predicate {
+          param($state)
+          $snapshot = $state.state.roomSnapshot
+          if (-not $snapshot) {
+            return $false
+          }
+          if ($snapshot.room_state -ne "PLAYING") {
+            return $true
+          }
+          if (-not $snapshot.current_round) {
+            return $false
+          }
+          return [int]$snapshot.current_round.round_index -gt $roundIndex
+        } | Out-Null
+    }
+
+    $resultEventA = Wait-E2EEvent `
+      -LogPath $eventLogA `
+      -EventName "result_received" `
+      -AfterLine $resultLineA `
+      -WaitSeconds $TimeoutSeconds
+    $resultLineA = $resultEventA.Line
+
+    $resultEventB = Wait-E2EEvent `
+      -LogPath $eventLogB `
+      -EventName "result_received" `
+      -AfterLine $resultLineB `
+      -WaitSeconds $TimeoutSeconds
+    $resultLineB = $resultEventB.Line
+
+    $resultStateA = Wait-StateDump `
+      -StatePath $statePathA `
+      -Description "client-a captures RESULT snapshot ($matchLabel)" `
+      -WaitSeconds $TimeoutSeconds `
+      -Predicate {
+        param($state)
+        $snapshot = $state.state.roomSnapshot
+        return $snapshot -and $snapshot.room_state -eq "RESULT"
+      }
+
+    $resultSnapshot = $resultStateA.state.roomSnapshot
+    $resultMatchId = [string]$resultSnapshot.current_match_id
+    if ($resultStateA.state.resultReady -and $resultStateA.state.resultReady.summary) {
+      $summaryMatchId = [string]$resultStateA.state.resultReady.summary.match_id
+      if (-not [string]::IsNullOrWhiteSpace($summaryMatchId)) {
+        $resultMatchId = $summaryMatchId
+      }
+    }
+    if ([string]::IsNullOrWhiteSpace($resultMatchId)) {
+      $resultMatchId = [string]$resultSnapshot.room_id
+    }
+    $observedMatchIds += $resultMatchId
+    $previousMatchId = $resultMatchId
   }
 
-  Wait-E2EEvent -LogPath $eventLogA -EventName "result_received" -WaitSeconds $TimeoutSeconds | Out-Null
-  Wait-E2EEvent -LogPath $eventLogB -EventName "result_received" -WaitSeconds $TimeoutSeconds | Out-Null
+  $uniqueObservedMatchIds = @($observedMatchIds | Select-Object -Unique)
+  if ($MatchCount -gt 1 -and $uniqueObservedMatchIds.Count -lt $MatchCount) {
+    throw "Expected $MatchCount distinct match ids in rematch flow, but observed $($uniqueObservedMatchIds.Count): $($uniqueObservedMatchIds -join ', ')"
+  }
 
   $summaryPath = Join-Path $artifactRoot "summary-$timestamp.md"
   $summaryLines = @(
     "# local-e2e result"
     ""
     "- scenario: $Scenario"
+    "- match_count: $MatchCount"
+    "- observed_match_ids: $($observedMatchIds -join ', ')"
     "- room_id: $roomId"
     "- join_code: $roomJoinCode"
     "- runtime_root: $runtimeRootPath"

@@ -39,6 +39,7 @@ export interface RuntimeE2EConfig {
   profile: string | null;
   role: "host" | "guest" | null;
   scenario: string | null;
+  matchCount: number;
   roomId: string | null;
   joinCode: string | null;
   watchDir: string | null;
@@ -221,6 +222,13 @@ const e2eRuntimeDir = normalizeDirectoryPath(
 const e2eLogDir = normalizeDirectoryPath(
   readRuntimeParam(["INF_ARENA_LOG_DIR", "logDir"]),
 );
+const e2eMatchCountRaw = readRuntimeParam(["INF_ARENA_E2E_MATCH_COUNT", "e2eMatchCount"]);
+const e2eMatchCountFromRuntime =
+  e2eMatchCountRaw === undefined ? 1 : Math.trunc(Number(e2eMatchCountRaw));
+const e2eMatchCount =
+  Number.isFinite(e2eMatchCountFromRuntime) && e2eMatchCountFromRuntime >= 1
+    ? e2eMatchCountFromRuntime
+    : 1;
 const baseSourcePaths: RuntimeSourcePathDefaults = {
   dakenTodayUpdateXml: readSearchParam("dakenPath"),
   notebookExportRecentJson: readSearchParam("notebookPath"),
@@ -271,6 +279,7 @@ export const runtimeConfig: RuntimeConfig = {
     profile,
     role: normalizeE2ERole(readRuntimeParam(["INF_ARENA_ROLE", "role"])),
     scenario: readRuntimeParam(["INF_ARENA_E2E_SCENARIO", "e2eScenario"]) ?? null,
+    matchCount: e2eMatchCount,
     roomId: readRuntimeParam(["INF_ARENA_ROOM_ID", "roomId"]) ?? null,
     joinCode: readRuntimeParam(["INF_ARENA_JOIN_CODE", "joinCode"]) ?? null,
     watchDir: e2eWatchDir,

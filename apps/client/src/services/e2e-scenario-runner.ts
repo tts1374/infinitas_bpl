@@ -18,6 +18,8 @@ let roomConnectRequested = false;
 let pickRequestInFlight = false;
 let lastStateSignature: string | null = null;
 let lastFailureSignature: string | null = null;
+const completedMatchIds = new Set<string>();
+let returnToLobbyRequestedForMatchId: string | null = null;
 const stopSubscriptions: (() => void)[] = [];
 
 function getActivePlayerId(): string {
@@ -39,7 +41,7 @@ function buildRoomConnectionSettings() {
   };
 }
 
-function canAutoStartMatch(snapshot: RoomStateSnapshot): boolean {
+function canAutoStartMatch(snapshot: RoomStateSnapshot, activePlayerId: string): boolean {
   if (snapshot.room_state !== "LOBBY") {
     return false;
   }
@@ -47,6 +49,10 @@ function canAutoStartMatch(snapshot: RoomStateSnapshot): boolean {
     return false;
   }
   if (snapshot.current_round !== null || snapshot.picks.length > 0 || snapshot.frozen_rounds.length > 0) {
+    return false;
+  }
+  const me = snapshot.players.find((player) => player.player_id === activePlayerId);
+  if (me?.source === "daken_counter_v3" && sourceStore.getState().watcherState.status !== "RUNNING") {
     return false;
   }
 
@@ -174,7 +180,7 @@ async function maybeAutoReadyAndStart(): Promise<void> {
     return;
   }
 
-  if (activePlayerId === snapshot.host_player_id && canAutoStartMatch(snapshot)) {
+  if (activePlayerId === snapshot.host_player_id && canAutoStartMatch(snapshot, activePlayerId)) {
     roomStore.startMatch();
   }
 }
@@ -231,10 +237,72 @@ async function maybeAutoPick(): Promise<void> {
   }
 }
 
+function resolveResultMatchId(): string | null {
+  const roomState = roomStore.getState();
+  const snapshot = roomState.snapshot;
+  if (snapshot === null) {
+    return null;
+  }
+
+  const summary = roomState.resultReady?.summary;
+  if (summary && typeof summary.match_id === "string" && summary.match_id.trim().length > 0) {
+    return summary.match_id;
+  }
+
+  if (typeof snapshot.current_match_id === "string" && snapshot.current_match_id.trim().length > 0) {
+    return snapshot.current_match_id;
+  }
+
+  return typeof snapshot.room_id === "string" && snapshot.room_id.trim().length > 0
+    ? snapshot.room_id
+    : null;
+}
+
+async function maybeAutoReturnToLobbyForRematch(): Promise<void> {
+  const roomState = roomStore.getState();
+  const snapshot = roomState.snapshot;
+  if (snapshot === null || snapshot.room_state !== "RESULT") {
+    returnToLobbyRequestedForMatchId = null;
+    return;
+  }
+
+  const activePlayerId = getActivePlayerId();
+  if (runtimeConfig.e2e.matchCount <= 1 || activePlayerId !== snapshot.host_player_id) {
+    return;
+  }
+
+  const resultMatchId = resolveResultMatchId();
+  if (resultMatchId === null) {
+    return;
+  }
+
+  completedMatchIds.add(resultMatchId);
+  if (completedMatchIds.size >= runtimeConfig.e2e.matchCount) {
+    return;
+  }
+
+  if (returnToLobbyRequestedForMatchId === resultMatchId) {
+    return;
+  }
+
+  const sent = roomStore.returnToLobby();
+  returnToLobbyRequestedForMatchId = resultMatchId;
+  await logE2EEvent("return_to_lobby_sent", {
+    roomId: snapshot.room_id,
+    matchId: resultMatchId,
+    actorPlayerId: activePlayerId,
+    hostPlayerId: snapshot.host_player_id,
+    completedMatches: completedMatchIds.size,
+    targetMatches: runtimeConfig.e2e.matchCount,
+    sent,
+  });
+}
+
 async function runAutomationStep(getView: GetView): Promise<void> {
   await ensureRoomConnected();
   await maybeAutoReadyAndStart();
   await maybeAutoPick();
+  await maybeAutoReturnToLobbyForRematch();
   await updateStateDump(getView(), "automation_step");
   await maybeCaptureFailure(getView());
 }
@@ -245,6 +313,8 @@ function clearRunnerState(): void {
   pickRequestInFlight = false;
   lastStateSignature = null;
   lastFailureSignature = null;
+  completedMatchIds.clear();
+  returnToLobbyRequestedForMatchId = null;
   while (stopSubscriptions.length > 0) {
     const stop = stopSubscriptions.pop();
     stop?.();
@@ -264,6 +334,7 @@ export function startE2EScenarioRunner(getView: GetView): () => void {
     scenario: runtimeConfig.e2e.scenario,
     role: runtimeConfig.e2e.role,
     roomId: runtimeConfig.e2e.roomId,
+    matchCount: runtimeConfig.e2e.matchCount,
   });
 
   stopSubscriptions.push(
