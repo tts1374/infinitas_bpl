@@ -302,6 +302,8 @@ test("START_MATCH filter stays fixed after reconnect capability change", () => {
 
 test("RESULT -> LOBBY clears ready and match transient state without auto-start", () => {
   const state = createState();
+  const initialSnapshot = state.toSnapshot();
+  assert.equal(initialSnapshot.current_match_id, "room-1");
 
   assert.equal(state.getRoomState(), "LOBBY");
   assert.equal(state.getHostPlayerId(), "host");
@@ -316,6 +318,10 @@ test("RESULT -> LOBBY clears ready and match transient state without auto-start"
   assert.equal(state.submitPick("host", "chart-1", new Date("2026-03-08T00:01:10.000Z")).ok, true);
   assert.equal(state.submitPick("guest", "chart-2", new Date("2026-03-08T00:01:11.000Z")).ok, true);
   assert.equal(state.getRoomState(), "PLAYING");
+  const firstPlayingSnapshot = state.toSnapshot();
+  const firstMatchId = firstPlayingSnapshot.current_match_id;
+  assert.equal(typeof firstMatchId, "string");
+  assert.notEqual(firstMatchId, "room-1");
 
   playCurrentRound(state, 0, 2000, 1500, "2026-03-08T00:02");
   assert.equal(state.getRoomState(), "PLAYING");
@@ -325,6 +331,7 @@ test("RESULT -> LOBBY clears ready and match transient state without auto-start"
 
   const resultSnapshot = state.toSnapshot();
   assert.equal(resultSnapshot.result_ready, true);
+  assert.equal(resultSnapshot.current_match_id, firstMatchId);
   assert.equal(resultSnapshot.players.every((player) => player.ready === false), true);
   assert.equal(resultSnapshot.picks.length, 2);
   assert.equal(resultSnapshot.frozen_rounds.length, 2);
@@ -341,6 +348,7 @@ test("RESULT -> LOBBY clears ready and match transient state without auto-start"
   assert.equal(lobbySnapshot.room_id, "room-1");
   assert.equal(lobbySnapshot.host_player_id, "host");
   assert.equal(lobbySnapshot.settings.mode, "ARENA");
+  assert.equal(lobbySnapshot.current_match_id, "room-1");
   assert.equal(lobbySnapshot.players.map((player) => player.player_id).join(","), "host,guest");
   assert.equal(lobbySnapshot.players.every((player) => player.ready === false), true);
   assert.equal(lobbySnapshot.picks.length, 0);
@@ -359,6 +367,10 @@ test("RESULT -> LOBBY clears ready and match transient state without auto-start"
   assert.equal(state.setPlayerReady("host", true).ok, true);
   assert.equal(state.setPlayerReady("guest", true).ok, true);
   assert.deepEqual(state.startMatch("host", new Date("2026-03-08T00:04:20.000Z")), { ok: true });
+  const secondStartSnapshot = state.toSnapshot();
+  assert.equal(typeof secondStartSnapshot.current_match_id, "string");
+  assert.notEqual(secondStartSnapshot.current_match_id, "room-1");
+  assert.notEqual(secondStartSnapshot.current_match_id, firstMatchId);
 });
 
 test("HOST_ABORTED closes room immediately", () => {

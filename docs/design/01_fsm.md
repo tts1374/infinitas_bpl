@@ -32,6 +32,7 @@
 - `PLAYING` -> `RESULT`（全ラウンド消化時。`RESULT_READY` を保持）
 - `RESULT` -> `LOBBY`（ホスト操作。再戦準備のため ready / 揮発状態をリセット）
 - 任意状態 -> `CLOSED`（ホスト切断/終了、lobby ready ttl超過、異常終了）
+- `current_match_id` は `START_MATCH` / 自動再戦開始時に新規発行し、`RESULT`/`CLOSED` まで固定する。`RESULT -> LOBBY` 復帰時は `room_id` に戻す
 
 ### CLOSED の内部終了理由（close_reason）
 - `ALL_ROUNDS_COMPLETED`

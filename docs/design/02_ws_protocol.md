@@ -125,7 +125,8 @@
   - 備考: `per_round.rounds[].results[]` には `status / metric_value / reason / submitted_at / submitted_by / source_meta?` を含めてもよい
   - 備考: `rated_block_reason` は最低限 `private_room | missing_submission | mismatch_observed_key | incomplete_match | skip_occurred | timeout_occurred | force_advanced | result_conflict` を扱う
   - 備考: v1 では `RESULT_READY.summary.is_rated` がレート適用可否の権威情報
-  - 備考: v1 では `RESULT_READY.summary.match_id` を統計識別子の正本とし、欠落時のみ `room_id` fallback を許容
+  - 備考: v1 では `RESULT_READY.summary.match_id` を結果確定時の統計識別子の正本とし、欠落時のみ `room_id` fallback を許容
+  - 備考: 進行中セッション識別は `RoomStateSnapshot.current_match_id` を正本とする（`RESULT_READY.summary.match_id` と同一であること）
   - 備考: 通常フローでは `PLAYING -> RESULT` 遷移時に配信し、`RESULT -> LOBBY` 復帰まで保持して表示する
 
 ### 4.6 同期/エラー
@@ -161,6 +162,7 @@
 ```json
 {
   "room_id": "string",
+  "current_match_id": "string",
   "room_state": "LOBBY|PICKING|PLAYING|RESULT|CLOSED",
   "settings": { "...": "..." },
   "host_player_id": "string",
@@ -204,7 +206,9 @@
 - `FORCE_ADVANCE`: `room_state=PLAYING` かつ未確定者ありのときのみ許可し、未確定者を `TIMEOUT` / `submitted_by=SYSTEM` で確定する
 - START_MATCH: `players >= 2` かつ `room_state=LOBBY` かつ全員READY かつ前マッチ揮発状態クリア済みのみ
 - START_MATCH: 成功時に `match_song_unlock_filter` を固定し、そのマッチ中は選曲候補とランダム抽選へ適用する
+- START_MATCH: 成功時に `current_match_id` を新規発行し、同一ルーム内の再戦と統計識別を分離する
 - RETURN_TO_LOBBY: `room_state=RESULT` のみ。復帰時は全員readyと前マッチ揮発状態をリセットする
+- RETURN_TO_LOBBY: 復帰時は `current_match_id=room_id` に戻す（次戦開始までは provisional 識別子）
 - RESULT_SUBMIT: `observed_key == expected_key` かつ `round_index == current_round_index` のみ採用（accept_window=0）
   - `play_style/difficulty/title_search_key` は常に一致必須
   - `chart_id` は双方にある場合のみ一致必須。`expected_key.chart_id` がある `daken_counter_v3` 観測で `observed_key.chart_id` 欠落時は不採用

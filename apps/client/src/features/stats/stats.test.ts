@@ -138,6 +138,7 @@ function makeSnapshot(session: RoomStatsSession, closeReason: "ALL_ROUNDS_COMPLE
 
   return {
     room_id: session.room_id,
+    current_match_id: session.match_id,
     room_state: "CLOSED",
     settings: session.settings,
     host_player_id: session.players[0]?.player_id ?? MY_PLAYER_ID,
@@ -760,6 +761,7 @@ runCase("match_id fallback resets to room_id after returning to LOBBY", () => {
   });
   const lobbySnapshot: RoomStateSnapshot = {
     room_id: roomId,
+    current_match_id: roomId,
     room_state: "LOBBY",
     settings: previousSession.settings,
     host_player_id: previousSession.players[0]?.player_id ?? MY_PLAYER_ID,
@@ -783,6 +785,172 @@ runCase("match_id fallback resets to room_id after returning to LOBBY", () => {
 
   assert.equal(nextSession.match_id, roomId);
   assert.equal(nextSession.rounds.length, 0);
+});
+
+runCase("snapshot current_match_id is preferred for active rematch session", () => {
+  const roomId = "active-rematch-room";
+  const previousSession = makeSession({
+    roomId,
+    matchId: "match-alpha",
+    battleType: "ARENA",
+    playMode: "SP",
+    playerIds: [MY_PLAYER_ID, "opponent"],
+    mode: "ARENA",
+    rounds: [
+      makeRound(0, "SP", [
+        makeResult({ playerId: MY_PLAYER_ID, metricValue: 2200, submittedAt: iso(80), bp: 9 }),
+        makeResult({ playerId: "opponent", metricValue: 2100, submittedAt: iso(81), bp: 12 }),
+      ], "Song A", "song-a"),
+    ],
+  });
+  const rematchSnapshot: RoomStateSnapshot = {
+    room_id: roomId,
+    current_match_id: "match-beta",
+    room_state: "PLAYING",
+    settings: previousSession.settings,
+    host_player_id: previousSession.players[0]?.player_id ?? MY_PLAYER_ID,
+    players: previousSession.players,
+    picks: [
+      {
+        player_id: MY_PLAYER_ID,
+        pick_chart_key: "song-c",
+        accepted_at: iso(82),
+      },
+      {
+        player_id: "opponent",
+        pick_chart_key: "song-d",
+        accepted_at: iso(83),
+      },
+    ],
+    frozen_rounds: [
+      {
+        round_index: 0,
+        expected_key: {
+          play_style: "SP",
+          difficulty: "ANOTHER",
+          title_search_key: "song-c",
+        },
+        display: {
+          title: "Song C",
+          level: 12,
+        },
+        started_at: iso(84),
+        soft_ttl_seconds: 120,
+      },
+    ],
+    current_round: {
+      round_index: 0,
+      expected_key: {
+        play_style: "SP",
+        difficulty: "ANOTHER",
+        title_search_key: "song-c",
+      },
+      round_started_at: iso(84),
+      soft_ttl_seconds: 120,
+      confirmed: [],
+    },
+    timers: {
+      ready_check_deadline: null,
+      picking_deadline: null,
+      match_deadline: iso(95),
+      result_deadline: null,
+    },
+    result_ready: false,
+    created_at: iso(70),
+    closed_at: null,
+    close_reason: null,
+  };
+
+  const nextSession = captureRoomStatsSession(previousSession, rematchSnapshot, null);
+  assert.equal(nextSession.match_id, "match-beta");
+  assert.equal(nextSession.rounds.length, 1);
+  assert.equal(nextSession.rounds[0]?.display.title, "Song C");
+});
+
+runCase("late RESULT_READY with different match_id finalizes previous match", () => {
+  const roomId = "late-result-room";
+  const previousSession = makeSession({
+    roomId,
+    matchId: "match-alpha",
+    battleType: "ARENA",
+    playMode: "SP",
+    playerIds: [MY_PLAYER_ID, "opponent"],
+    mode: "ARENA",
+    rounds: [
+      makeRound(0, "SP", [
+        makeResult({ playerId: MY_PLAYER_ID, metricValue: 2200, submittedAt: iso(96), bp: 9 }),
+        makeResult({ playerId: "opponent", metricValue: 2100, submittedAt: iso(97), bp: 12 }),
+      ], "Song A", "song-a"),
+      makeRound(1, "SP", [
+        makeResult({ playerId: MY_PLAYER_ID, metricValue: 2300, submittedAt: iso(98), bp: 8 }),
+        makeResult({ playerId: "opponent", metricValue: 2000, submittedAt: iso(99), bp: 15 }),
+      ], "Song B", "song-b"),
+    ],
+  });
+  const rematchSnapshot: RoomStateSnapshot = {
+    room_id: roomId,
+    current_match_id: "match-beta",
+    room_state: "PLAYING",
+    settings: previousSession.settings,
+    host_player_id: previousSession.players[0]?.player_id ?? MY_PLAYER_ID,
+    players: previousSession.players,
+    picks: [
+      { player_id: MY_PLAYER_ID, pick_chart_key: "song-c", accepted_at: iso(100) },
+      { player_id: "opponent", pick_chart_key: "song-d", accepted_at: iso(101) },
+    ],
+    frozen_rounds: [
+      {
+        round_index: 0,
+        expected_key: {
+          play_style: "SP",
+          difficulty: "ANOTHER",
+          title_search_key: "song-c",
+        },
+        display: {
+          title: "Song C",
+          level: 12,
+        },
+        started_at: iso(102),
+        soft_ttl_seconds: 120,
+      },
+    ],
+    current_round: {
+      round_index: 0,
+      expected_key: {
+        play_style: "SP",
+        difficulty: "ANOTHER",
+        title_search_key: "song-c",
+      },
+      round_started_at: iso(102),
+      soft_ttl_seconds: 120,
+      confirmed: [],
+    },
+    timers: {
+      ready_check_deadline: null,
+      picking_deadline: null,
+      match_deadline: iso(110),
+      result_deadline: null,
+    },
+    result_ready: false,
+    created_at: iso(95),
+    closed_at: null,
+    close_reason: null,
+  };
+  const lateResultReady = makeResultReady({
+    session: previousSession,
+    isRated: true,
+    ratedBlockReason: null,
+    winnerPlayerIds: [MY_PLAYER_ID],
+  });
+
+  const finalizedSession = captureRoomStatsSession(previousSession, rematchSnapshot, lateResultReady);
+  assert.equal(finalizedSession.match_id, "match-alpha");
+  assert.deepEqual(
+    finalizedSession.rounds
+      .sort((left, right) => left.round_index - right.round_index)
+      .map((round) => round.display.title),
+    ["Song A", "Song B"],
+  );
 });
 
 runCase("closed match without confirmed games does not create an empty match record", () => {

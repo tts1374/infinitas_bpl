@@ -732,6 +732,28 @@ function handleServerMessage(client: RoomSocketClient, message: ServerMessage): 
     case "STATE_SNAPSHOT": {
       const payload = message.payload as { room_state_snapshot: RoomStateSnapshot };
       const previousSnapshot = internalStore.getState().snapshot;
+      const previousMatchId = previousSnapshot?.current_match_id ?? previousSnapshot?.room_id ?? null;
+      const nextMatchId = payload.room_state_snapshot.current_match_id ?? payload.room_state_snapshot.room_id;
+      const enteredFirstRoundPlaying =
+        payload.room_state_snapshot.room_state === "PLAYING" &&
+        payload.room_state_snapshot.current_round?.round_index === 0 &&
+        (
+          previousSnapshot === null ||
+          previousSnapshot.room_id !== payload.room_state_snapshot.room_id ||
+          previousSnapshot.room_state !== "PLAYING" ||
+          previousSnapshot.current_round?.round_index !== 0 ||
+          previousSnapshot.current_round?.round_started_at !== payload.room_state_snapshot.current_round.round_started_at
+        );
+      const startedNewMatchFromResult =
+        previousSnapshot !== null &&
+        previousSnapshot.room_id === payload.room_state_snapshot.room_id &&
+        previousSnapshot.room_state === "RESULT" &&
+        (payload.room_state_snapshot.room_state === "PICKING" || enteredFirstRoundPlaying);
+      const startedNewMatchByMatchId =
+        previousSnapshot !== null &&
+        previousSnapshot.room_id === payload.room_state_snapshot.room_id &&
+        previousMatchId !== null &&
+        previousMatchId !== nextMatchId;
       if (message.type === "ROOM_JOIN_ACCEPTED") {
         void logE2EEvent("room_join_succeeded", {
           roomId: payload.room_state_snapshot.room_id,
@@ -739,11 +761,15 @@ function handleServerMessage(client: RoomSocketClient, message: ServerMessage): 
         });
       }
       const shouldResetRoundHistory =
-        payload.room_state_snapshot.room_state === "LOBBY" &&
-        payload.room_state_snapshot.current_round === null &&
-        payload.room_state_snapshot.picks.length === 0 &&
-        payload.room_state_snapshot.frozen_rounds.length === 0 &&
-        !payload.room_state_snapshot.result_ready;
+        startedNewMatchFromResult ||
+        startedNewMatchByMatchId ||
+        (
+          payload.room_state_snapshot.room_state === "LOBBY" &&
+          payload.room_state_snapshot.current_round === null &&
+          payload.room_state_snapshot.picks.length === 0 &&
+          payload.room_state_snapshot.frozen_rounds.length === 0 &&
+          !payload.room_state_snapshot.result_ready
+        );
       if (
         payload.room_state_snapshot.room_state === "CLOSED" &&
         previousSnapshot?.room_state !== "CLOSED"
@@ -758,7 +784,10 @@ function handleServerMessage(client: RoomSocketClient, message: ServerMessage): 
       internalStore.setState((state) => ({
         ...state,
         snapshot: payload.room_state_snapshot,
-        resultReady: payload.room_state_snapshot.result_ready ? state.resultReady : null,
+        resultReady:
+          payload.room_state_snapshot.result_ready && !shouldResetRoundHistory
+            ? state.resultReady
+            : null,
         roundConfirmations: shouldResetRoundHistory ? {} : state.roundConfirmations,
         endedRoundIndices: shouldResetRoundHistory ? [] : state.endedRoundIndices,
         roomId: payload.room_state_snapshot.room_id,

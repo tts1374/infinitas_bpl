@@ -1302,6 +1302,7 @@ export class RoomLobbyState {
 
     return {
       room_id: this.roomId,
+      current_match_id: this.currentMatchId ?? this.roomId,
       room_state: this.roomState,
       settings: this.settings,
       host_player_id: this.hostPlayerId ?? "",

@@ -345,7 +345,9 @@ type LobbyRoomSummary = {
     - `best_played_at`
     - `source_play_result_id`
 - 集計ルール:
-  - 統計識別子の基準は `RESULT_READY.summary.match_id`（server-authoritative）とし、欠落時のみ `room_id` fallback を使用する
+  - 進行中セッション識別は `RoomStateSnapshot.current_match_id`（server-authoritative）を使用する
+  - 結果確定時の統計識別子は `RESULT_READY.summary.match_id` を使用し、`RoomStateSnapshot.current_match_id` と一致させる
+  - 互換 fallback は `current_match_id` 欠落時のみ `RESULT_READY.summary.match_id`、双方欠落時のみ `room_id` を使用する
   - レート系列は `ARENA_SP` / `ARENA_DP` / `BPL_SP` / `BPL_DP` を分離する
   - レート更新は `matches` を基準にマッチ単位で行う
   - ARENA は `match_games` を集約して最終順位を決め、pairwise 擬似対戦で `matches.rating_delta` を算出する

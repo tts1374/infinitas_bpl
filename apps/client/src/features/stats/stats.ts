@@ -378,14 +378,24 @@ function resolveSessionMatchId(input: {
   snapshot: RoomStateSnapshot;
   resultReady: ResultReadyPayload | null;
 }): string {
+  const snapshotMatchId = asString(input.snapshot.current_match_id);
   if (input.snapshot.room_state === "LOBBY") {
-    return input.snapshot.room_id;
+    return snapshotMatchId ?? input.snapshot.room_id;
   }
 
   const summaryRecord = input.resultReady === null ? null : asRecord(input.resultReady.summary);
   const resultReadyMatchId = asString(summaryRecord?.match_id);
   if (resultReadyMatchId !== null) {
+    const roomState = input.snapshot.room_state;
+    const isActiveMatchState = roomState === "PICKING" || roomState === "PLAYING";
+    if (!isActiveMatchState || snapshotMatchId === null || resultReadyMatchId !== snapshotMatchId) {
+      return resultReadyMatchId;
+    }
     return resultReadyMatchId;
+  }
+
+  if (snapshotMatchId !== null) {
+    return snapshotMatchId;
   }
 
   if (input.previousSession !== null && input.previousSession.room_id === input.snapshot.room_id) {
@@ -414,8 +424,12 @@ export function captureRoomStatsSession(
   const roundsByIndex = new Map(
     canReusePreviousRounds ? previousSession.rounds.map((round) => [round.round_index, round]) : [],
   );
+  const shouldIgnoreLiveRoundBecauseResultReadyAlreadyReceived =
+    resultReady !== null &&
+    snapshot.room_state !== "RESULT" &&
+    snapshot.room_state !== "CLOSED";
 
-  if (snapshot.current_round !== null) {
+  if (snapshot.current_round !== null && !shouldIgnoreLiveRoundBecauseResultReadyAlreadyReceived) {
     const currentRoundDisplay = frozenRoundByIndex.get(snapshot.current_round.round_index);
     const playerById = new Map(snapshot.players.map((player) => [player.player_id, player]));
     const existingRound = roundsByIndex.get(snapshot.current_round.round_index);
