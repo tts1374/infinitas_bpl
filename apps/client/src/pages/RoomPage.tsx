@@ -2516,7 +2516,7 @@ export function RoomPage() {
       {roomSurface}
 
       {autoRematchPanelVisible ? (
-        <div className="pointer-events-none fixed left-1/2 top-4 z-[145] w-full max-w-[760px] -translate-x-1/2 px-4">
+        <div className="pointer-events-none fixed bottom-4 left-0 right-0 z-[145] px-4 md:left-auto md:right-4 md:w-[min(460px,calc(100vw-2rem))]">
           <div className="pointer-events-auto rounded-2xl border border-cyan-500/30 bg-[#0d1820]/95 p-4 shadow-[0_16px_48px_rgba(0,0,0,0.45)] backdrop-blur-sm">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div className="space-y-1">
