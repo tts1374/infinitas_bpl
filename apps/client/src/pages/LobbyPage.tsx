@@ -22,6 +22,7 @@ import { isRoomEntryReady, useSettingsStore } from "../stores/settings-store";
 const defaultCreateDraft: RoomSettings = {
   visibility: "PUBLIC",
   join_code: null,
+  auto_rematch: false,
   mode: "ARENA",
   win_metric: "SCORE",
   play_style: "SP",
@@ -700,6 +701,7 @@ export function LobbyPage() {
                         setCreateDraft((current) => ({
                           ...current,
                           visibility,
+                          auto_rematch: visibility === "PRIVATE" ? current.auto_rematch === true : false,
                         }));
                       }}
                       className={`flex-1 rounded-lg py-2 text-[10px] font-black transition-all ${
@@ -712,6 +714,34 @@ export function LobbyPage() {
                     </button>
                   ))}
                 </div>
+                {createDraft.visibility === "PRIVATE" ? (
+                  <div className="space-y-2 rounded-xl border border-cyan-500/20 bg-cyan-500/10 p-3">
+                    <label className="flex cursor-pointer items-center justify-between gap-3 text-xs font-bold text-cyan-100">
+                      <span>Auto Rematch (RESULT 20秒後に次戦へ)</span>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={createDraft.auto_rematch === true}
+                        onClick={() => {
+                          setCreateDraft((current) => ({
+                            ...current,
+                            auto_rematch: current.auto_rematch !== true,
+                          }));
+                        }}
+                        className={`rounded-lg border px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] transition-all ${
+                          createDraft.auto_rematch === true
+                            ? "border-cyan-400 bg-cyan-400/20 text-cyan-100"
+                            : "border-white/10 bg-black/20 text-gray-400 hover:border-white/25"
+                        }`}
+                      >
+                        {createDraft.auto_rematch === true ? "ON" : "OFF"}
+                      </button>
+                    </label>
+                    <p className="text-[11px] font-medium text-cyan-200/80">
+                      PRIVATE ルームのみ有効です。公開ルームでは常に OFF になります。
+                    </p>
+                  </div>
+                ) : null}
                 <div className="space-y-2">
                   <label htmlFor="create-room-join-code" className="text-xs font-bold text-gray-400">
                     合言葉 (Join Code)

@@ -25,6 +25,15 @@
 - `picking_deadline: datetime|null`
 - `match_deadline: datetime|null`（`START_MATCH` 成功時、すなわち `PICKING` 開始時点で初めて確定）
 - `result_deadline: datetime|null`（Ph1未使用。現行フローでは通常 `null` 固定の予約欄）
+- `auto_rematch_enabled: bool`
+- `auto_rematch_countdown_started_at: datetime|null`
+- `auto_rematch_due_at: datetime|null`
+- `auto_rematch_generation: int`
+- `auto_rematch_cancelled: bool`
+- `auto_rematch_block_reason: string|null`
+- `next_match_opt_out_player_ids: string[]`
+- `source_unavailable_player_ids: string[]`
+- `last_match_end_reason: string|null`
 - `closed_at: datetime|null`
 - `close_reason: ALL_ROUNDS_COMPLETED|MATCH_TTL_EXPIRED|READY_CHECK_TTL_EXPIRED|HOST_DISCONNECTED|HOST_ABORTED|PICKING_ABORTED|FORCE_CLOSED|null`
 - `result_ready_payload: object|null`（`RESULT` 中は保持し、`RESULT -> LOBBY` 復帰時にクリア。`summary.is_rated / rated_block_reason / rating_*` を含む）
@@ -33,6 +42,7 @@
 
 ### 2.2 RoomSettings（Ph1）
 - `mode: ARENA|BPL`
+- `auto_rematch: bool`（`PRIVATE` のみ有効）
 - `win_metric: SCORE|MISSCOUNT`
 - `play_style: SP|DP`
 - `level_filter: ANY|LV8_10|LV10|LV11|LV12`

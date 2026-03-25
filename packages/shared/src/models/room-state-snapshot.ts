@@ -50,6 +50,14 @@ export interface RoomStateSnapshot {
   current_match_id?: string;
   room_state: RoomState;
   settings: RoomSettings;
+  auto_rematch_enabled?: boolean;
+  auto_rematch_countdown_started_at?: ISO8601String | null;
+  auto_rematch_due_at?: ISO8601String | null;
+  auto_rematch_generation?: number;
+  auto_rematch_cancelled?: boolean;
+  auto_rematch_block_reason?: string | null;
+  next_match_opt_out_player_ids?: string[];
+  last_match_end_reason?: string | null;
   host_player_id: string;
   players: RoomPlayerSnapshot[];
   match_song_unlock_filter?: MatchSongUnlockFilter | null;

@@ -223,3 +223,77 @@ test("MATCH_TTL_EXPIRED closes sockets and clears sessions", async () => {
   assert.equal(hostSocket.closeCalls[0]?.code, 4000);
   assert.equal(guestSocket.closeCalls[0]?.code, 4000);
 });
+
+test("SOURCE_STATUS_SET no-op skips additional persist and alarm sync", async () => {
+  const roomObject = await createRoomObject();
+  const hostSocket = new TestSocket();
+  await joinPlayer(roomObject, hostSocket, "host", "msg-1");
+  roomObject.roomState.readyCheckDeadline = new Date("2099-01-01T00:00:00.000Z");
+
+  let persistCalls = 0;
+  let syncAlarmCalls = 0;
+  const originalPersist = roomObject.persistRoomRecord.bind(roomObject);
+  const originalSyncAlarm = roomObject.syncAlarm.bind(roomObject);
+  roomObject.persistRoomRecord = async () => {
+    persistCalls += 1;
+    await originalPersist();
+  };
+  roomObject.syncAlarm = async () => {
+    syncAlarmCalls += 1;
+    await originalSyncAlarm();
+  };
+
+  await roomObject.webSocketMessage(
+    hostSocket,
+    JSON.stringify({
+      type: "SOURCE_STATUS_SET",
+      client_msg_id: "msg-2",
+      room_id: "room-1",
+      player_id: "host",
+      payload: {
+        request_id: "source-1",
+        available: true,
+      },
+    }),
+  );
+
+  assert.equal(persistCalls, 1);
+  assert.equal(syncAlarmCalls, 0);
+});
+
+test("SOURCE_STATUS_SET changed update persists and syncs alarm", async () => {
+  const roomObject = await createRoomObject();
+  const hostSocket = new TestSocket();
+  await joinPlayer(roomObject, hostSocket, "host", "msg-1");
+  roomObject.roomState.readyCheckDeadline = new Date("2099-01-01T00:00:00.000Z");
+
+  let persistCalls = 0;
+  let syncAlarmCalls = 0;
+  const originalPersist = roomObject.persistRoomRecord.bind(roomObject);
+  const originalSyncAlarm = roomObject.syncAlarm.bind(roomObject);
+  roomObject.persistRoomRecord = async () => {
+    persistCalls += 1;
+    await originalPersist();
+  };
+  roomObject.syncAlarm = async () => {
+    syncAlarmCalls += 1;
+    await originalSyncAlarm();
+  };
+
+  await roomObject.webSocketMessage(
+    hostSocket,
+    JSON.stringify({
+      type: "SOURCE_STATUS_SET",
+      client_msg_id: "msg-2",
+      room_id: "room-1",
+      player_id: "host",
+      payload: {
+        request_id: "source-2",
+        available: false,
+      },
+    }),
+  );
+
+  assert.equal(persistCalls, 2);
+  assert.equal(syncAlarmCalls, 1);
+});

@@ -1,4 +1,5 @@
 import {
+  AUTO_REMATCH_RESULT_SECONDS,
   BPL_ROUNDS,
   HOST_SKIP_UNLOCK_SECONDS,
   MATCH_TTL_MINUTES,
@@ -35,6 +36,15 @@ import { evaluateResultRating } from "./result-rating";
 const BPL_PICK_CUTIN_DELAY_SECONDS = 3;
 const BPL_RESULT_PHASE_DELAY_SECONDS = 10;
 const ARENA_RESULT_PHASE_DELAY_SECONDS = 10;
+
+type AutoRematchBlockReason =
+  | "AUTO_REMATCH_DISABLED"
+  | "NOT_PRIVATE_ROOM"
+  | "LAST_MATCH_NOT_NORMAL"
+  | "HOST_DISCONNECTED"
+  | "INSUFFICIENT_PLAYERS"
+  | "SOURCE_UNAVAILABLE"
+  | "AUTO_REMATCH_STOPPED";
 
 interface InternalPlayer {
   player_id: string;
@@ -107,6 +117,29 @@ export interface StartMatchResult {
 export interface ReturnToLobbyResult {
   ok: boolean;
   reason?: "INVALID_STATE" | "NOT_HOST";
+}
+
+export interface AutoRematchStopResult {
+  ok: boolean;
+  reason?: "INVALID_STATE" | "NOT_HOST" | "AUTO_REMATCH_NOT_ACTIVE";
+}
+
+export interface AutoRematchOptOutResult {
+  ok: boolean;
+  reason?: "INVALID_STATE" | "PLAYER_NOT_FOUND";
+}
+
+export interface SourceAvailabilityResult {
+  ok: boolean;
+  changed: boolean;
+  reason?: "PLAYER_NOT_FOUND";
+}
+
+export interface AutoRematchDueResult {
+  kind: "STARTED" | "CANCELLED";
+  generation: number;
+  reason?: AutoRematchBlockReason;
+  participant_player_ids?: string[];
 }
 
 export interface PickSubmitResult {
@@ -242,11 +275,22 @@ export interface RoomStatePersistenceRecord {
   result_ready_payload: ResultReadyPayload | null;
   result_key_mismatch_detected?: boolean;
   force_advanced_round_indices?: number[];
+  auto_rematch_enabled?: boolean;
+  auto_rematch_countdown_started_at?: string | null;
+  auto_rematch_due_at?: string | null;
+  auto_rematch_generation?: number;
+  auto_rematch_scheduled_generation?: number | null;
+  auto_rematch_cancelled?: boolean;
+  auto_rematch_block_reason?: AutoRematchBlockReason | null;
+  next_match_opt_out_player_ids?: string[];
+  source_unavailable_player_ids?: string[];
+  last_match_end_reason?: string | null;
 }
 
 const DEFAULT_SETTINGS: RoomSettings = {
   visibility: "PUBLIC",
   join_code: null,
+  auto_rematch: false,
   mode: "ARENA",
   win_metric: "SCORE",
   play_style: "SP",
@@ -257,9 +301,11 @@ const DEFAULT_SETTINGS: RoomSettings = {
 
 function normalizeSettingsVisibility(settings: RoomSettings): RoomSettings {
   const visibility = settings.visibility as RoomSettings["visibility"] | "UNLISTED";
+  const autoRematch = visibility === "PRIVATE" && settings.auto_rematch === true;
   return {
     ...settings,
     visibility: visibility === "UNLISTED" ? "PRIVATE" : visibility,
+    auto_rematch: autoRematch,
   };
 }
 
@@ -544,6 +590,16 @@ export class RoomLobbyState {
   private resultReadyPayload: ResultReadyPayload | null = null;
   private resultKeyMismatchDetected = false;
   private readonly forceAdvancedRoundIndices = new Set<number>();
+  private autoRematchEnabled = false;
+  private autoRematchCountdownStartedAt: Date | null = null;
+  private autoRematchDueAt: Date | null = null;
+  private autoRematchGeneration = 0;
+  private autoRematchScheduledGeneration: number | null = null;
+  private autoRematchCancelled = false;
+  private autoRematchBlockReason: AutoRematchBlockReason | null = null;
+  private readonly nextMatchOptOutPlayerIds = new Set<string>();
+  private readonly sourceUnavailablePlayerIds = new Set<string>();
+  private lastMatchEndReason: string | null = null;
 
   constructor(private readonly chartMaster: RoomChartMaster) {}
 
@@ -563,11 +619,13 @@ export class RoomLobbyState {
     this.initialized = true;
     this.roomId = input.room_id;
     this.settings = normalizeSettingsVisibility({ ...input.settings });
+    this.autoRematchEnabled = this.settings.visibility === "PRIVATE" && this.settings.auto_rematch === true;
     this.createdAt = createdAt;
     this.roomState = "LOBBY";
     this.readyCheckDeadline = computeReadyCheckDeadline(createdAt);
     this.matchDeadline = null;
     this.matchSongUnlockFilter = null;
+    this.clearAutoRematchState(false);
   }
 
   isInitialized(): boolean {
@@ -645,6 +703,7 @@ export class RoomLobbyState {
       existing.connected = true;
       existing.left_at = null;
       existing.rejoin_until = null;
+      this.sourceUnavailablePlayerIds.delete(input.player_id);
       return { ok: true, join_type: "RECONNECT" };
     }
 
@@ -666,6 +725,7 @@ export class RoomLobbyState {
       left_at: null,
       rejoin_until: null,
     });
+    this.sourceUnavailablePlayerIds.delete(input.player_id);
 
     return { ok: true, join_type: "NEW" };
   }
@@ -681,6 +741,13 @@ export class RoomLobbyState {
     player.connected = false;
     player.left_at = now;
     player.rejoin_until = computeRejoinUntil(now);
+    if (this.roomState === "RESULT") {
+      if (wasHost) {
+        this.cancelAutoRematch("HOST_DISCONNECTED");
+      } else if (this.getAutoRematchParticipantPlayerIds().length < START_MIN_PLAYERS) {
+        this.cancelAutoRematch("INSUFFICIENT_PLAYERS");
+      }
+    }
 
     return { changed: true, was_host: wasHost, room_was_closed: roomWasClosed };
   }
@@ -706,9 +773,19 @@ export class RoomLobbyState {
     } else {
       player.rejoin_until = computeRejoinUntil(now);
     }
+    if (!player.connected) {
+      this.sourceUnavailablePlayerIds.delete(playerId);
+    }
 
     if (wasHost && !roomWasClosed && hostCloseReason === "HOST_ABORTED") {
       this.close("HOST_ABORTED", now);
+    }
+    if (this.roomState === "RESULT") {
+      if (wasHost) {
+        this.cancelAutoRematch("HOST_DISCONNECTED");
+      } else if (this.getAutoRematchParticipantPlayerIds().length < START_MIN_PLAYERS) {
+        this.cancelAutoRematch("INSUFFICIENT_PLAYERS");
+      }
     }
 
     return { changed: true, was_host: wasHost, room_was_closed: roomWasClosed };
@@ -753,32 +830,8 @@ export class RoomLobbyState {
       return { ok: false, reason: "BPL_REQUIRES_TWO_PLAYERS" };
     }
 
-    this.roomState = "PICKING";
-    this.readyCheckDeadline = null;
-    this.pickingDeadline = computePickingDeadline(now);
-    this.matchDeadline = computeMatchDeadline(now);
-    this.resultDeadline = null;
-    this.closedAt = null;
-    this.closeReason = null;
-    this.matchPlayerIds = this.getPlayersInJoinOrder().map((player) => player.player_id);
-    this.currentMatchId = generateMatchId();
-    const matchPlayers = this.matchPlayerIds
-      .map((matchPlayerId) => this.players.get(matchPlayerId))
-      .filter((player): player is InternalPlayer => player !== undefined);
-    this.matchSongUnlockFilter = computeMatchSongUnlockFilter(matchPlayers);
-    this.picks.length = 0;
-    this.roundConfirmations.clear();
-    this.frozenRounds = [];
-    this.currentRound = null;
-    this.resultReadyPayload = null;
-    this.resultKeyMismatchDetected = false;
-    this.forceAdvancedRoundIndices.clear();
-
-    for (const player of this.players.values()) {
-      player.ready = false;
-    }
-
-    return { ok: true };
+    const participantIds = this.getPlayersInJoinOrder().map((player) => player.player_id);
+    return this.beginMatch(participantIds, now);
   }
 
   returnToLobby(playerId: string, now: Date): ReturnToLobbyResult {
@@ -792,6 +845,65 @@ export class RoomLobbyState {
 
     this.resetLobbyState(now);
     return { ok: true };
+  }
+
+  stopAutoRematch(playerId: string): AutoRematchStopResult {
+    if (playerId !== this.hostPlayerId) {
+      return { ok: false, reason: "NOT_HOST" };
+    }
+
+    if (this.roomState !== "RESULT") {
+      return { ok: false, reason: "INVALID_STATE" };
+    }
+
+    if (this.autoRematchDueAt === null && !this.autoRematchCancelled) {
+      return { ok: false, reason: "AUTO_REMATCH_NOT_ACTIVE" };
+    }
+
+    this.cancelAutoRematch("AUTO_REMATCH_STOPPED");
+    return { ok: true };
+  }
+
+  optOutNextMatch(playerId: string): AutoRematchOptOutResult {
+    if (this.roomState !== "RESULT") {
+      return { ok: false, reason: "INVALID_STATE" };
+    }
+
+    if (!this.players.has(playerId) || !this.matchPlayerIds.includes(playerId)) {
+      return { ok: false, reason: "PLAYER_NOT_FOUND" };
+    }
+
+    this.nextMatchOptOutPlayerIds.add(playerId);
+    if (this.getAutoRematchParticipantPlayerIds().length < START_MIN_PLAYERS) {
+      this.cancelAutoRematch("INSUFFICIENT_PLAYERS");
+    }
+
+    return { ok: true };
+  }
+
+  setPlayerSourceAvailability(playerId: string, available: boolean): SourceAvailabilityResult {
+    if (!this.players.has(playerId)) {
+      return { ok: false, changed: false, reason: "PLAYER_NOT_FOUND" };
+    }
+
+    const hasUnavailable = this.sourceUnavailablePlayerIds.has(playerId);
+    if (available) {
+      if (!hasUnavailable) {
+        return { ok: true, changed: false };
+      }
+      this.sourceUnavailablePlayerIds.delete(playerId);
+      return { ok: true, changed: true };
+    }
+
+    if (hasUnavailable) {
+      return { ok: true, changed: false };
+    }
+    this.sourceUnavailablePlayerIds.add(playerId);
+    if (this.roomState === "RESULT" && this.autoRematchDueAt !== null) {
+      this.cancelAutoRematch("SOURCE_UNAVAILABLE");
+    }
+
+    return { ok: true, changed: true };
   }
 
   submitPick(playerId: string, pickChartKey: string, now: Date): PickSubmitResult {
@@ -910,8 +1022,17 @@ export class RoomLobbyState {
       }
     }
 
-    if (this.roomState === "RESULT" && this.matchDeadline !== null) {
-      baseAlarm = this.matchDeadline;
+    if (this.roomState === "RESULT") {
+      if (this.matchDeadline === null) {
+        baseAlarm = this.autoRematchDueAt;
+      } else if (this.autoRematchDueAt === null) {
+        baseAlarm = this.matchDeadline;
+      } else {
+        baseAlarm =
+          this.autoRematchDueAt.getTime() <= this.matchDeadline.getTime()
+            ? this.autoRematchDueAt
+            : this.matchDeadline;
+      }
     }
 
     if (baseAlarm === null) {
@@ -1247,6 +1368,68 @@ export class RoomLobbyState {
     return this.applyRoundConfirmations(timedOutPlayers, now, { force_result: true });
   }
 
+  expireAutoRematchIfNeeded(now: Date): AutoRematchDueResult | null {
+    if (
+      this.roomState !== "RESULT" ||
+      this.autoRematchDueAt === null ||
+      this.autoRematchScheduledGeneration === null ||
+      now.getTime() < this.autoRematchDueAt.getTime()
+    ) {
+      return null;
+    }
+
+    const scheduledGeneration = this.autoRematchScheduledGeneration;
+    if (scheduledGeneration !== this.autoRematchGeneration) {
+      return null;
+    }
+
+    const eligibility = this.checkAutoRematchEligibility();
+    if (!eligibility.ok) {
+      this.cancelAutoRematch(eligibility.reason);
+      return {
+        kind: "CANCELLED",
+        generation: this.autoRematchGeneration,
+        reason: eligibility.reason,
+      };
+    }
+
+    const hostPlayerId = this.hostPlayerId;
+    if (hostPlayerId === null) {
+      this.cancelAutoRematch("HOST_DISCONNECTED");
+      return {
+        kind: "CANCELLED",
+        generation: this.autoRematchGeneration,
+        reason: "HOST_DISCONNECTED",
+      };
+    }
+
+    const participantIds = this.getAutoRematchParticipantPlayerIds();
+    this.resetLobbyState(now);
+    for (const participantId of participantIds) {
+      const participant = this.players.get(participantId);
+      if (participant !== undefined) {
+        participant.ready = true;
+      }
+    }
+
+    const startResult = this.beginMatch(participantIds, now);
+    if (!startResult.ok) {
+      this.cancelAutoRematch("INSUFFICIENT_PLAYERS");
+      return {
+        kind: "CANCELLED",
+        generation: this.autoRematchGeneration,
+        reason: "INSUFFICIENT_PLAYERS",
+      };
+    }
+
+    this.clearAutoRematchState(true);
+    return {
+      kind: "STARTED",
+      generation: this.autoRematchGeneration,
+      participant_player_ids: participantIds,
+    };
+  }
+
   expireCurrentRoundIfNeeded(now: Date): RoundTransitionResult | null {
     if (this.roomState !== "PLAYING" || this.currentRound === null) {
       return null;
@@ -1286,6 +1469,7 @@ export class RoomLobbyState {
     this.resultDeadline = null;
     this.closeReason = reason;
     this.closedAt = now;
+    this.clearAutoRematchState(false);
   }
 
   toSnapshot(): RoomStateSnapshot {
@@ -1307,6 +1491,16 @@ export class RoomLobbyState {
       current_match_id: this.currentMatchId ?? this.roomId,
       room_state: this.roomState,
       settings: this.settings,
+      auto_rematch_enabled: this.autoRematchEnabled,
+      auto_rematch_countdown_started_at: toIsoString(this.autoRematchCountdownStartedAt),
+      auto_rematch_due_at: toIsoString(this.autoRematchDueAt),
+      auto_rematch_generation: this.autoRematchGeneration,
+      auto_rematch_cancelled: this.autoRematchCancelled,
+      auto_rematch_block_reason: this.autoRematchBlockReason,
+      next_match_opt_out_player_ids: this.getPlayersInJoinOrder()
+        .map((player) => player.player_id)
+        .filter((playerId) => this.nextMatchOptOutPlayerIds.has(playerId)),
+      last_match_end_reason: this.lastMatchEndReason,
       host_player_id: this.hostPlayerId ?? "",
       players,
       match_song_unlock_filter:
@@ -1347,6 +1541,13 @@ export class RoomLobbyState {
       room_id: this.roomId,
       room_state: this.roomState,
       settings: { ...this.settings },
+      auto_rematch_enabled: this.autoRematchEnabled,
+      auto_rematch_countdown_started_at: toIsoString(this.autoRematchCountdownStartedAt),
+      auto_rematch_due_at: toIsoString(this.autoRematchDueAt),
+      auto_rematch_generation: this.autoRematchGeneration,
+      auto_rematch_scheduled_generation: this.autoRematchScheduledGeneration,
+      auto_rematch_cancelled: this.autoRematchCancelled,
+      auto_rematch_block_reason: this.autoRematchBlockReason,
       host_player_id: this.hostPlayerId,
       created_at: this.createdAt.toISOString(),
       match_deadline: toIsoString(this.matchDeadline),
@@ -1402,6 +1603,13 @@ export class RoomLobbyState {
       ),
       result_key_mismatch_detected: this.resultKeyMismatchDetected,
       force_advanced_round_indices: Array.from(this.forceAdvancedRoundIndices).sort((left, right) => left - right),
+      next_match_opt_out_player_ids: this.getPlayersInJoinOrder()
+        .map((player) => player.player_id)
+        .filter((playerId) => this.nextMatchOptOutPlayerIds.has(playerId)),
+      source_unavailable_player_ids: this.getPlayersInJoinOrder()
+        .map((player) => player.player_id)
+        .filter((playerId) => this.sourceUnavailablePlayerIds.has(playerId)),
+      last_match_end_reason: this.lastMatchEndReason,
     };
   }
 
@@ -1416,6 +1624,22 @@ export class RoomLobbyState {
     const persistedRoomState = record.room_state as RoomState | "READY_CHECK";
     this.roomState = persistedRoomState === "READY_CHECK" ? "LOBBY" : persistedRoomState;
     this.settings = normalizeSettingsVisibility({ ...record.settings });
+    this.autoRematchEnabled =
+      record.auto_rematch_enabled === true ||
+      (this.settings.visibility === "PRIVATE" && this.settings.auto_rematch === true);
+    this.autoRematchCountdownStartedAt = parseOptionalDate(record.auto_rematch_countdown_started_at ?? null);
+    this.autoRematchDueAt = parseOptionalDate(record.auto_rematch_due_at ?? null);
+    this.autoRematchGeneration =
+      typeof record.auto_rematch_generation === "number" && Number.isInteger(record.auto_rematch_generation)
+        ? record.auto_rematch_generation
+        : 0;
+    this.autoRematchScheduledGeneration =
+      typeof record.auto_rematch_scheduled_generation === "number" &&
+        Number.isInteger(record.auto_rematch_scheduled_generation)
+        ? record.auto_rematch_scheduled_generation
+        : null;
+    this.autoRematchCancelled = record.auto_rematch_cancelled === true;
+    this.autoRematchBlockReason = (record.auto_rematch_block_reason ?? null) as AutoRematchBlockReason | null;
     this.hostPlayerId = record.host_player_id;
     this.createdAt = parseRequiredDate(record.created_at);
     this.matchDeadline = parseOptionalDate(record.match_deadline);
@@ -1493,6 +1717,19 @@ export class RoomLobbyState {
     for (const roundIndex of record.force_advanced_round_indices ?? []) {
       this.forceAdvancedRoundIndices.add(roundIndex);
     }
+    this.nextMatchOptOutPlayerIds.clear();
+    for (const playerId of record.next_match_opt_out_player_ids ?? []) {
+      if (typeof playerId === "string" && playerId.length > 0) {
+        this.nextMatchOptOutPlayerIds.add(playerId);
+      }
+    }
+    this.sourceUnavailablePlayerIds.clear();
+    for (const playerId of record.source_unavailable_player_ids ?? []) {
+      if (typeof playerId === "string" && playerId.length > 0) {
+        this.sourceUnavailablePlayerIds.add(playerId);
+      }
+    }
+    this.lastMatchEndReason = record.last_match_end_reason ?? null;
   }
 
   private getCurrentRoundDeadline(): Date | null {
@@ -1661,7 +1898,7 @@ export class RoomLobbyState {
     return result;
   }
 
-  private enterResult(_now: Date): void {
+  private enterResult(now: Date): void {
     this.resultReadyPayload = this.buildResultReadyPayload();
     this.currentRound = null;
     this.roomState = "RESULT";
@@ -1670,6 +1907,8 @@ export class RoomLobbyState {
     this.resultDeadline = null;
     this.closeReason = null;
     this.closedAt = null;
+    this.lastMatchEndReason = this.isLastMatchNormalForAutoRematch() ? "RESULT_READY_NORMAL" : "RESULT_READY_WITH_ISSUES";
+    this.startAutoRematchCountdown(now);
   }
 
   private closeWithResult(reason: CloseReason, now: Date): void {
@@ -1682,6 +1921,8 @@ export class RoomLobbyState {
     this.resultDeadline = null;
     this.closeReason = reason;
     this.closedAt = now;
+    this.lastMatchEndReason = reason;
+    this.clearAutoRematchState(false);
   }
 
   private hasMatchTransientState(): boolean {
@@ -1716,6 +1957,8 @@ export class RoomLobbyState {
     this.resultReadyPayload = null;
     this.resultKeyMismatchDetected = false;
     this.forceAdvancedRoundIndices.clear();
+    this.clearAutoRematchState(false);
+    this.lastMatchEndReason = null;
 
     for (const [playerId, player] of Array.from(this.players.entries())) {
       if (!player.connected) {
@@ -1727,6 +1970,162 @@ export class RoomLobbyState {
       player.left_at = null;
       player.rejoin_until = null;
     }
+  }
+
+  private beginMatch(participantPlayerIds: string[], now: Date): StartMatchResult {
+    if (this.hasMatchTransientState()) {
+      return { ok: false, reason: "PREVIOUS_MATCH_NOT_CLEARED" };
+    }
+
+    const participantSet = new Set(participantPlayerIds);
+    const participants = this.getPlayersInJoinOrder().filter(
+      (player) => participantSet.has(player.player_id) && player.connected,
+    );
+
+    if (participants.length < START_MIN_PLAYERS) {
+      return { ok: false, reason: "START_REQUIRES_MIN_PLAYERS" };
+    }
+
+    if (this.settings.mode === "BPL" && participants.length !== 2) {
+      return { ok: false, reason: "BPL_REQUIRES_TWO_PLAYERS" };
+    }
+
+    this.roomState = "PICKING";
+    this.readyCheckDeadline = null;
+    this.pickingDeadline = computePickingDeadline(now);
+    this.matchDeadline = computeMatchDeadline(now);
+    this.resultDeadline = null;
+    this.closedAt = null;
+    this.closeReason = null;
+    this.matchPlayerIds = participants.map((player) => player.player_id);
+    this.currentMatchId = generateMatchId();
+    this.matchSongUnlockFilter = computeMatchSongUnlockFilter(participants);
+    this.picks.length = 0;
+    this.roundConfirmations.clear();
+    this.frozenRounds = [];
+    this.currentRound = null;
+    this.resultReadyPayload = null;
+    this.resultKeyMismatchDetected = false;
+    this.forceAdvancedRoundIndices.clear();
+    this.clearAutoRematchState(false);
+    this.lastMatchEndReason = null;
+
+    for (const player of this.players.values()) {
+      player.ready = false;
+    }
+
+    return { ok: true };
+  }
+
+  private clearAutoRematchState(incrementGeneration: boolean): void {
+    if (incrementGeneration) {
+      this.autoRematchGeneration += 1;
+    }
+    this.autoRematchCountdownStartedAt = null;
+    this.autoRematchDueAt = null;
+    this.autoRematchScheduledGeneration = null;
+    this.autoRematchCancelled = false;
+    this.autoRematchBlockReason = null;
+    this.nextMatchOptOutPlayerIds.clear();
+  }
+
+  private cancelAutoRematch(reason: AutoRematchBlockReason): void {
+    this.autoRematchGeneration += 1;
+    this.autoRematchCountdownStartedAt = null;
+    this.autoRematchDueAt = null;
+    this.autoRematchScheduledGeneration = null;
+    this.autoRematchCancelled = true;
+    this.autoRematchBlockReason = reason;
+  }
+
+  private startAutoRematchCountdown(now: Date): void {
+    this.clearAutoRematchState(false);
+
+    if (this.settings.visibility !== "PRIVATE") {
+      this.autoRematchEnabled = false;
+      return;
+    }
+
+    if (!this.autoRematchEnabled) {
+      return;
+    }
+
+    const eligibility = this.checkAutoRematchEligibility();
+    if (!eligibility.ok) {
+      this.cancelAutoRematch(eligibility.reason);
+      return;
+    }
+
+    this.autoRematchGeneration += 1;
+    this.autoRematchCountdownStartedAt = now;
+    this.autoRematchDueAt = new Date(now.getTime() + AUTO_REMATCH_RESULT_SECONDS * 1_000);
+    this.autoRematchScheduledGeneration = this.autoRematchGeneration;
+  }
+
+  private checkAutoRematchEligibility():
+    | { ok: true }
+    | { ok: false; reason: AutoRematchBlockReason } {
+    if (this.settings.visibility !== "PRIVATE") {
+      return { ok: false, reason: "NOT_PRIVATE_ROOM" };
+    }
+
+    if (!this.autoRematchEnabled) {
+      return { ok: false, reason: "AUTO_REMATCH_DISABLED" };
+    }
+
+    if (!this.isLastMatchNormalForAutoRematch()) {
+      return { ok: false, reason: "LAST_MATCH_NOT_NORMAL" };
+    }
+
+    if (this.hostPlayerId === null || !this.isPlayerConnected(this.hostPlayerId)) {
+      return { ok: false, reason: "HOST_DISCONNECTED" };
+    }
+
+    const participantIds = this.getAutoRematchParticipantPlayerIds();
+    if (participantIds.length < START_MIN_PLAYERS) {
+      return { ok: false, reason: "INSUFFICIENT_PLAYERS" };
+    }
+
+    if (this.settings.mode === "BPL" && participantIds.length !== 2) {
+      return { ok: false, reason: "INSUFFICIENT_PLAYERS" };
+    }
+
+    if (participantIds.some((playerId) => this.sourceUnavailablePlayerIds.has(playerId))) {
+      return { ok: false, reason: "SOURCE_UNAVAILABLE" };
+    }
+
+    return { ok: true };
+  }
+
+  private getAutoRematchParticipantPlayerIds(): string[] {
+    return this.matchPlayerIds.filter((playerId) => {
+      const player = this.players.get(playerId);
+      return (
+        player !== undefined &&
+        player.connected &&
+        !this.nextMatchOptOutPlayerIds.has(playerId)
+      );
+    });
+  }
+
+  private isLastMatchNormalForAutoRematch(): boolean {
+    if (this.resultReadyPayload === null) {
+      return false;
+    }
+
+    if (this.resultKeyMismatchDetected || this.forceAdvancedRoundIndices.size > 0) {
+      return false;
+    }
+
+    for (const confirmations of this.roundConfirmations.values()) {
+      for (const confirmation of confirmations) {
+        if (confirmation.status !== "PLAYED" || confirmation.reason !== null) {
+          return false;
+        }
+      }
+    }
+
+    return true;
   }
 
   private getPlayersInJoinOrder(): InternalPlayer[] {

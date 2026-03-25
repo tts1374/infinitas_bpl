@@ -363,7 +363,10 @@ runCase("rating series stay separated and PRIVATE matches do not affect rating",
   );
 
   assert.equal(getCurrentRating(archive, "ARENA", "SP"), arenaAfterRatedMatch);
-  assert.equal(archive.matches.find((entry) => entry.match_id === "private-sp-1")?.is_rated, false);
+  const privateArenaMatch = archive.matches.find((entry) => entry.match_id === "private-sp-1");
+  assert.equal(privateArenaMatch?.battle_type, "ARENA");
+  assert.equal(privateArenaMatch?.is_rated, false);
+  assert.equal(getDetailedMatchHistory(archive, "ARENA", "SP").some((entry) => entry.match_id === "private-sp-1"), true);
 
   archive = recordClosedMatch(
     archive,

@@ -10,6 +10,7 @@ export const ROUND_START_CALL_AT_SECONDS = 52;
 export const ROUND_PLAY_BEGIN_AT_SECONDS = 55;
 
 export const MATCH_TTL_MINUTES = 30;
+export const AUTO_REMATCH_RESULT_SECONDS = 20;
 
 export const REJOIN_COOLDOWN_SECONDS = 40;
 

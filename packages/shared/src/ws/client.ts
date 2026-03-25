@@ -41,12 +41,19 @@ export interface SkipHostAssignPayload extends SkipPayload {
   target_player_id: string;
 }
 
+export interface SourceStatusSetPayload extends RequestIdPayload {
+  available: boolean;
+}
+
 export interface ClientMessagePayloadMap {
   ROOM_JOIN: RoomJoinPayload;
   ROOM_LEAVE: WsEmptyPayload;
   READY_SET: ReadySetPayload;
   START_MATCH: RequestIdPayload;
   RETURN_TO_LOBBY: RequestIdPayload;
+  AUTO_REMATCH_STOP: RequestIdPayload;
+  AUTO_REMATCH_OPT_OUT: RequestIdPayload;
+  SOURCE_STATUS_SET: SourceStatusSetPayload;
   PICK_SUBMIT: PickSubmitPayload;
   RESULT_SUBMIT: ResultSubmitPayload;
   SKIP_SELF: SkipPayload;

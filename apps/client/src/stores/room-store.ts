@@ -77,6 +77,7 @@ let reconnectContext: RoomReconnectContext | null = null;
 let reconnectTimer: number | null = null;
 let reconnectAttempts = 0;
 let reconnectDeadlineAtMs: number | null = null;
+let lastSourceAvailability: boolean | null = null;
 
 export interface MockRoomStoreState {
   scenarioId: string;
@@ -140,6 +141,7 @@ function appendEventLog(message: string): void {
 
 function clearRequestIds(): void {
   requestIdsByKey.clear();
+  lastSourceAvailability = null;
 }
 
 function clearReconnectTimer(): void {
@@ -1116,6 +1118,36 @@ export const roomStore = {
     return this.send("RETURN_TO_LOBBY", {
       request_id: getOrCreateRequestId("RETURN_TO_LOBBY"),
     });
+  },
+  stopAutoRematch(): boolean {
+    return this.send("AUTO_REMATCH_STOP", {
+      request_id: getOrCreateRequestId("AUTO_REMATCH_STOP"),
+    });
+  },
+  optOutNextMatch(): boolean {
+    return this.send("AUTO_REMATCH_OPT_OUT", {
+      request_id: getOrCreateRequestId("AUTO_REMATCH_OPT_OUT"),
+    });
+  },
+  setSourceAvailability(available: boolean): boolean {
+    const snapshot = internalStore.getState().snapshot;
+    if (snapshot === null || snapshot.room_state === "CLOSED") {
+      lastSourceAvailability = null;
+      return false;
+    }
+
+    if (lastSourceAvailability === available) {
+      return false;
+    }
+
+    const sent = this.send("SOURCE_STATUS_SET", {
+      request_id: `SOURCE_STATUS_SET:${available ? "1" : "0"}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
+      available,
+    });
+    if (sent) {
+      lastSourceAvailability = available;
+    }
+    return sent;
   },
   submitPick(pickChartKey: string): boolean {
     return this.send("PICK_SUBMIT", {

@@ -150,7 +150,7 @@ function getArenaRankByPlayerId(results: SessionPlayerResult[], winMetric: WinMe
 }
 
 function getBattleType(settings: RoomSettings): StatsBattleType {
-  return settings.visibility === "PRIVATE" ? "PRIVATE" : settings.mode;
+  return settings.mode;
 }
 
 export function buildChartId(expectedKey: {
@@ -880,7 +880,7 @@ function deriveArenaMatchRecord(
             return sum + 0.5;
           }, 0) / opponentCount;
   const invalidReason =
-    getBattleType(session.settings) === "PRIVATE"
+    session.settings.visibility === "PRIVATE"
       ? "PRIVATE_NOT_RATED"
       : !isComplete
         ? "INCOMPLETE_MATCH"
@@ -943,7 +943,7 @@ function deriveBplMatchRecord(
   const matchResult =
     selfTotal > opponentTotal ? "WIN" : selfTotal < opponentTotal ? "LOSE" : "DRAW";
   const invalidReason =
-    getBattleType(session.settings) === "PRIVATE"
+    session.settings.visibility === "PRIVATE"
       ? "PRIVATE_NOT_RATED"
       : !isComplete
         ? "INCOMPLETE_MATCH"
