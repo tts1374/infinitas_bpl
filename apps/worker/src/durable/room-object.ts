@@ -1937,9 +1937,9 @@ export class RoomDurableObject {
     }
 
     this.rememberRequest(session.playerId, message.type, payload.request_id);
-    await this.persistRoomRecord();
-    await this.syncAlarm();
     if (result.changed) {
+      await this.persistRoomRecord();
+      await this.syncAlarm();
       this.broadcastRoomUpdated();
     }
     this.logRoomEvent(this.buildMessageLogInput(message, {
