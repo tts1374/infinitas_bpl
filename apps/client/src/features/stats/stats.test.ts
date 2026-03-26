@@ -25,6 +25,7 @@ import {
 } from "./models";
 import {
   captureRoomStatsSession,
+  createArchiveFromStorage,
   getChartRankings,
   getCurrentRating,
   getDetailedMatchHistory,
@@ -178,7 +179,7 @@ function makeResultReady(input: {
   return {
     summary: {
       match_id: input.session.match_id,
-      mode: input.session.settings.mode,
+      mode: input.session.settings.mode === "ARENA" ? "ARENA" : "BPL",
       win_metric: input.session.settings.win_metric,
       total_rounds: input.totalRounds ?? input.session.rounds.length,
       completed_rounds: input.completedRounds ?? input.session.rounds.length,
@@ -567,6 +568,85 @@ runCase("BPL detailed history shows tied rounds as 1-1 while preserving MISSCOUN
   assert.equal(detailedHistory[0]?.total_bp, 33);
   assert.equal(detailedHistory[0]?.total_ex_score, 6300);
   assert.equal(history[0]?.detail, "3-3");
+});
+
+runCase("legacy BPL3/BPL4 storage entries are normalized and shown in BPL stats", () => {
+  const matchId = "legacy-bpl4-match";
+  const rawArchive: unknown = {
+    ...createEmptyStatsArchive(),
+    matches: [
+      {
+        match_id: matchId,
+        started_at: iso(2),
+        ended_at: iso(3),
+        battle_type: "BPL4",
+        play_mode: "SP",
+        opponent_count: 1,
+        opponent_id: "opponent",
+        opponent_name: "OPPONENT",
+        is_rated: true,
+        is_complete: true,
+        match_result: "WIN",
+        match_point_total: 1,
+        rating_score: 1512,
+        rating_before: 1500,
+        rating_after: 1512,
+        rating_delta: 12,
+        invalid_reason: null,
+        final_rank: 1,
+        display_rank: 1,
+        participant_count: 2,
+        win_metric: "SCORE",
+      },
+    ],
+    match_games: [
+      {
+        match_game_id: "legacy-bpl4-game",
+        match_id: matchId,
+        played_at: iso(2),
+        game_index: 0,
+        chart_id: "SP::ANOTHER::legacy-song",
+        chart_title: "Legacy Song",
+        chart_difficulty: "ANOTHER",
+        chart_level: 12,
+        battle_type: "BPL4",
+        play_mode: "SP",
+        game_result: "WIN",
+        round_point: 1,
+        my_ex_score: 2000,
+        opponent_ex_score: 1900,
+        my_bp: 10,
+        opponent_bp: 15,
+        result_confirmed_at: iso(2),
+      },
+    ],
+    play_results: [
+      {
+        play_result_id: "legacy-bpl4-play",
+        played_at: iso(2),
+        battle_type: "BPL3",
+        play_mode: "SP",
+        chart_id: "SP::ANOTHER::legacy-song",
+        chart_title: "Legacy Song",
+        chart_difficulty: "ANOTHER",
+        chart_level: 12,
+        my_ex_score: 2000,
+        my_bp: 10,
+        source_match_id: matchId,
+      },
+    ],
+  };
+
+  const archive = createArchiveFromStorage(rawArchive);
+  const detailedHistory = getDetailedMatchHistory(archive, "BPL", "SP");
+  const history = getRecentMatchHistory(archive, "BPL", "SP");
+
+  assert.equal(archive.matches[0]?.battle_type, "BPL");
+  assert.equal(archive.match_games[0]?.battle_type, "BPL");
+  assert.equal(archive.play_results[0]?.battle_type, "BPL");
+  assert.equal(detailedHistory.length, 1);
+  assert.equal(detailedHistory[0]?.games.length, 1);
+  assert.equal(history[0]?.match_id, matchId);
 });
 
 runCase("DO-provided unrated decision blocks local rating updates", () => {
