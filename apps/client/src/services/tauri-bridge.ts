@@ -244,6 +244,29 @@ export async function writeE2eBinaryFile(
   return invoke<WriteE2eFileResponse>("write_e2e_binary_file", { request });
 }
 
+export async function getCurrentDeepLinkUrls(): Promise<string[]> {
+  if (!isTauriRuntime()) {
+    return [];
+  }
+
+  const { getCurrent } = await import("@tauri-apps/plugin-deep-link");
+  const urls = await getCurrent();
+  return Array.isArray(urls) ? urls.filter((url): url is string => typeof url === "string") : [];
+}
+
+export async function listenToDeepLinkUrls(
+  handler: (urls: string[]) => void,
+): Promise<() => void> {
+  if (!isTauriRuntime()) {
+    return () => {};
+  }
+
+  const { onOpenUrl } = await import("@tauri-apps/plugin-deep-link");
+  return onOpenUrl((urls) => {
+    handler(urls.filter((url): url is string => typeof url === "string"));
+  });
+}
+
 function createUnavailableState(): SourceWatcherStatePayload {
   return {
     status: "UNAVAILABLE",

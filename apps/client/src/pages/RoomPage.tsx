@@ -18,7 +18,11 @@ import {
 } from "@infinitas/shared";
 import {
   AlertTriangle,
+  Check,
+  Copy,
   Database,
+  ExternalLink,
+  Share2,
   ShieldAlert,
   Volume2,
 } from "lucide-react";
@@ -50,6 +54,7 @@ import {
 } from "../components/SongSearchModalView";
 import { runtimeConfig } from "../runtime/runtime-config";
 import { useLocalResultArchiveStore } from "../services/result-archive";
+import { logClientShareAnalytics } from "../services/share-analytics";
 import { listCharts, listRoomCharts } from "../services/worker-api-client";
 import {
   clearRoomPresentationSeOverride,
@@ -106,6 +111,7 @@ type ChartSearchEntryWithVersion = ChartSearchEntry & {
 const BPL_PICK_CUTIN_SECONDS = 3;
 const BPL_RESULT_PHASE_SECONDS = 10;
 const ARENA_RESULT_PHASE_SECONDS = 10;
+const DEFAULT_JOIN_PAGE_URL = "https://tts1374.github.io/infinitas_arena/join";
 
 function isBplMode(mode: RoomStateSnapshot["settings"]["mode"]): boolean {
   return mode === "BPL" || mode === "BPL4";
@@ -425,6 +431,30 @@ function formatRoomTitle(
   }
 
   return `${isBplMode(mode) ? `BPL (${getBplStageLabel(mode)})` : "ARENA"} ${playStyle}`;
+}
+
+function buildJoinPageUrl(baseUrl: string, roomId: string): string {
+  try {
+    const resolved = new URL(baseUrl, window.location.origin);
+    resolved.searchParams.set("r", roomId);
+    return resolved.toString();
+  } catch {
+    const encodedRoomId = encodeURIComponent(roomId);
+    return `${DEFAULT_JOIN_PAGE_URL}?r=${encodedRoomId}`;
+  }
+}
+
+function buildXShareText(
+  roomName: string,
+  joinPageUrl: string,
+  joinCode: string | null,
+): string {
+  const lines = [`INFINITAS Arena: ${roomName}`, joinPageUrl];
+  if (joinCode !== null && joinCode.trim().length > 0) {
+    lines.push(`join code: ${joinCode.trim()}`);
+  }
+
+  return lines.join("\n");
 }
 
 function getLobbyStartIssues(snapshot: RoomStateSnapshot): string[] {
@@ -747,6 +777,10 @@ export function RoomPage() {
   const voiceDetail = useVoicePlaybackStore((state) => state.detail);
   const voiceLastUpdatedAt = useVoicePlaybackStore((state) => state.lastUpdatedAt);
   const voicePendingCues = useVoicePlaybackStore((state) => state.pendingCues);
+  const joinPageBaseUrl =
+    import.meta.env.VITE_JOIN_PAGE_URL?.trim().length > 0
+      ? import.meta.env.VITE_JOIN_PAGE_URL.trim()
+      : DEFAULT_JOIN_PAGE_URL;
 
   const [metricValue, setMetricValue] = useState("0");
   const [chartDifficulty, setChartDifficulty] = useState<(typeof CHART_DIFFICULTIES)[number] | "">("");
@@ -760,6 +794,8 @@ export function RoomPage() {
   const [clockNowMs, setClockNowMs] = useState(() => Date.now());
   const [copiedRoomId, setCopiedRoomId] = useState(false);
   const [copiedJoinCode, setCopiedJoinCode] = useState(false);
+  const [copiedShareUrl, setCopiedShareUrl] = useState(false);
+  const [includeJoinCodeInXShare, setIncludeJoinCodeInXShare] = useState(false);
   const [showHostLeaveConfirm, setShowHostLeaveConfirm] = useState(false);
   const [showRoomAudioMenu, setShowRoomAudioMenu] = useState(false);
   const [roomPresentationSeEnabled, setRoomPresentationSeEnabled] = useState(savedSettings.enablePresentationSe);
@@ -777,6 +813,7 @@ export function RoomPage() {
   const skipLobbySoundDiffRef = useRef(true);
   const previousRoomStateRef = useRef<RoomStateSnapshot["room_state"] | null>(null);
   const previousRoomIdRef = useRef<string | null>(null);
+  const initialShareClosedByStateRef = useRef(false);
   const pickerModalVisibleRef = useRef(false);
   const mySubmittedPicks = snapshot?.picks.filter((pick) => pick.player_id === activePlayerId) ?? [];
   const mySubmittedPick = mySubmittedPicks[mySubmittedPicks.length - 1] ?? null;
@@ -1168,11 +1205,24 @@ export function RoomPage() {
     setPendingOwnPickCutIn(null);
     setOwnPickCutInChart(null);
     setShowRoomAudioMenu(false);
+    setCopiedShareUrl(false);
+    setIncludeJoinCodeInXShare(false);
+    initialShareClosedByStateRef.current = false;
     if (cutInTimeoutRef.current !== null) {
       window.clearTimeout(cutInTimeoutRef.current);
       cutInTimeoutRef.current = null;
     }
   }, [snapshot?.room_id]);
+
+  useEffect(() => {
+    if (snapshot === null) {
+      return;
+    }
+
+    if (snapshot.room_state !== "LOBBY") {
+      initialShareClosedByStateRef.current = true;
+    }
+  }, [snapshot?.room_state]);
 
   useEffect(() => {
     if (snapshot === null) {
@@ -1586,6 +1636,26 @@ export function RoomPage() {
     currentRound === null ? null : roundPickerNameByIndex.get(currentRound.round_index) ?? null;
   const roomIdLabel = snapshot.room_id;
   const joinCodeLabel = snapshot.settings.join_code ?? "";
+  const shareRoomName = formatRoomTitle(
+    snapshot.settings.mode,
+    snapshot.settings.play_style,
+    snapshot.settings.room_comment,
+  );
+  const shareJoinPageUrl = buildJoinPageUrl(joinPageBaseUrl, roomIdLabel);
+  const isInitialLobbyShareWindow =
+    snapshot.room_state === "LOBBY" &&
+    !initialShareClosedByStateRef.current &&
+    snapshot.current_round === null &&
+    snapshot.picks.length === 0 &&
+    snapshot.frozen_rounds.length === 0 &&
+    !snapshot.result_ready;
+  const canShowSharePanel =
+    isHost &&
+    snapshot.settings.visibility === "PUBLIC" &&
+    isInitialLobbyShareWindow;
+  const shareJoinCode =
+    includeJoinCodeInXShare && joinCodeLabel.trim().length > 0 ? joinCodeLabel.trim() : null;
+  const xShareText = buildXShareText(shareRoomName, shareJoinPageUrl, shareJoinCode);
   const currentExpectedKey = currentRound?.expected_key ?? null;
   const currentExpectedKeyCacheKey = getExpectedKeyCacheKey(currentExpectedKey);
   const currentResolvedChart =
@@ -1699,6 +1769,35 @@ export function RoomPage() {
       setCopied(true);
       window.setTimeout(() => setCopied(false), 2_000);
     });
+  }
+
+  function handleCopyShareUrl(): void {
+    if (!shareJoinPageUrl) {
+      return;
+    }
+
+    logClientShareAnalytics("share_url_generated", {
+      roomId: roomIdLabel,
+      source: "copy",
+      includeJoinCodeInX: includeJoinCodeInXShare,
+    });
+    handleCopy(shareJoinPageUrl, setCopiedShareUrl);
+  }
+
+  function handleShareToX(): void {
+    if (!shareJoinPageUrl) {
+      return;
+    }
+
+    logClientShareAnalytics("share_url_generated", {
+      roomId: roomIdLabel,
+      source: "x_intent",
+      includeJoinCodeInX: includeJoinCodeInXShare,
+      hasJoinCode: joinCodeLabel.trim().length > 0,
+    });
+    const intentUrl = new URL("https://x.com/intent/tweet");
+    intentUrl.searchParams.set("text", xShareText);
+    window.open(intentUrl.toString(), "_blank", "noopener,noreferrer");
   }
 
   function submitManualResult(): void {
@@ -2623,6 +2722,58 @@ export function RoomPage() {
   return (
     <section id="visual-capture-root" className="flex h-full min-h-0 w-full flex-col text-white font-sans">
       {roomSurface}
+
+      {canShowSharePanel ? (
+        <div className="pointer-events-none fixed left-4 top-4 z-[146] w-[min(360px,calc(100vw-2rem))]">
+          <div className="pointer-events-auto rounded-2xl border border-cyan-400/30 bg-[#10151d]/95 p-4 shadow-[0_14px_36px_rgba(0,0,0,0.55)] backdrop-blur-sm">
+            <div className="mb-3 flex items-center justify-between">
+              <p className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.24em] text-cyan-200">
+                <Share2 size={12} />
+                Public Share
+              </p>
+              <span className="rounded-full border border-cyan-400/35 bg-cyan-400/10 px-2 py-0.5 text-[10px] font-bold text-cyan-100">
+                Host only
+              </span>
+            </div>
+            <p className="text-sm font-semibold text-white">{shareRoomName}</p>
+            <p className="mt-1 break-all text-xs text-cyan-100/80">{shareJoinPageUrl}</p>
+            <label className="mt-3 flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-gray-200">
+              <span className="font-semibold">X本文に join_code を含める</span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={includeJoinCodeInXShare}
+                onClick={() => setIncludeJoinCodeInXShare((current) => !current)}
+                className={`rounded-lg border px-2 py-1 text-[10px] font-black uppercase tracking-[0.2em] transition-all ${
+                  includeJoinCodeInXShare
+                    ? "border-cyan-400 bg-cyan-400/15 text-cyan-100"
+                    : "border-white/15 bg-black/30 text-gray-400 hover:border-white/30"
+                }`}
+              >
+                {includeJoinCodeInXShare ? "ON" : "OFF"}
+              </button>
+            </label>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={handleShareToX}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-500 px-3 py-2 text-xs font-black uppercase tracking-[0.2em] text-black transition-all hover:bg-cyan-400"
+              >
+                <ExternalLink size={14} />
+                X共有
+              </button>
+              <button
+                type="button"
+                onClick={handleCopyShareUrl}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/20 bg-black/25 px-3 py-2 text-xs font-black uppercase tracking-[0.2em] text-gray-100 transition-all hover:border-white/35 hover:bg-white/10"
+              >
+                {copiedShareUrl ? <Check size={14} /> : <Copy size={14} />}
+                {copiedShareUrl ? "Copied" : "URLコピー"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {autoRematchPanelVisible ? (
         <div className="pointer-events-none fixed bottom-4 left-0 right-0 z-[145] px-4 md:left-auto md:right-4 md:w-[min(460px,calc(100vw-2rem))]">
