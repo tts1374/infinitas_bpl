@@ -24,6 +24,7 @@ function createChartMaster() {
     buildChart("chart-1", "chart-one", "Chart One", 11),
     buildChart("chart-2", "chart-two", "Chart Two", 8),
     buildChart("chart-3", "chart-three", "Chart Three", 10),
+    buildChart("chart-4", "chart-four", "Chart Four", 9),
     buildChart("chart-bit", "chart-bit", "Chart Bit", 10, { inf_unlock_type: "bit" }),
     buildChart("chart-djp", "chart-djp", "Chart Djp", 10, { inf_unlock_type: "djp" }),
     buildChart("chart-pack-2", "chart-pack-2", "Chart Pack 2", 10, { inf_unlock_type: "pack", inf_pack_id: 2 }),
@@ -154,12 +155,18 @@ function prepareMatch(state, input = {}) {
   const startAt = input.startAt ?? "2026-03-08T00:01:00.000Z";
   const hostPick = input.hostPick ?? "chart-1";
   const guestPick = input.guestPick ?? "chart-2";
+  const hostSecondPick = input.hostSecondPick ?? "chart-3";
+  const guestSecondPick = input.guestSecondPick ?? "chart-4";
 
   assert.equal(state.setPlayerReady("host", true).ok, true);
   assert.equal(state.setPlayerReady("guest", true).ok, true);
   assert.deepEqual(state.startMatch("host", new Date(startAt)), { ok: true });
   assert.equal(state.submitPick("host", hostPick, new Date("2026-03-08T00:01:10.000Z")).ok, true);
   assert.equal(state.submitPick("guest", guestPick, new Date("2026-03-08T00:01:11.000Z")).ok, true);
+  if (state.toSnapshot().settings.mode === "BPL4") {
+    assert.equal(state.submitPick("host", hostSecondPick, new Date("2026-03-08T00:01:12.000Z")).ok, true);
+    assert.equal(state.submitPick("guest", guestSecondPick, new Date("2026-03-08T00:01:13.000Z")).ok, true);
+  }
   assert.equal(state.getRoomState(), "PLAYING");
 }
 
@@ -388,6 +395,28 @@ test("RESULT -> LOBBY clears ready and match transient state without auto-start"
   assert.equal(typeof secondStartSnapshot.current_match_id, "string");
   assert.notEqual(secondStartSnapshot.current_match_id, "room-1");
   assert.notEqual(secondStartSnapshot.current_match_id, firstMatchId);
+});
+
+test("BPL(3) keeps PICKING TTL at 120 seconds", () => {
+  const state = createState({ mode: "BPL", max_players: 2 });
+  assert.equal(state.setPlayerReady("host", true).ok, true);
+  assert.equal(state.setPlayerReady("guest", true).ok, true);
+  assert.deepEqual(state.startMatch("host", new Date("2026-03-08T00:01:00.000Z")), { ok: true });
+
+  const snapshot = state.toSnapshot();
+  assert.equal(snapshot.room_state, "PICKING");
+  assert.equal(snapshot.timers.picking_deadline, "2026-03-08T00:03:00.000Z");
+});
+
+test("BPL4 extends PICKING TTL to 180 seconds", () => {
+  const state = createState({ mode: "BPL4", max_players: 2 });
+  assert.equal(state.setPlayerReady("host", true).ok, true);
+  assert.equal(state.setPlayerReady("guest", true).ok, true);
+  assert.deepEqual(state.startMatch("host", new Date("2026-03-08T00:01:00.000Z")), { ok: true });
+
+  const snapshot = state.toSnapshot();
+  assert.equal(snapshot.room_state, "PICKING");
+  assert.equal(snapshot.timers.picking_deadline, "2026-03-08T00:04:00.000Z");
 });
 
 test("PRIVATE auto_rematch starts next match from RESULT after countdown", () => {
@@ -669,7 +698,7 @@ test("mismatched observed_key poisons the match even if the player later submits
   assert.equal(summary.rated_block_reason, "mismatch_observed_key");
 });
 
-test("BPL always plays 3 stages before entering RESULT", () => {
+test("BPL(3) always plays 3 stages before entering RESULT", () => {
   const state = createState({ mode: "BPL", max_players: 2 });
   prepareMatch(state);
 
@@ -687,33 +716,84 @@ test("BPL always plays 3 stages before entering RESULT", () => {
   assert.deepEqual(summary.winner_player_ids, ["host"]);
 });
 
-test("BPL random third stage level stays within first two picks range", () => {
+test("BPL(3) freezes two picks plus one random stage", () => {
   const state = createState({ mode: "BPL", max_players: 2 });
-  prepareMatch(state, { hostPick: "chart-1", guestPick: "chart-2" });
+  prepareMatch(state, {
+    hostPick: "chart-1",
+    guestPick: "chart-2",
+  });
 
   const snapshot = state.toSnapshot();
+  const titles = snapshot.frozen_rounds.map((round) => round.display.title);
   assert.equal(snapshot.frozen_rounds.length, 3);
+  assert.deepEqual(titles.slice(0, 2), ["Chart One", "Chart Two"]);
+  assert.equal(new Set(titles).size, 3);
+  assert.equal(["Chart Three", "Chart Four"].includes(titles[2] ?? ""), true);
+});
 
-  const firstLevel = snapshot.frozen_rounds[0]?.display.level;
-  const secondLevel = snapshot.frozen_rounds[1]?.display.level;
-  const randomLevel = snapshot.frozen_rounds[2]?.display.level;
+test("BPL4 always plays 4 stages before entering RESULT", () => {
+  const state = createState({ mode: "BPL4", max_players: 2 });
+  prepareMatch(state);
 
-  assert.equal(typeof firstLevel, "number");
-  assert.equal(typeof secondLevel, "number");
-  assert.equal(typeof randomLevel, "number");
+  playCurrentRound(state, 0, 2200, 2100, "2026-03-08T00:02");
+  playCurrentRound(state, 1, 2300, 2000, "2026-03-08T00:03");
+  assert.equal(state.getRoomState(), "PLAYING");
+  assert.equal(state.toSnapshot().current_round?.round_index, 2);
 
-  const minLevel = Math.min(firstLevel, secondLevel);
-  const maxLevel = Math.max(firstLevel, secondLevel);
-  assert.ok(randomLevel >= minLevel && randomLevel <= maxLevel);
+  playCurrentRound(state, 2, 2400, 2300, "2026-03-08T00:04");
+  assert.equal(state.getRoomState(), "PLAYING");
+  assert.equal(state.toSnapshot().current_round?.round_index, 3);
+  playCurrentRound(state, 3, 2500, 2400, "2026-03-08T00:05");
+
+  const summary = getResultSummary(state);
+  assert.equal(state.getRoomState(), "RESULT");
+  assert.equal(summary.is_rated, true);
+  assert.equal(summary.rated_block_reason, null);
+  assert.deepEqual(summary.winner_player_ids, ["host"]);
+});
+
+test("BPL4 freezes four stages from player picks in accepted order", () => {
+  const state = createState({ mode: "BPL4", max_players: 2 });
+  prepareMatch(state, {
+    hostPick: "chart-1",
+    guestPick: "chart-2",
+    hostSecondPick: "chart-3",
+    guestSecondPick: "chart-4",
+  });
+
+  const snapshot = state.toSnapshot();
+  assert.equal(snapshot.frozen_rounds.length, 4);
+  assert.deepEqual(
+    snapshot.frozen_rounds.map((round) => round.display.title),
+    ["Chart One", "Chart Two", "Chart Three", "Chart Four"],
+  );
+});
+
+test("BPL4 allows two picks per player and rejects a third pick", () => {
+  const state = createState({ mode: "BPL4", max_players: 2 });
+  assert.equal(state.setPlayerReady("host", true).ok, true);
+  assert.equal(state.setPlayerReady("guest", true).ok, true);
+  assert.deepEqual(state.startMatch("host", new Date("2026-03-08T00:01:00.000Z")), { ok: true });
+
+  assert.equal(state.submitPick("host", "chart-1", new Date("2026-03-08T00:01:10.000Z")).ok, true);
+  assert.equal(state.submitPick("guest", "chart-2", new Date("2026-03-08T00:01:11.000Z")).ok, true);
+  assert.equal(state.submitPick("host", "chart-3", new Date("2026-03-08T00:01:12.000Z")).ok, true);
+  assert.deepEqual(
+    state.submitPick("host", "chart-4", new Date("2026-03-08T00:01:13.000Z")),
+    { ok: false, reason: "PLAYER_ALREADY_PICKED" },
+  );
+  assert.equal(state.submitPick("guest", "chart-4", new Date("2026-03-08T00:01:14.000Z")).ok, true);
+  assert.equal(state.getRoomState(), "PLAYING");
 });
 
 test("conflicting final result blocks rating", () => {
-  const state = createState({ mode: "BPL", max_players: 2 });
+  const state = createState({ mode: "BPL4", max_players: 2 });
   prepareMatch(state);
 
   playCurrentRound(state, 0, 2200, 2100, "2026-03-08T00:02");
   playCurrentRound(state, 1, 2000, 2300, "2026-03-08T00:03");
   playCurrentRound(state, 2, 2100, 2100, "2026-03-08T00:04");
+  playCurrentRound(state, 3, 2200, 2200, "2026-03-08T00:05");
 
   const summary = getResultSummary(state);
   assert.equal(summary.is_rated, false);
