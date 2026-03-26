@@ -307,7 +307,7 @@ apps/worker/src/durable/
 ### result-rating.ts
 
 * rated 可否判定
-* ARENA 配点 / BPL 3 round 集計
+* ARENA 配点 / BPL・BPL4 集計
 * RESULT_READY 用のレーティング情報生成
 
 ### ws-codec.ts

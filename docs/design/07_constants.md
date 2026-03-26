@@ -14,7 +14,9 @@ Ph1で固定するタイマー値、制約値、表示/運用上の定数を整�
 - `START_MIN_PLAYERS = 2`
   - `players < 2` の間はホスト `START_MATCH` 不可
 - `PICKING_TTL_SECONDS = 120`
-  - PICKING開始から120秒で未pickをランダム補完
+  - ARENA / BPL(3) の PICKING 制限時間
+- `BPL4_PICKING_TTL_SECONDS = 180`
+  - BPL4 の PICKING 制限時間
 
 ## 1.2 ラウンド進行
 - `ROUND_SOFT_TTL_SECONDS = 300`
@@ -105,9 +107,11 @@ Ph1で固定するタイマー値、制約値、表示/運用上の定数を整�
 - `ARENA_POINT_RANK_3 = 0`
 - `ARENA_POINT_RANK_4 = 0`
 
-## 4.5 BPL
+## 4.5 BPL / BPL4
 - `BPL_ROUNDS = 3`
-  - 3 STAGE固定
+  - BPL（3 STAGE）
+- `BPL4_ROUNDS = 4`
+  - BPL4（4 STAGE）
 
 ---
 
