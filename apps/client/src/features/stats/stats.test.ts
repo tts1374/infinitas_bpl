@@ -574,6 +574,9 @@ runCase("legacy BPL3/BPL4 storage entries are normalized and shown in BPL stats"
   const matchId = "legacy-bpl4-match";
   const rawArchive: unknown = {
     ...createEmptyStatsArchive(),
+    rating_series_state: {
+      BPL4_SP: 1620,
+    },
     matches: [
       {
         match_id: matchId,
@@ -641,6 +644,7 @@ runCase("legacy BPL3/BPL4 storage entries are normalized and shown in BPL stats"
   const detailedHistory = getDetailedMatchHistory(archive, "BPL", "SP");
   const history = getRecentMatchHistory(archive, "BPL", "SP");
 
+  assert.equal(getCurrentRating(archive, "BPL", "SP"), 1620);
   assert.equal(archive.matches[0]?.battle_type, "BPL");
   assert.equal(archive.match_games[0]?.battle_type, "BPL");
   assert.equal(archive.play_results[0]?.battle_type, "BPL");
