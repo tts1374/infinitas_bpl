@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { attemptOpenDeepLink, buildJoinDeepLink } from "../lib/deeplink";
 import { WEB_LINKS, WEB_RUNTIME } from "../lib/config";
 import { fetchJoinRoomSummary, type JoinRoomSummary, type RecruitmentStatus } from "../lib/join-room";
+import { logWebShareAnalytics } from "../lib/share-analytics";
 
 type DeepLinkUiState = "idle" | "trying" | "launched" | "fallback";
 
@@ -56,14 +57,25 @@ export const JoinPage: FC = () => {
 
   const statusMeta = statusMetaMap[summary.status];
 
-  const openInApp = useCallback(async (): Promise<void> => {
+  const openInApp = useCallback(async (trigger: "auto" | "manual"): Promise<void> => {
     if (!roomRef) {
       setDeepLinkState("fallback");
       return;
     }
 
+    logWebShareAnalytics("deep_link_attempted", {
+      roomRef,
+      trigger,
+      phase: "start",
+    });
     setDeepLinkState("trying");
     const result = await attemptOpenDeepLink(buildJoinDeepLink(roomRef));
+    logWebShareAnalytics("deep_link_attempted", {
+      roomRef,
+      trigger,
+      phase: "end",
+      result,
+    });
     setDeepLinkState(result);
   }, [roomRef]);
 
@@ -88,6 +100,13 @@ export const JoinPage: FC = () => {
   }, [roomRef]);
 
   useEffect(() => {
+    logWebShareAnalytics("join_page_viewed", {
+      roomRef,
+      pathname: window.location.pathname,
+    });
+  }, [roomRef]);
+
+  useEffect(() => {
     if (!roomRef) {
       return;
     }
@@ -98,7 +117,7 @@ export const JoinPage: FC = () => {
     }
 
     window.sessionStorage.setItem(sessionKey, "1");
-    void openInApp();
+    void openInApp("auto");
   }, [openInApp, roomRef]);
 
   const deepLinkMessage = (() => {
@@ -174,7 +193,7 @@ export const JoinPage: FC = () => {
             <button
               type="button"
               onClick={() => {
-                void openInApp();
+                void openInApp("manual");
               }}
               disabled={deepLinkState === "trying"}
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-500 px-6 py-3 font-bold text-black transition-colors hover:bg-cyan-400 disabled:cursor-not-allowed disabled:bg-cyan-700/50 disabled:text-gray-300"
@@ -196,7 +215,7 @@ export const JoinPage: FC = () => {
             <button
               type="button"
               onClick={() => {
-                void openInApp();
+                void openInApp("manual");
               }}
               disabled={deepLinkState === "trying"}
               className="inline-flex items-center justify-center gap-2 rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-6 py-3 font-semibold text-cyan-100 transition-colors hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:opacity-50"

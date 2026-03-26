@@ -40,57 +40,12 @@ const toStatus = (value: string | undefined): RecruitmentStatus => {
   }
 };
 
-const inferMockStatus = (roomRef: string): RecruitmentStatus => {
-  const normalized = roomRef.toLowerCase();
-  if (normalized.includes("full")) {
-    return "full";
-  }
-  if (normalized.includes("closed")) {
-    return "closed";
-  }
-  if (normalized.includes("expired") || normalized.includes("invalid")) {
-    return "expired";
-  }
-  return "recruiting";
-};
-
-const buildMockSummary = (roomRef: string): JoinRoomSummary => {
-  const status = inferMockStatus(roomRef);
-
-  if (status === "full") {
-    return {
-      roomName: "INFINITAS ARENA 4P Room",
-      status,
-      isShareable: false,
-      downloadUrl: WEB_LINKS.download,
-    };
-  }
-
-  if (status === "closed") {
-    return {
-      roomName: "BPL Friendly Match Room",
-      status,
-      isShareable: false,
-      downloadUrl: WEB_LINKS.download,
-    };
-  }
-
-  if (status === "expired") {
-    return {
-      roomName: "期限切れまたは無効な招待URL",
-      status,
-      isShareable: false,
-      downloadUrl: WEB_LINKS.download,
-    };
-  }
-
-  return {
-    roomName: "INFINITAS ARENA Public Lobby",
-    status: "recruiting",
-    isShareable: true,
-    downloadUrl: WEB_LINKS.download,
-  };
-};
+const buildExpiredSummary = (): JoinRoomSummary => ({
+  roomName: "期限切れまたは無効な招待URL",
+  status: "expired",
+  isShareable: false,
+  downloadUrl: WEB_LINKS.download,
+});
 
 const resolveEndpoint = (roomRef: string): string | null => {
   if (!WEB_RUNTIME.joinApiEndpoint) {
@@ -128,16 +83,15 @@ export const fetchJoinRoomSummary = async (
 ): Promise<JoinRoomSummary> => {
   const trimmedRef = roomRef.trim();
   if (!trimmedRef) {
-    return buildMockSummary("expired");
+    return buildExpiredSummary();
   }
 
   const endpoint = resolveEndpoint(trimmedRef);
   if (!endpoint) {
-    return buildMockSummary(trimmedRef);
+    return buildExpiredSummary();
   }
 
   try {
-    // TODO(issue-125): Replace mock fallback with strict error handling after Worker API contract is finalized.
     const requestInit: RequestInit = {
       method: "GET",
       headers: {
@@ -157,6 +111,6 @@ export const fetchJoinRoomSummary = async (
     const payload = (await response.json()) as JoinRoomApiResponse;
     return parseApiSummary(payload);
   } catch {
-    return buildMockSummary(trimmedRef);
+    return buildExpiredSummary();
   }
 };
