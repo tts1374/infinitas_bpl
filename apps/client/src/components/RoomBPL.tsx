@@ -102,9 +102,26 @@ export function RoomBPLPresentational(props: RoomBPLControlledState) {
 const BPL_MUSIC_SELECT_SECONDS = 45;
 const BPL_PLAY_START_SECONDS = 10;
 const BPL_PLAY_BEGIN_SECONDS = BPL_MUSIC_SELECT_SECONDS + BPL_PLAY_START_SECONDS;
+const BPL_STAGE_COUNT = 4;
+const BPL_REGULATION_LABEL = `${BPL_STAGE_COUNT} STAGES`;
 
 function maskJoinCode(joinCode: string): string {
     return '*'.repeat(joinCode.length);
+}
+
+function formatOrdinal(value: number): string {
+    const mod10 = value % 10;
+    const mod100 = value % 100;
+    if (mod10 === 1 && mod100 !== 11) {
+        return `${value}st`;
+    }
+    if (mod10 === 2 && mod100 !== 12) {
+        return `${value}nd`;
+    }
+    if (mod10 === 3 && mod100 !== 13) {
+        return `${value}rd`;
+    }
+    return `${value}th`;
 }
 
 function getDifficultyBadgeClass(difficulty: string | undefined): string {
@@ -148,7 +165,7 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
     const [resultTimerState, setResultTimer] = useState(10);
     const [currentTurnState, setCurrentTurn] = useState(0); // 0: 1P, 1: 2P
     const [roundCountState, setRoundCount] = useState(1);
-    const [picksState, setPicks] = useState<(Song | null)[]>([null, null, { title: '?????', artist: '', level: '??' }]);
+    const [picksState, setPicks] = useState<(Song | null)[]>(Array.from({ length: BPL_STAGE_COUNT }, () => null));
     const [historyState, setHistory] = useState<HistoryItem[]>([]);
     const [showSearchState, setShowSearch] = useState(false);
     const [lastPickedSongState, setLastPickedSong] = useState<Song | null>(null);
@@ -235,10 +252,11 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
     const playerMetrics = controlled?.playerMetrics ?? {};
     const metricLabel = controlled?.metricLabel ?? 'EX SCORE';
     const resultPlayers = controlled?.resultPlayers ?? {};
-    const resultRegulationLabel = controlled?.resultRegulationLabel ?? '3 STAGES';
+    const resultRegulationLabel = controlled?.resultRegulationLabel ?? BPL_REGULATION_LABEL;
     const finalResultPlayers = controlled?.finalResultPlayers ?? {};
-    const currentPlayingSong = picks[roundCount - 1] || picks[2];
-    const currentResultSong = picks[roundCount - 1] || picks[2];
+    const totalStages = Math.max(1, picks.length);
+    const currentPlayingSong = picks[roundCount - 1] || picks[totalStages - 1] || null;
+    const currentResultSong = picks[roundCount - 1] || picks[totalStages - 1] || null;
     const currentPlayingSongVersion = resolveSongVersionLabel(currentPlayingSong?.version);
     const currentResultSongVersion = resolveSongVersionLabel(currentResultSong?.version);
     const currentPlayingSongPlayStyle = currentPlayingSong?.playStyle ?? '-';
@@ -278,8 +296,9 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
         // 3秒後にカットインを消し、次のターンへ（あるいは終了）
         setTimeout(() => {
             setShowCutIn(false);
-            if (currentTurn === 0) {
-                setCurrentTurn(1);
+            const nextTurn = currentTurn + 1;
+            if (nextTurn < totalStages) {
+                setCurrentTurn(nextTurn);
             } else {
                 // 両者の選曲が完了したら PLAYING へ
                 setRoomStatus('PLAYING');
@@ -386,7 +405,7 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
 
         setHistory(prev => [newItem, ...prev]);
 
-        if (roundCount < 3) {
+        if (roundCount < totalStages) {
             setRoundCount(prev => prev + 1);
             setRoomStatus('PLAYING');
             setPlayTime(0);
@@ -411,10 +430,11 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
     const _currentSong = picks[0]; // TODO: 本来はラウンドに応じた曲を表示
     const leftPlayer = players[0] ?? { id: '1', name: 'HOST', isReady: false, isHost: true, side: 'LEFT' as const };
     const rightPlayer = players[1] ?? { id: '2', name: 'GUEST', isReady: false, isHost: false, side: 'RIGHT' as const };
-    const roundPickerNames = controlled?.roundPickerNames ?? [leftPlayer.name, rightPlayer.name, 'System Random'];
+    const roundPickerNames = controlled?.roundPickerNames ?? Array.from(
+        { length: totalStages },
+        (_, index) => (index % 2 === 0 ? leftPlayer.name : rightPlayer.name),
+    );
     const currentRoundPickerName = roundPickerNames[roundCount - 1] ?? null;
-    const leftPickLabel = roundPickerNames[0] ? `${roundPickerNames[0]}'S PICK` : '1ST PICK';
-    const rightPickLabel = roundPickerNames[1] ? `${roundPickerNames[1]}'S PICK` : '2ND PICK';
 
     return (
         <div className="flex h-screen w-screen bg-[#0f0f10] text-white font-sans overflow-hidden">
@@ -518,11 +538,10 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
                         <div className="h-10 w-[1px] bg-white/10"></div>
                         <div className="text-left">
                             <p className="text-[10px] font-black text-gray-500 uppercase tracking-[0.3em]">Regulation</p>
-                            <h2 className="text-2xl font-black italic tracking-tighter text-gray-300 whitespace-nowrap">3 STAGES</h2>
+                            <h2 className="text-2xl font-black italic tracking-tighter text-gray-300 whitespace-nowrap">{resultRegulationLabel}</h2>
                         </div>
                     </div>
                 </header>
-
                 {/* 中央：VS 対峙セクション */}
                 <div className="flex-1 flex items-center justify-between gap-8 relative px-10">
 
@@ -534,10 +553,10 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
                     {/* 左プレイヤー (1P) */}
                     <div className={`flex-1 max-w-[400px] flex flex-col gap-4 transition-all ${leftPlayer.isReady ? 'scale-105' : ''}`}>
                         <div className={`h-[320px] rounded-3xl border-4 relative overflow-hidden flex flex-col items-center justify-center transition-all ${leftPlayer.isReady
-                            ? (roomStatus === 'SELECTING' && currentTurn === 0 ? 'bg-cyan-500/20 border-white shadow-[0_0_80px_rgba(6,182,212,0.4)] ring-4 ring-cyan-500 ring-opacity-50' : 'bg-cyan-500/10 border-cyan-500 shadow-[0_0_50px_rgba(6,182,212,0.2)]')
+                            ? (roomStatus === 'SELECTING' && currentTurn % 2 === 0 ? 'bg-cyan-500/20 border-white shadow-[0_0_80px_rgba(6,182,212,0.4)] ring-4 ring-cyan-500 ring-opacity-50' : 'bg-cyan-500/10 border-cyan-500 shadow-[0_0_50px_rgba(6,182,212,0.2)]')
                             : 'bg-[#252526] border-white/10'
                             }`}>
-                            {roomStatus === 'SELECTING' && currentTurn === 0 && (
+                            {roomStatus === 'SELECTING' && currentTurn % 2 === 0 && (
                                 <div className="absolute top-0 left-0 right-0 bg-cyan-500 text-black text-center py-1 font-black italic text-xs tracking-[0.3em] animate-pulse">
                                     YOUR TURN
                                 </div>
@@ -558,7 +577,7 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
                                 <CheckCircle2 size={24} /> READY
                             </div>
                         )}
-                        {roomStatus === 'SELECTING' && currentTurn === 0 && (
+                        {roomStatus === 'SELECTING' && currentTurn % 2 === 0 && (
                             <button
                                 onClick={() => {
                                     if (controlled?.onOpenSearch) {
@@ -583,10 +602,10 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
                     {/* 右プレイヤー (2P) */}
                     <div className={`flex-1 max-w-[400px] flex flex-col gap-4 transition-all ${rightPlayer.isReady ? 'scale-105' : ''}`}>
                         <div className={`h-[320px] rounded-3xl border-4 relative overflow-hidden flex flex-col items-center justify-center transition-all ${rightPlayer.isReady
-                            ? (roomStatus === 'SELECTING' && currentTurn === 1 ? 'bg-amber-500/20 border-white shadow-[0_0_80px_rgba(245,158,11,0.4)] ring-4 ring-amber-500 ring-opacity-50' : 'bg-amber-500/10 border-amber-500 shadow-[0_0_50px_rgba(245,158,11,0.2)]')
+                            ? (roomStatus === 'SELECTING' && currentTurn % 2 === 1 ? 'bg-amber-500/20 border-white shadow-[0_0_80px_rgba(245,158,11,0.4)] ring-4 ring-amber-500 ring-opacity-50' : 'bg-amber-500/10 border-amber-500 shadow-[0_0_50px_rgba(245,158,11,0.2)]')
                             : 'bg-[#252526] border-white/10'
                             }`}>
-                            {roomStatus === 'SELECTING' && currentTurn === 1 && (
+                            {roomStatus === 'SELECTING' && currentTurn % 2 === 1 && (
                                 <div className="absolute top-0 left-0 right-0 bg-amber-500 text-black text-center py-1 font-black italic text-xs tracking-[0.3em] animate-pulse">
                                     RIVAL'S TURN
                                 </div>
@@ -610,7 +629,7 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
                                 <Circle size={24} /> WAITING...
                             </div>
                         )}
-                        {roomStatus === 'SELECTING' && currentTurn === 1 && (
+                        {roomStatus === 'SELECTING' && currentTurn % 2 === 1 && (
                             <div className="bg-amber-500/10 text-amber-500 py-4 rounded-2xl font-black italic text-xl border-2 border-amber-500/50 text-center animate-pulse">
                                 SELECTING...
                             </div>
@@ -618,37 +637,44 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
                     </div>
                 </div>
 
-                {/* 下部：ストラテジーエリア（3 round用） */}
+                {/* 下部：ストラテジーエリア */}
                 {roomStatus !== 'PLAYING' ? (
-                    <footer className="mt-4 grid grid-cols-4 gap-4 h-28">
-                        <div className={`rounded-2xl border p-3 flex flex-col justify-center transition-all ${picks[0] ? 'bg-cyan-500/10 border-cyan-500' : 'bg-[#1a1a1b] border-white/5'}`}>
-                            <span className="text-[9px] font-black text-gray-500 uppercase mb-0.5">1st Match</span>
-                            <div className="flex flex-col font-bold">
-                                <span className={picks[0] ? 'text-white text-lg font-black italic truncate' : 'text-cyan-400/50'}>
-                                    {picks[0] ? picks[0].title : leftPickLabel}
-                                </span>
-                                {picks[0]?.artist ? <span className="text-[10px] text-cyan-500 font-black italic tracking-widest truncate">{picks[0].artist}</span> : null}
-                            </div>
-                        </div>
-                        <div className={`rounded-2xl border p-3 flex flex-col justify-center transition-all ${picks[1] ? 'bg-amber-500/10 border-amber-500' : 'bg-[#1a1a1b] border-white/5 border-dashed'}`}>
-                            <span className="text-[9px] font-black text-gray-500 uppercase mb-0.5">2nd Match</span>
-                            <div className="flex flex-col font-bold">
-                                <span className={picks[1] ? 'text-white text-lg font-black italic truncate' : 'text-amber-500/50'}>
-                                    {picks[1] ? picks[1].title : rightPickLabel}
-                                </span>
-                                {picks[1]?.artist ? <span className="text-[10px] text-amber-500 font-black italic tracking-widest leading-none truncate">{picks[1].artist}</span> : null}
-                            </div>
-                        </div>
-                        {/* 3rd STAGE: RANDOM PICK (????? 表示) */}
-                        <div className="bg-gradient-to-br from-[#1a1a1b] to-[#2a1010] border-2 border-red-500 shadow-[0_0_20px_rgba(239,68,68,0.2)] rounded-2xl p-3 flex flex-col justify-center items-center relative group overflow-hidden font-sans animate-pulse">
-                            <div className="absolute text-red-500/10 font-black text-6xl italic -right-2 -bottom-4 select-none">?</div>
-
-                            <span className="text-[10px] font-black text-red-500 uppercase tracking-widest mb-0.5">Final STAGE</span>
-                            <div className="flex flex-col items-center gap-0">
-                                <span className="text-xl font-black italic tracking-[0.2em] text-red-600">?????</span>
-                                <span className="text-[8px] font-bold text-red-900 uppercase">System Random</span>
-                            </div>
-                        </div>
+                    <footer
+                        className="mt-4 grid h-28 gap-4 px-2 md:px-4"
+                        style={{ gridTemplateColumns: `repeat(${totalStages + 1}, minmax(0, 1fr))` }}
+                    >
+                        {picks.map((pick, index) => {
+                            const isHostTurn = index % 2 === 0;
+                            const fallbackLabel = roundPickerNames[index] === 'SYSTEM RANDOM'
+                                ? 'SYSTEM RANDOM'
+                                : roundPickerNames[index]
+                                    ? `${roundPickerNames[index]}'S PICK`
+                                    : `${formatOrdinal(index + 1).toUpperCase()} PICK`;
+                            return (
+                                <div
+                                    key={`pick-slot-${index}`}
+                                    className={`rounded-2xl border p-3 flex flex-col justify-center transition-all ${pick
+                                        ? (isHostTurn ? 'bg-cyan-500/10 border-cyan-500' : 'bg-amber-500/10 border-amber-500')
+                                        : (isHostTurn ? 'bg-[#1a1a1b] border-white/5' : 'bg-[#1a1a1b] border-white/5 border-dashed')
+                                        }`}
+                                >
+                                    <span className="text-[9px] font-black text-gray-500 uppercase mb-0.5">{formatOrdinal(index + 1)} Match</span>
+                                    <div className="flex flex-col font-bold">
+                                        <span className={pick
+                                            ? 'text-white text-lg font-black italic truncate'
+                                            : (isHostTurn ? 'text-cyan-400/50' : 'text-amber-500/50')}
+                                        >
+                                            {pick ? pick.title : fallbackLabel}
+                                        </span>
+                                        {pick?.artist ? (
+                                            <span className={`text-[10px] font-black italic tracking-widest leading-none truncate ${isHostTurn ? 'text-cyan-500' : 'text-amber-500'}`}>
+                                                {pick.artist}
+                                            </span>
+                                        ) : null}
+                                    </div>
+                                </div>
+                            );
+                        })}
                         <div className="bg-white/5 rounded-2xl p-4 flex items-center justify-center">
                             <button
                                 onClick={() => {
@@ -683,7 +709,7 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
                         <div className="flex justify-between items-start mb-12">
                             <div className="flex flex-col gap-2">
                                 <div className="flex items-center gap-4">
-                                    <span className="bg-white text-black px-4 py-1 font-black italic text-2xl tracking-tighter">{roundCount}{roundCount === 1 ? 'st' : roundCount === 2 ? 'nd' : 'rd'} STAGE</span>
+                                    <span className="bg-white text-black px-4 py-1 font-black italic text-2xl tracking-tighter">{formatOrdinal(roundCount)} STAGE</span>
                                     <div className="h-8 w-[2px] bg-white/20" />
                                     <div className="flex flex-col">
                                         <span className="text-[10px] font-black text-gray-500 tracking-widest">ROUND PROGRESS</span>
@@ -701,7 +727,7 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
                                         </span>
                                     )}
                                     <h2 className="text-5xl font-black italic tracking-tighter text-white drop-shadow-[0_0_20px_rgba(255,255,255,0.2)] line-clamp-2 leading-tight break-all">
-                                        {currentPlayingSong?.title || (roundCount === 3 ? "SYSTEM RANDOM (MAX 300)" : "Unknown Track")}
+                                        {currentPlayingSong?.title || 'Unknown Track'}
                                     </h2>
                                     <div className="flex flex-wrap items-center gap-4 mt-1">
                                         <span className="text-xl font-bold text-gray-500 tracking-widest truncate max-w-xs xl:max-w-md">{currentPlayingSong?.artist || '-'}</span>
@@ -855,7 +881,7 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
                                             </span>
                                         )}
                                         <h2 className="text-3xl font-black italic tracking-tighter text-white leading-tight drop-shadow-2xl line-clamp-1">
-                                            {currentResultSong?.title || 'System Random'}
+                                            {currentResultSong?.title || 'Unknown Track'}
                                         </h2>
                                         <div className="mt-1 flex flex-wrap items-center gap-3 max-w-xl">
                                             <p className="text-base font-bold text-gray-400 truncate">{currentResultSong?.artist || '-'}</p>

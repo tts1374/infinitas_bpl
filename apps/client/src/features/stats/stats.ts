@@ -150,7 +150,64 @@ function getArenaRankByPlayerId(results: SessionPlayerResult[], winMetric: WinMe
 }
 
 function getBattleType(settings: RoomSettings): StatsBattleType {
-  return settings.mode;
+  return settings.mode === "ARENA" ? "ARENA" : "BPL";
+}
+
+function normalizeLegacyBplBattleType(value: unknown): unknown {
+  return value === "BPL3" || value === "BPL4" ? "BPL" : value;
+}
+
+function normalizeLegacyRatingSeriesKey(key: string): string {
+  if (key === "BPL3_SP" || key === "BPL4_SP") {
+    return "BPL_SP";
+  }
+  if (key === "BPL3_DP" || key === "BPL4_DP") {
+    return "BPL_DP";
+  }
+  return key;
+}
+
+function normalizeArchiveBattleTypes(entries: unknown[]): unknown[] {
+  let changed = false;
+  const normalizedEntries = entries.map((entry) => {
+    const record = asRecord(entry);
+    if (record === null) {
+      return entry;
+    }
+    const normalizedBattleType = normalizeLegacyBplBattleType(record.battle_type);
+    if (normalizedBattleType === record.battle_type) {
+      return entry;
+    }
+    changed = true;
+    return {
+      ...record,
+      battle_type: normalizedBattleType,
+    };
+  });
+  return changed ? normalizedEntries : entries;
+}
+
+function normalizeArchiveRatingSeriesState(value: unknown): unknown {
+  const ratingSeriesState = asRecord(value);
+  if (ratingSeriesState === null) {
+    return value;
+  }
+
+  let changed = false;
+  const normalizedState: Record<string, unknown> = { ...ratingSeriesState };
+  for (const [key, keyValue] of Object.entries(ratingSeriesState)) {
+    const normalizedKey = normalizeLegacyRatingSeriesKey(key);
+    if (normalizedKey === key) {
+      continue;
+    }
+    changed = true;
+    if (!(normalizedKey in normalizedState)) {
+      normalizedState[normalizedKey] = keyValue;
+    }
+    delete normalizedState[key];
+  }
+
+  return changed ? normalizedState : value;
 }
 
 export function buildChartId(expectedKey: {
@@ -1091,7 +1148,26 @@ export function createArchiveFromStorage(rawArchive: unknown): StatsArchive {
     return createEmptyStatsArchive();
   }
 
-  return archive as unknown as StatsArchive;
+  const normalizedMatches = normalizeArchiveBattleTypes(archive.matches as unknown[]);
+  const normalizedMatchGames = normalizeArchiveBattleTypes(archive.match_games as unknown[]);
+  const normalizedPlayResults = normalizeArchiveBattleTypes(archive.play_results as unknown[]);
+  const normalizedRatingSeriesState = normalizeArchiveRatingSeriesState(archive.rating_series_state);
+  if (
+    normalizedMatches === archive.matches &&
+    normalizedMatchGames === archive.match_games &&
+    normalizedPlayResults === archive.play_results &&
+    normalizedRatingSeriesState === archive.rating_series_state
+  ) {
+    return archive as unknown as StatsArchive;
+  }
+
+  return {
+    ...archive,
+    matches: normalizedMatches,
+    match_games: normalizedMatchGames,
+    play_results: normalizedPlayResults,
+    rating_series_state: normalizedRatingSeriesState,
+  } as unknown as StatsArchive;
 }
 
 export function getCurrentRating(

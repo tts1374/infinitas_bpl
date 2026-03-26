@@ -53,7 +53,8 @@
 
 ## 4. タイマー（固定値 / DOが管理）
 - `ready_check_ttl = 20min`（LOBBY開始または `RESULT -> LOBBY` 復帰から。超過で解散）
-- `picking_ttl = 120s`（PICKING開始から。超過で未pick者をランダム補完して凍結）
+- `picking_ttl = 120s`（ARENA / BPL(3) の PICKING開始から。超過で未pick者をランダム補完して凍結）
+- `bpl4_picking_ttl = 180s`（BPL4 の PICKING開始から。超過で未pick者をランダム補完して凍結）
 - `round_soft_ttl = 5min`（`count_go` 以降。超過で未確定者をTIMEOUT確定）
 - `host_skip_unlock_seconds = 240s`（`SKIP_HOST_ASSIGN` 用の予約値。現行v1では操作を受理しない）
 - `match_ttl = 30min`（`START_MATCH` 成功時、すなわち `PICKING` 開始時から固定）
@@ -63,7 +64,7 @@
 - `visibility`: `PUBLIC | PRIVATE`
 - `join_code`: string|null
 - `auto_rematch`: boolean（`PRIVATE` のみ有効）
-- `mode`: `ARENA | BPL`
+- `mode`: `ARENA | BPL | BPL4`
 - `win_metric`: `SCORE | MISSCOUNT`
 - `play_style`: `SP | DP`
 - `level_filter`: `ANY | LV8_10 | LV10 | LV11 | LV12`
@@ -115,7 +116,9 @@
 
 ## 8. PICKING（指名・凍結）
 ### 8.1 指名ルール
-- 各プレイヤーは 1譜面指名（`pick_chart_key`）
+- ARENA: 各プレイヤーは 1譜面指名（`pick_chart_key`）
+- BPL: 各プレイヤーは 1譜面指名（2人固定）
+- BPL4: 各プレイヤーは 2譜面指名（2人固定）
 - 指名は DO の受信時刻（DOが付与）で先着順
 - 同一譜面重複は許可しない
   - 重複検出時、後着の枠だけ DO が同フィルタで「未使用譜面」を抽選し差し替え
@@ -124,8 +127,10 @@
 
 ### 8.2 凍結リスト構築
 - ARENA: 参加人数 = ラウンド数（各自1譜面）
-- BPL: 3 STAGE固定
-  - 2人想定: `P1指名 + P2指名 + ランダム1`（同フィルタ・未使用、かつ P1/P2 の選曲レベル最小〜最大の範囲で抽選）
+- BPL(3 STAGE): 2人固定
+  - `P1指名 + P2指名 + Masterランダム1譜面`
+- BPL4(4 STAGE): 2人固定
+  - `P1指名 + P2指名 + P1指名 + P2指名`
 - 凍結時に各ラウンドへ `expected_key` を確定して埋める
   - `expected_key = (play_style, difficulty, title_search_key, chart_id?)`
   - `chart_id` が確定できる場合は優先し、欠落時は従来キーで後方互換運用する
@@ -205,11 +210,12 @@
 - 同点は同順位、順位飛ばしあり（競技標準）
   - 例: 2人同率1位 → 2,2,0,0
 
-### 10.3 BPL（3 STAGE固定）
+### 10.3 BPL / BPL4
 - 各ラウンド勝者が1勝
-- 3ラウンドを必ず実施し、総勝ち数で勝敗を決定
+- BPL: 3ラウンドを実施し、総勝ち数で勝敗を決定
+- BPL4: 4ラウンドを実施し、総勝ち数で勝敗を決定
 - 同点（SCORE同値 / MISSCOUNT同値）は「勝ち数加算なし」
-- 3ラウンド終了時に同勝ち数なら総合引き分け
+- 既定ラウンド終了時に同勝ち数なら総合引き分け
 
 ### 10.4 再戦復帰
 - ホスト操作で `RESULT -> LOBBY` に戻せる

@@ -59,6 +59,7 @@
 ## 5. E2E（該当変更時のみ必須）
 - 2人で ARENA: create -> ready -> pick -> play(1ラウンド以上) -> result
 - 2人で BPL(3ラウンド): 同様
+- 2人で BPL4(4ラウンド): 同様
 - 重複ピックの差し替え
 - TIMEOUT（soft ttl）と FORCE_ADVANCE
 - `SKIP_HOST_ASSIGN` が v1 では拒否され、強制確定は `FORCE_ADVANCE` で扱われる

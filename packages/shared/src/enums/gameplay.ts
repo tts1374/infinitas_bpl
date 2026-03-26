@@ -1,4 +1,4 @@
-export const MODES = ["ARENA", "BPL"] as const;
+export const MODES = ["ARENA", "BPL", "BPL4"] as const;
 
 export type Mode = (typeof MODES)[number];
 

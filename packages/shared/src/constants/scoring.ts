@@ -14,3 +14,4 @@ export const ARENA_POINT_RANK_3 = 0;
 export const ARENA_POINT_RANK_4 = 0;
 
 export const BPL_ROUNDS = 3;
+export const BPL4_ROUNDS = 4;

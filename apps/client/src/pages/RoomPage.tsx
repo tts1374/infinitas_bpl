@@ -1,9 +1,13 @@
 import {
   AUTO_REMATCH_RESULT_SECONDS,
+  BPL4_PICKING_TTL_SECONDS,
+  BPL4_ROUNDS,
+  BPL_ROUNDS,
   CHART_DIFFICULTIES,
   CHART_SEARCH_PAGE_SIZE,
   HOST_SKIP_UNLOCK_SECONDS,
   MATCH_TTL_MINUTES,
+  PICKING_TTL_SECONDS,
   ROUND_MUSIC_SELECT_SECONDS,
   ROUND_PLAY_BEGIN_AT_SECONDS,
   type ChartSearchEntry,
@@ -102,6 +106,23 @@ type ChartSearchEntryWithVersion = ChartSearchEntry & {
 const BPL_PICK_CUTIN_SECONDS = 3;
 const BPL_RESULT_PHASE_SECONDS = 10;
 const ARENA_RESULT_PHASE_SECONDS = 10;
+
+function isBplMode(mode: RoomStateSnapshot["settings"]["mode"]): boolean {
+  return mode === "BPL" || mode === "BPL4";
+}
+
+function isBplFourStageMode(mode: RoomStateSnapshot["settings"]["mode"]): boolean {
+  return mode === "BPL4";
+}
+
+function getBplStageCount(mode: RoomStateSnapshot["settings"]["mode"]): number {
+  return isBplFourStageMode(mode) ? BPL4_ROUNDS : BPL_ROUNDS;
+}
+
+function getBplStageLabel(mode: RoomStateSnapshot["settings"]["mode"]): string {
+  return `${getBplStageCount(mode)} STAGE`;
+}
+
 function getArchiveTone(status: string): string {
   if (status === "READY") {
     return "ok";
@@ -403,7 +424,7 @@ function formatRoomTitle(
     return comment;
   }
 
-  return `${mode === "BPL" ? "BPL (3 STAGE)" : "ARENA"} ${playStyle}`;
+  return `${isBplMode(mode) ? `BPL (${getBplStageLabel(mode)})` : "ARENA"} ${playStyle}`;
 }
 
 function getLobbyStartIssues(snapshot: RoomStateSnapshot): string[] {
@@ -413,7 +434,7 @@ function getLobbyStartIssues(snapshot: RoomStateSnapshot): string[] {
     issues.push("At least two players are required.");
   }
 
-  if (snapshot.settings.mode === "BPL" && snapshot.players.length !== 2) {
+  if (isBplMode(snapshot.settings.mode) && snapshot.players.length !== 2) {
     issues.push("BPL mode requires exactly two players.");
   }
 
@@ -757,8 +778,14 @@ export function RoomPage() {
   const previousRoomStateRef = useRef<RoomStateSnapshot["room_state"] | null>(null);
   const previousRoomIdRef = useRef<string | null>(null);
   const pickerModalVisibleRef = useRef(false);
-  const mySubmittedPick = snapshot?.picks.find((pick) => pick.player_id === activePlayerId) ?? null;
-  const showPickerModal = snapshot?.room_state === "PICKING" && mySubmittedPick === null;
+  const mySubmittedPicks = snapshot?.picks.filter((pick) => pick.player_id === activePlayerId) ?? [];
+  const mySubmittedPick = mySubmittedPicks[mySubmittedPicks.length - 1] ?? null;
+  const requiredPickCountPerPlayer =
+    snapshot && isBplFourStageMode(snapshot.settings.mode) ? 2 : 1;
+  const showPickerModal =
+    snapshot?.room_state === "PICKING" &&
+    activePlayerId !== null &&
+    mySubmittedPicks.length < requiredPickCountPerPlayer;
 
   async function loadChartCandidates(targetCursor: string | null, appendResults: boolean): Promise<void> {
     if (snapshot === null || snapshot.room_state !== "PICKING") {
@@ -1367,7 +1394,9 @@ export function RoomPage() {
     snapshot.auto_rematch_cancelled !== true &&
     autoRematchDueAtMs !== null;
 
-  const isBpl = snapshot.settings.mode === "BPL";
+  const isBpl = isBplMode(snapshot.settings.mode);
+  const isBplFourStage = isBplFourStageMode(snapshot.settings.mode);
+  const bplStageCount = getBplStageCount(snapshot.settings.mode);
   const leaveRoomDisabled = snapshot.room_state === "PICKING" || snapshot.room_state === "PLAYING";
   const orderedPlayers = [...snapshot.players].sort((left, right) => {
     const leftHost = left.player_id === snapshot.host_player_id || left.role === "HOST" ? 1 : 0;
@@ -1541,11 +1570,18 @@ export function RoomPage() {
   const roundPickerNameByIndex = new Map(
     picksByAcceptedOrder.map((pick, index) => [index, playersById.get(pick.player_id)?.display_name ?? pick.player_id]),
   );
-  const bplRoundPickerNames: Array<string | null> = [
-    roundPickerNameByIndex.get(0) ?? null,
-    roundPickerNameByIndex.get(1) ?? null,
-    "System Random",
+  const defaultBplPickerNames = [
+    slots[0]?.display_name ?? "HOST",
+    slots[1]?.display_name ?? "GUEST",
   ];
+  const bplRoundPickerNames: Array<string | null> = Array.from(
+    { length: bplStageCount },
+    (_, index) =>
+      roundPickerNameByIndex.get(index) ??
+      (!isBplFourStage && index === bplStageCount - 1
+        ? "SYSTEM RANDOM"
+        : defaultBplPickerNames[index % defaultBplPickerNames.length] ?? null),
+  );
   const arenaCurrentRoundPickerName =
     currentRound === null ? null : roundPickerNameByIndex.get(currentRound.round_index) ?? null;
   const roomIdLabel = snapshot.room_id;
@@ -1556,7 +1592,9 @@ export function RoomPage() {
     currentExpectedKeyCacheKey === null ? null : resolvedChartsByExpectedKey[currentExpectedKeyCacheKey] ?? null;
   const roundLevel = currentRoundDisplay?.display.level ?? null;
   const currentSongLevel = currentResolvedChart?.level ?? roundLevel;
-  const activeBplPickIndex = snapshot.room_state === "PICKING" ? Math.min(snapshot.picks.length, 2) : null;
+  const activeBplPickIndex = snapshot.room_state === "PICKING"
+    ? Math.min(snapshot.picks.length, Math.max(0, bplStageCount - 1))
+    : null;
   const displayResultPlayers = resultPlayers.length > 0
     ? resultPlayers
     : orderedPlayers.map((player) => ({
@@ -1729,7 +1767,20 @@ export function RoomPage() {
       selectedDiff={chartDifficulty ? getDifficultyId(chartDifficulty) : null}
       selectedLevel={chartLevel ? Number(chartLevel) : null}
       selectedVersion={selectedVersion}
-      timeLeft={pickingCountdown ?? 120}
+      {...(
+        snapshot && isBplMode(snapshot.settings.mode) && snapshot.room_state === "PICKING"
+          ? {
+              selectionProgressLabel:
+                `PICK ${Math.min(mySubmittedPicks.length + 1, requiredPickCountPerPlayer)} / ${requiredPickCountPerPlayer}`,
+            }
+          : {}
+      )}
+      timeLeft={
+        pickingCountdown ??
+        (snapshot && isBplFourStageMode(snapshot.settings.mode)
+          ? BPL4_PICKING_TTL_SECONDS
+          : PICKING_TTL_SECONDS)
+      }
       displayedSongs={pickerSongs}
       totalSongs={pickerSongs.length}
       hasMore={chartNextCursor !== null}
@@ -1917,7 +1968,7 @@ export function RoomPage() {
       };
     });
 
-  const bplPicks: (BplSong | null)[] = Array.from({ length: 3 }, (_, index) => {
+  const bplPicks: (BplSong | null)[] = Array.from({ length: bplStageCount }, (_, index) => {
     const roundSong = roundSongsByIndex.get(index);
     if (roundSong) {
       const revealActualSong =
@@ -1934,31 +1985,36 @@ export function RoomPage() {
       };
     }
 
-    if (index < 2) {
-      const playerPick = roundPickByIndex.get(index) ?? null;
-      if (playerPick) {
-        const parsedPickChartKey = parsePickChartKey(playerPick.pick_chart_key);
-        const resolvedPickChart = getResolvedPickChart(playerPick.pick_chart_key);
-        const resolvedPickChartVersion = getChartVersionLabel(resolvedPickChart);
+    const playerPick = roundPickByIndex.get(index) ?? null;
+    if (playerPick) {
+      const isOwnPick = activePlayerId !== null && playerPick.player_id === activePlayerId;
+      const shouldMaskPick = snapshot.room_state === "PICKING" && !isOwnPick;
+      if (shouldMaskPick) {
         return {
-          title: parsedPickChartKey
-            ? formatSongKeyTitle(
-                parsedPickChartKey.title_search_key,
-                parsedPickChartKey.play_style,
-                parsedPickChartKey.difficulty,
-              )
-            : resolvedPickChart?.title ?? "DECIDED",
-          artist: formatSongArtist(resolvedPickChart?.artist ?? null),
-          ...(resolvedPickChartVersion ? { version: resolvedPickChartVersion } : {}),
-          playStyle: parsedPickChartKey?.play_style ?? snapshot.settings.play_style,
-          level: resolvedPickChart?.level ?? "?",
-          difficulty: getDifficultyId(parsedPickChartKey?.difficulty ?? resolvedPickChart?.difficulty),
+          title: "DECIDED",
+          artist: "Track Hidden",
+          playStyle: snapshot.settings.play_style,
+          level: "?",
+          difficulty: "-",
         };
       }
-    }
-
-    if (index === 2) {
-      return { title: "?????", artist: "System Random", playStyle: snapshot.settings.play_style, level: "??" };
+      const parsedPickChartKey = parsePickChartKey(playerPick.pick_chart_key);
+      const resolvedPickChart = getResolvedPickChart(playerPick.pick_chart_key);
+      const resolvedPickChartVersion = getChartVersionLabel(resolvedPickChart);
+      return {
+        title: parsedPickChartKey
+          ? formatSongKeyTitle(
+              parsedPickChartKey.title_search_key,
+              parsedPickChartKey.play_style,
+              parsedPickChartKey.difficulty,
+            )
+          : resolvedPickChart?.title ?? "DECIDED",
+        artist: formatSongArtist(resolvedPickChart?.artist ?? null),
+        ...(resolvedPickChartVersion ? { version: resolvedPickChartVersion } : {}),
+        playStyle: parsedPickChartKey?.play_style ?? snapshot.settings.play_style,
+        level: resolvedPickChart?.level ?? "?",
+        difficulty: getDifficultyId(parsedPickChartKey?.difficulty ?? resolvedPickChart?.difficulty),
+      };
     }
 
     return null;
@@ -2451,7 +2507,7 @@ export function RoomPage() {
         playerMetrics: bplPlayerMetrics,
         metricLabel: bplMetricLabel,
         resultPlayers: bplResultPlayers,
-        resultRegulationLabel: "3 STAGES",
+        resultRegulationLabel: getBplStageLabel(snapshot.settings.mode),
         finalResultPlayers: bplFinalResultPlayers,
         finalWinningPlayerName: bplWinningPlayerName,
         isHost,

@@ -154,6 +154,7 @@ export interface SongSearchModalViewProps {
     searchPlaceholder?: string;
     subtitle?: string;
     footerLabel?: string;
+    selectionProgressLabel?: string;
 }
 
 export function SongSearchModalView({
@@ -176,6 +177,7 @@ export function SongSearchModalView({
     searchPlaceholder = 'Search by Title or Artist...',
     subtitle = 'Infinitas Arena Battle System',
     footerLabel = 'Project INFINITAS Arena',
+    selectionProgressLabel,
 }: SongSearchModalViewProps) {
     const listViewportRef = useRef<HTMLDivElement | null>(null);
     const loadMoreRef = useRef<HTMLDivElement | null>(null);
@@ -250,6 +252,11 @@ export function SongSearchModalView({
                             <div className="flex flex-col">
                                 <h2 className="text-2xl font-black italic tracking-tighter uppercase text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.3)] leading-none">Pick Music</h2>
                                 <span className="text-[9px] font-black text-cyan-500/80 tracking-widest uppercase mt-1">{subtitle}</span>
+                                {selectionProgressLabel ? (
+                                    <span className="mt-1 inline-flex w-fit rounded-full border border-cyan-500/40 bg-cyan-500/10 px-2 py-0.5 text-[10px] font-black italic tracking-[0.15em] text-cyan-200">
+                                        {selectionProgressLabel}
+                                    </span>
+                                ) : null}
                             </div>
                         </div>
 

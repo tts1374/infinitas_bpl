@@ -1,6 +1,7 @@
 export const READY_CHECK_TTL_MINUTES = 20;
 export const START_MIN_PLAYERS = 2;
 export const PICKING_TTL_SECONDS = 120;
+export const BPL4_PICKING_TTL_SECONDS = 180;
 
 export const ROUND_SOFT_TTL_SECONDS = 300;
 export const HOST_SKIP_UNLOCK_SECONDS = 240;

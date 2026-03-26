@@ -41,7 +41,7 @@
 - `event_seq: int`
 
 ### 2.2 RoomSettings（Ph1）
-- `mode: ARENA|BPL`
+- `mode: ARENA|BPL|BPL4`
 - `auto_rematch: bool`（`PRIVATE` のみ有効）
 - `win_metric: SCORE|MISSCOUNT`
 - `play_style: SP|DP`
@@ -187,11 +187,12 @@ type LobbyRoomSummary = {
 - rank3+: 0
 - 同点同順位、順位飛ばしあり
 
-### 5.4 BPL（3 round）
-- 3ラウンド固定
+### 5.4 BPL / BPL4
+- BPL: 3ラウンド固定（2人が1曲ずつ選曲 + Masterランダム1曲）
+- BPL4: 4ラウンド固定（2人が2曲ずつ選曲）
 - 各ラウンド勝者が1勝
 - 同点は勝ち数加算なし
-- 3ラウンド終了時の総勝ち数で勝敗を決め、同勝ち数なら総合引き分け
+- 既定ラウンド終了時の総勝ち数で勝敗を決め、同勝ち数なら総合引き分け
 
 ## 6. タイトル同定（Ph1 v1）
 

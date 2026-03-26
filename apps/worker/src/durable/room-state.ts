@@ -1,5 +1,7 @@
 import {
   AUTO_REMATCH_RESULT_SECONDS,
+  BPL4_ROUNDS,
+  BPL4_PICKING_TTL_SECONDS,
   BPL_ROUNDS,
   HOST_SKIP_UNLOCK_SECONDS,
   MATCH_TTL_MINUTES,
@@ -374,8 +376,9 @@ function computeReadyCheckDeadline(openedAt: Date): Date {
   return new Date(openedAt.getTime() + READY_CHECK_TTL_MINUTES * 60_000);
 }
 
-function computePickingDeadline(startedAt: Date): Date {
-  return new Date(startedAt.getTime() + PICKING_TTL_SECONDS * 1_000);
+function computePickingDeadline(startedAt: Date, mode: RoomSettings["mode"]): Date {
+  const pickingTtlSeconds = mode === "BPL4" ? BPL4_PICKING_TTL_SECONDS : PICKING_TTL_SECONDS;
+  return new Date(startedAt.getTime() + pickingTtlSeconds * 1_000);
 }
 
 function computeRejoinUntil(now: Date): Date {
@@ -459,14 +462,6 @@ function computeMatchSongUnlockFilter(players: InternalPlayer[]): MatchSongUnloc
 
 function canNewPlayerJoin(roomState: RoomState): roomState is "LOBBY" {
   return roomState === "LOBBY";
-}
-
-function expectedKeyId(expectedKey: ExpectedKey): string {
-  if (typeof expectedKey.chart_id === "number" && Number.isInteger(expectedKey.chart_id) && expectedKey.chart_id > 0) {
-    return `chart_id::${expectedKey.chart_id}`;
-  }
-
-  return `${expectedKey.play_style}::${expectedKey.difficulty}::${expectedKey.title_search_key}`;
 }
 
 function cloneExpectedKey(expectedKey: ExpectedKey): ExpectedKey {
@@ -826,7 +821,7 @@ export class RoomLobbyState {
       return { ok: false, reason: "NOT_ALL_PLAYERS_READY" };
     }
 
-    if (this.settings.mode === "BPL" && this.players.size !== 2) {
+    if (this.isBplMode() && this.players.size !== 2) {
       return { ok: false, reason: "BPL_REQUIRES_TWO_PLAYERS" };
     }
 
@@ -915,7 +910,8 @@ export class RoomLobbyState {
       return { ok: false, reason: "PLAYER_NOT_FOUND" };
     }
 
-    if (this.picks.some((pick) => pick.player_id === playerId)) {
+    const playerPickCount = this.picks.filter((pick) => pick.player_id === playerId).length;
+    if (playerPickCount >= this.getRequiredPickCountForPlayer(playerId)) {
       return { ok: false, reason: "PLAYER_ALREADY_PICKED" };
     }
 
@@ -960,7 +956,7 @@ export class RoomLobbyState {
       },
     };
 
-    if (this.picks.length < this.matchPlayerIds.length) {
+    if (this.picks.length < this.getRequiredPickCount()) {
       return result;
     }
 
@@ -1263,12 +1259,17 @@ export class RoomLobbyState {
     }
 
     const usedChartKeys = new Set(this.picks.map((pick) => pick.pick_chart_key));
-    const missingPlayerIds = this.matchPlayerIds.filter(
-      (playerId) => !this.picks.some((pick) => pick.player_id === playerId),
-    );
+    const missingPickPlayerIds: string[] = [];
+    for (const playerId of this.matchPlayerIds) {
+      const currentPickCount = this.picks.filter((pick) => pick.player_id === playerId).length;
+      const requiredPickCountForPlayer = this.getRequiredPickCountForPlayer(playerId);
+      for (let pickIndex = currentPickCount; pickIndex < requiredPickCountForPlayer; pickIndex += 1) {
+        missingPickPlayerIds.push(playerId);
+      }
+    }
     const acceptedPicks: PickingTimeoutResult["accepted_picks"] = [];
 
-    for (const [index, playerId] of missingPlayerIds.entries()) {
+    for (const [index, playerId] of missingPickPlayerIds.entries()) {
       const acceptedAt = new Date(now.getTime() + index);
       const autoPick = this.chartMaster.pickRandomUnusedChart({
         play_style: this.settings.play_style,
@@ -1986,13 +1987,13 @@ export class RoomLobbyState {
       return { ok: false, reason: "START_REQUIRES_MIN_PLAYERS" };
     }
 
-    if (this.settings.mode === "BPL" && participants.length !== 2) {
+    if (this.isBplMode() && participants.length !== 2) {
       return { ok: false, reason: "BPL_REQUIRES_TWO_PLAYERS" };
     }
 
     this.roomState = "PICKING";
     this.readyCheckDeadline = null;
-    this.pickingDeadline = computePickingDeadline(now);
+    this.pickingDeadline = computePickingDeadline(now, this.settings.mode);
     this.matchDeadline = computeMatchDeadline(now);
     this.resultDeadline = null;
     this.closedAt = null;
@@ -2086,7 +2087,7 @@ export class RoomLobbyState {
       return { ok: false, reason: "INSUFFICIENT_PLAYERS" };
     }
 
-    if (this.settings.mode === "BPL" && participantIds.length !== 2) {
+    if (this.isBplMode() && participantIds.length !== 2) {
       return { ok: false, reason: "INSUFFICIENT_PLAYERS" };
     }
 
@@ -2186,6 +2187,55 @@ export class RoomLobbyState {
     };
   }
 
+  private isBplMode(): boolean {
+    return this.settings.mode === "BPL" || this.settings.mode === "BPL4";
+  }
+
+  private isBplFourStageMode(): boolean {
+    return this.settings.mode === "BPL4";
+  }
+
+  private getBplRoundCount(): number {
+    return this.isBplFourStageMode() ? BPL4_ROUNDS : BPL_ROUNDS;
+  }
+
+  private getRequiredPickCount(): number {
+    if (this.settings.mode === "ARENA") {
+      return this.matchPlayerIds.length;
+    }
+
+    if (!this.isBplMode()) {
+      return this.matchPlayerIds.length;
+    }
+
+    return this.isBplFourStageMode() ? this.getBplRoundCount() : this.matchPlayerIds.length;
+  }
+
+  private getRequiredPickCountForPlayer(playerId: string): number {
+    if (!this.matchPlayerIds.includes(playerId)) {
+      return 0;
+    }
+
+    if (!this.isBplMode()) {
+      return 1;
+    }
+
+    if (!this.isBplFourStageMode()) {
+      return 1;
+    }
+
+    const participantCount = this.matchPlayerIds.length;
+    if (participantCount <= 0) {
+      return 0;
+    }
+
+    const playerIndex = this.matchPlayerIds.indexOf(playerId);
+    const roundCount = this.getBplRoundCount();
+    const basePickCount = Math.floor(roundCount / participantCount);
+    const extraPickCount = roundCount % participantCount;
+    return basePickCount + (playerIndex >= 0 && playerIndex < extraPickCount ? 1 : 0);
+  }
+
   private buildFrozenRounds(): FrozenRound[] {
     const picksByAcceptedOrder = [...this.picks].sort(
       (left, right) => left.accepted_at.getTime() - right.accepted_at.getTime(),
@@ -2204,8 +2254,25 @@ export class RoomLobbyState {
       }));
     }
 
-    if (picksByAcceptedOrder.length < 2) {
+    if (!this.isBplMode()) {
       return [];
+    }
+
+    if (picksByAcceptedOrder.length < this.getRequiredPickCount()) {
+      return [];
+    }
+
+    if (this.isBplFourStageMode()) {
+      return picksByAcceptedOrder.slice(0, this.getBplRoundCount()).map((pick, index) => ({
+        round_index: index,
+        expected_key: cloneExpectedKey(pick.expected_key),
+        display: {
+          title: pick.display.title,
+          level: pick.display.level,
+        },
+        started_at: null,
+        soft_ttl_seconds: ROUND_SOFT_TTL_SECONDS,
+      }));
     }
 
     const rounds: FrozenRound[] = picksByAcceptedOrder.slice(0, 2).map((pick, index) => ({
@@ -2219,18 +2286,22 @@ export class RoomLobbyState {
       soft_ttl_seconds: ROUND_SOFT_TTL_SECONDS,
     }));
 
-    const randomRound = this.buildMasterRandomRound(rounds.length, rounds);
+    const usedChartKeys = new Set(picksByAcceptedOrder.slice(0, 2).map((pick) => pick.pick_chart_key));
+    const randomRound = this.buildMasterRandomRound(rounds.length, rounds, usedChartKeys);
     if (randomRound === null) {
       return [];
     }
 
     rounds.push(randomRound);
 
-    return rounds.slice(0, BPL_ROUNDS);
+    return rounds.slice(0, this.getBplRoundCount());
   }
 
-  private buildMasterRandomRound(roundIndex: number, existingRounds: FrozenRound[]): FrozenRound | null {
-    const usedKeys = new Set(existingRounds.map((round) => expectedKeyId(round.expected_key)));
+  private buildMasterRandomRound(
+    roundIndex: number,
+    existingRounds: FrozenRound[],
+    usedChartKeys: Set<string>,
+  ): FrozenRound | null {
     const pickedLevels = existingRounds
       .map((round) => round.display.level)
       .filter((level): level is number => typeof level === "number");
@@ -2242,14 +2313,14 @@ export class RoomLobbyState {
     const randomChart = this.chartMaster.pickRandomUnusedChart({
       play_style: this.settings.play_style,
       level_filter: this.settings.level_filter,
-      used_chart_keys: usedKeys,
+      used_chart_keys: usedChartKeys,
       ...(this.matchSongUnlockFilter === null
         ? {}
         : { unlock_filter: this.matchSongUnlockFilter }),
       preferred_level_min: levelMin,
       preferred_level_max: levelMax,
       enforce_level_range: true,
-      seed: `${this.roomId}:random:${roundIndex}:${Array.from(usedKeys).sort().join("|")}`,
+      seed: `${this.roomId}:random:${roundIndex}:${Array.from(usedChartKeys).sort().join("|")}`,
     });
     if (randomChart === null) {
       return null;
@@ -2328,7 +2399,7 @@ export class RoomLobbyState {
   }
 
   private getRoundLeadInSeconds(roundIndex: number): number {
-    if (this.settings.mode === "BPL") {
+    if (this.isBplMode()) {
       return roundIndex === 0 ? BPL_PICK_CUTIN_DELAY_SECONDS : BPL_RESULT_PHASE_DELAY_SECONDS;
     }
 
@@ -2353,7 +2424,7 @@ export class RoomLobbyState {
   }
 
   private shouldEnterResultAfterRound(roundIndex: number): boolean {
-    if (this.settings.mode !== "BPL") {
+    if (!this.isBplMode()) {
       return false;
     }
 
@@ -2565,7 +2636,7 @@ export class RoomLobbyState {
       return {
         summary: {
           match_id: matchId,
-          mode: this.settings.mode,
+          mode: this.settings.mode === "ARENA" ? "ARENA" : "BPL",
           win_metric: this.settings.win_metric,
           total_rounds: this.frozenRounds.length,
           completed_rounds: completedRounds,
@@ -2652,7 +2723,7 @@ export class RoomLobbyState {
     return {
       summary: {
         match_id: matchId,
-        mode: this.settings.mode,
+        mode: "BPL",
         win_metric: this.settings.win_metric,
         total_rounds: this.frozenRounds.length,
         completed_rounds: completedRounds,
