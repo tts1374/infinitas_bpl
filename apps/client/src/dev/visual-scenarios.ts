@@ -96,6 +96,7 @@ const VISUAL_CHARTS: ChartSearchEntry[] = [
     title_qualifier: "",
     artist: "DJ Shimamura",
     genre: "HARDCORE",
+    version: "26",
     title_search_key: "#the_relentless",
   },
   {
@@ -107,6 +108,7 @@ const VISUAL_CHARTS: ChartSearchEntry[] = [
     title_qualifier: "",
     artist: "BEMANI Sound Team",
     genre: "TRANCE",
+    version: "31",
     title_search_key: "Stargaze",
   },
   {
@@ -118,6 +120,7 @@ const VISUAL_CHARTS: ChartSearchEntry[] = [
     title_qualifier: "",
     artist: "BEMANI Sound Team \"Sota Fujimori\"",
     genre: "TECHNO",
+    version: "32",
     title_search_key: "Technophobia",
   },
   {
@@ -129,6 +132,7 @@ const VISUAL_CHARTS: ChartSearchEntry[] = [
     title_qualifier: "",
     artist: "削除",
     genre: "TRANCE CORE",
+    version: "30",
     title_search_key: "Everlasting Message",
   },
   {
@@ -140,6 +144,7 @@ const VISUAL_CHARTS: ChartSearchEntry[] = [
     title_qualifier: "",
     artist: "daice",
     genre: "DRUM'N'BASS",
+    version: "31",
     title_search_key: "Stasis",
   },
   {
@@ -151,6 +156,7 @@ const VISUAL_CHARTS: ChartSearchEntry[] = [
     title_qualifier: "",
     artist: "Amuro vs Killer",
     genre: "NJS",
+    version: "11",
     title_search_key: "冥",
   },
   {
@@ -162,6 +168,7 @@ const VISUAL_CHARTS: ChartSearchEntry[] = [
     title_qualifier: "",
     artist: "dj TAKA",
     genre: "TRANCE",
+    version: "11",
     title_search_key: "IIDX RED Ending",
   },
   {
@@ -173,6 +180,7 @@ const VISUAL_CHARTS: ChartSearchEntry[] = [
     title_qualifier: "",
     artist: "Umeboshi Chazuke",
     genre: "ARTCORE",
+    version: "31",
     title_search_key: "Illegal Function Call",
   },
   {
@@ -184,6 +192,7 @@ const VISUAL_CHARTS: ChartSearchEntry[] = [
     title_qualifier: "",
     artist: "猫叉Master",
     genre: "PROGRESSIVE",
+    version: "20",
     title_search_key: "Beyond the Earth",
   },
   {
@@ -195,6 +204,7 @@ const VISUAL_CHARTS: ChartSearchEntry[] = [
     title_qualifier: "",
     artist: "Yamajet",
     genre: "ELECTRO",
+    version: "17",
     title_search_key: "Level 4",
   },
 ];
@@ -1077,6 +1087,7 @@ export function listVisualScenarioCharts(id: string, query: ChartSearchQuery): C
   const offset = Math.max(0, Number(query.cursor ?? "0") || 0);
   const limit = query.limit ?? 20;
   const keyword = query.keyword?.trim().toLowerCase() ?? "";
+  const version = query.version?.trim().toUpperCase() ?? "";
 
   const filteredCharts = charts.filter((chart) => {
     if (chart.play_style !== query.play_style) {
@@ -1089,6 +1100,9 @@ export function listVisualScenarioCharts(id: string, query: ChartSearchQuery): C
       return false;
     }
     if (query.level !== undefined && chart.level !== query.level) {
+      return false;
+    }
+    if (version.length > 0 && (chart.version?.trim().toUpperCase() ?? "") !== version) {
       return false;
     }
     if (keyword.length === 0) {

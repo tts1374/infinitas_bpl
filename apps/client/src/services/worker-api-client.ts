@@ -169,6 +169,7 @@ export async function listCharts(baseUrl: string, query: ChartSearchQuery): Prom
   appendQueryParam(searchParams, "play_style", query.play_style);
   appendQueryParam(searchParams, "level_filter", query.level_filter);
   appendQueryParam(searchParams, "difficulty", query.difficulty);
+  appendQueryParam(searchParams, "version", query.version);
   appendQueryParam(searchParams, "keyword", query.keyword);
   if (typeof query.level === "number") {
     searchParams.set("level", String(query.level));
@@ -189,6 +190,7 @@ export async function listRoomCharts(baseUrl: string, roomId: string, query: Cha
   appendQueryParam(searchParams, "play_style", query.play_style);
   appendQueryParam(searchParams, "level_filter", query.level_filter);
   appendQueryParam(searchParams, "difficulty", query.difficulty);
+  appendQueryParam(searchParams, "version", query.version);
   appendQueryParam(searchParams, "keyword", query.keyword);
   if (typeof query.level === "number") {
     searchParams.set("level", String(query.level));

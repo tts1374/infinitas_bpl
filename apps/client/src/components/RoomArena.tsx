@@ -1,11 +1,13 @@
 import React, { useEffect, useRef, useState, type ReactNode } from 'react';
 import { User, CircleCheck as CheckCircle2, Circle, Play, LogOut, MessageSquare, Info, ShieldCheck, Database, Zap, Music, Copy, Check, Clock } from 'lucide-react';
 import SongSearchModal from './SongSearchModal';
+import { resolveSongVersionLabel } from './SongSearchModalView';
 
 export interface Song {
     id?: string | number;
     title: string;
     artist: string;
+    version?: string;
     playStyle?: string;
     difficulty?: string;
     level: string | number;
@@ -475,9 +477,11 @@ export default function RoomArena({ onNavigate, initialStatus, controlled }: Roo
     const selectedByName = controlled?.selectedByName ?? currentRoundPlayer?.name ?? 'PLAYER_ONE';
     const currentRoundSong = currentRoundPlayer ? playerPicks[currentRoundPlayer.id] ?? null : null;
     const currentRoundTitle = currentRoundSong?.title ?? 'Unknown Track';
+    const currentRoundVersion = resolveSongVersionLabel(currentRoundSong?.version);
     const currentRoundPlayStyle = currentRoundSong?.playStyle ?? '-';
     const currentRoundDifficulty = currentRoundSong?.difficulty ?? '-';
     const currentRoundLevel = currentRoundSong?.level ?? '?';
+    const resultSongVersion = resolveSongVersionLabel(resultSong?.version);
     const resultSongPlayStyle = resultSong?.playStyle ?? '-';
     const resultSongDifficulty = resultSong?.difficulty ?? '-';
     const resultSongLevel = resultSong?.level ?? '?';
@@ -549,7 +553,12 @@ export default function RoomArena({ onNavigate, initialStatus, controlled }: Roo
                                 </div>
                             </div>
 
-                            <div className="flex-1 flex flex-col items-center">
+                                <div className="flex-1 flex flex-col items-center">
+                                    {currentRoundVersion && (
+                                    <span className="text-[10px] font-black text-cyan-500 tracking-[0.2em] mb-1 italic block">
+                                        {currentRoundVersion}
+                                    </span>
+                                )}
                                 <h2 className={`max-w-[32rem] text-center text-3xl font-black italic tracking-tighter text-white leading-tight whitespace-normal ${currentRoundTitle.length > 45 ? 'line-clamp-2 break-all' : 'break-all'}`}>
                                     {currentRoundTitle}
                                 </h2>
@@ -639,15 +648,22 @@ export default function RoomArena({ onNavigate, initialStatus, controlled }: Roo
                 {roomStatus === 'RESULT' && (
                     <div className="fixed inset-0 top-0 left-0 w-full h-full z-[100] bg-[#0f0f10] flex flex-col p-12 animate-in fade-in duration-500">
                         <header className="flex justify-between items-end mb-16">
-                            <div className="flex flex-col gap-2">
+                            <div className="flex flex-col">
                                 <div className="flex items-center gap-4">
                                     <span className="bg-cyan-500 text-black px-4 py-1 font-black italic text-2xl tracking-tighter uppercase">Match Result</span>
                                     <span className="text-xl font-bold text-gray-500 tracking-widest uppercase">Round {roundCount} Summary</span>
                                 </div>
-                                <h2 className={`mt-4 max-w-[56rem] text-6xl font-black italic tracking-tighter text-white leading-tight whitespace-normal ${resultSong?.title && resultSong.title.length > 45 ? 'line-clamp-2 break-all' : 'break-all'}`}>
-                                    {resultSong?.title || 'Unknown Track'}
-                                </h2>
-                                <div className="mt-4 flex flex-wrap items-center gap-3 text-lg font-black italic tracking-[0.2em] text-gray-300">
+                                <div className="mt-6">
+                                    {resultSongVersion && (
+                                        <span className="text-[10px] font-black text-cyan-500 tracking-[0.2em] mb-0.5 italic block">
+                                            {resultSongVersion}
+                                        </span>
+                                    )}
+                                    <h2 className={`max-w-[56rem] text-6xl font-black italic tracking-tighter text-white leading-tight whitespace-normal ${resultSong?.title && resultSong.title.length > 45 ? 'line-clamp-2 break-all' : 'break-all'}`}>
+                                        {resultSong?.title || 'Unknown Track'}
+                                    </h2>
+                                </div>
+                                <div className="mt-3 flex flex-wrap items-center gap-3 text-lg font-black italic tracking-[0.2em] text-gray-300">
                                     <span>{resultSongPlayStyle}</span>
                                     <span className={`${getDifficultyBadgeClass(resultSongDifficulty)} rounded-full px-4 py-1.5 text-xs tracking-[0.2em]`}>{getDifficultyBadgeLabel(resultSongDifficulty)}</span>
                                     <span className="text-cyan-500">Lv{resultSongLevel}</span>

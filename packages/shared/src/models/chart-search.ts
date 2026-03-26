@@ -10,6 +10,7 @@ export interface ChartSearchEntry {
   title_qualifier: string;
   artist: string;
   genre: string;
+  version?: string;
   title_search_key: string;
 }
 
@@ -20,6 +21,7 @@ export interface ChartSearchQuery {
   level_filter: LevelFilter;
   difficulty?: ChartDifficulty;
   level?: number;
+  version?: string;
   keyword?: string;
 }
 

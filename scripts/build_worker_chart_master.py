@@ -47,6 +47,7 @@ def build_payload(sqlite_path: Path, release_tag: str, manifest: dict) -> dict:
             "title_qualifier": row["title_qualifier"] or "",
             "artist": row["artist"] or "",
             "genre": row["genre"] or "",
+            "version": (str(row["version"]).strip() if row["version"] is not None else ""),
             "title_search_key": row["title_search_key"],
             "inf_unlock_type": row["inf_unlock_type"] or "initial",
             "inf_pack_id": row["inf_pack_id"],
@@ -62,6 +63,7 @@ def build_payload(sqlite_path: Path, release_tag: str, manifest: dict) -> dict:
               m.title_qualifier,
               m.artist,
               m.genre,
+              m.version,
               m.title_search_key,
               m.inf_unlock_type,
               m.inf_pack_id

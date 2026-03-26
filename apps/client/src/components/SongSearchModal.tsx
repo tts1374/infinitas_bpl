@@ -1,15 +1,15 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { SongSearchModalView, type SongSearchModalSong } from './SongSearchModalView';
+import { SongSearchModalView, resolveSongVersionLabel, type SongSearchModalSong } from './SongSearchModalView';
 
 const MOCK_SONGS = [
-    { id: 1, title: '冥', artist: 'Amuro vs Killer', difficulty: 'A', level: 12, genre: 'TRANCE' },
-    { id: 2, title: '卑弥呼', artist: '朱雀 VS 玄武', difficulty: 'A', level: 12, genre: 'ESOTERIC SCHRANZ' },
-    { id: 3, title: 'V', artist: 'TAKA', difficulty: 'A', level: 12, genre: 'PROGRESSIVE' },
-    { id: 4, title: 'Session 9 -With You-', artist: 'Praemium', difficulty: 'A', level: 12, genre: 'HARD RENAISSANCE' },
-    { id: 5, title: 'Abyss', artist: 'dj TAKA', difficulty: 'H', level: 10, genre: 'RENAISSANCE' },
-    { id: 6, title: 'Beyond Evolution', artist: 'nora2r', difficulty: 'A', level: 12, genre: 'HARDCORE' },
-    { id: 7, title: 'Bad Candy', artist: 'USAO', difficulty: 'A', level: 12, genre: 'HARDSTYLE' },
-    { id: 8, title: 'CUE CUE CUE', artist: 't+pazolite', difficulty: 'A', level: 12, genre: 'SPEEDCORE' },
+    { id: 1, title: '冥', artist: 'Amuro vs Killer', version: '11', difficulty: 'A', level: 12, genre: 'TRANCE' },
+    { id: 2, title: '卑弥呼', artist: '朱雀 VS 玄武', version: '16', difficulty: 'A', level: 12, genre: 'ESOTERIC SCHRANZ' },
+    { id: 3, title: 'V', artist: 'TAKA', version: '8', difficulty: 'A', level: 12, genre: 'PROGRESSIVE' },
+    { id: 4, title: 'Session 9 -With You-', artist: 'Praemium', version: '4', difficulty: 'A', level: 12, genre: 'HARD RENAISSANCE' },
+    { id: 5, title: 'Abyss', artist: 'dj TAKA', version: '5', difficulty: 'H', level: 10, genre: 'RENAISSANCE' },
+    { id: 6, title: 'Beyond Evolution', artist: 'nora2r', version: '31', difficulty: 'A', level: 12, genre: 'HARDCORE' },
+    { id: 7, title: 'Bad Candy', artist: 'USAO', version: '30', difficulty: 'A', level: 12, genre: 'HARDSTYLE' },
+    { id: 8, title: 'CUE CUE CUE', artist: 't+pazolite', version: '32', difficulty: 'A', level: 12, genre: 'SPEEDCORE' },
 ];
 
 interface SongSearchModalProps {
@@ -22,6 +22,7 @@ export default function SongSearchModal({ isOpen, onClose, onSelect }: SongSearc
     const [search, setSearch] = useState('');
     const [selectedDiff, setSelectedDiff] = useState<string | null>(null);
     const [selectedLevel, setSelectedLevel] = useState<number | null>(null);
+    const [selectedVersion, setSelectedVersion] = useState<string | null>(null);
     const [timeLeft, setTimeLeft] = useState(120);
 
     // タイマーの処理
@@ -49,11 +50,14 @@ export default function SongSearchModal({ isOpen, onClose, onSelect }: SongSearc
         return MOCK_SONGS.filter(song => {
             const matchSearch = song.title.toLowerCase().includes(search.toLowerCase()) ||
                 song.artist.toLowerCase().includes(search.toLowerCase());
+            if (selectedVersion && resolveSongVersionLabel(song.version) !== selectedVersion) {
+                return false;
+            }
             const matchDiff = selectedDiff ? song.difficulty === selectedDiff : true;
             const matchLevel = selectedLevel ? song.level === selectedLevel : true;
             return matchSearch && matchDiff && matchLevel;
         });
-    }, [search, selectedDiff, selectedLevel]);
+    }, [search, selectedDiff, selectedLevel, selectedVersion]);
 
     const displayedSongs = useMemo(() => allFilteredSongs.slice(0, 100), [allFilteredSongs]);
 
@@ -65,12 +69,14 @@ export default function SongSearchModal({ isOpen, onClose, onSelect }: SongSearc
             search={search}
             selectedDiff={selectedDiff}
             selectedLevel={selectedLevel}
+            selectedVersion={selectedVersion}
             timeLeft={timeLeft}
             displayedSongs={displayedSongs}
             totalSongs={allFilteredSongs.length}
             onSearchChange={setSearch}
             onToggleDiff={(difficultyId) => setSelectedDiff(selectedDiff === difficultyId ? null : difficultyId)}
             onToggleLevel={(level) => setSelectedLevel(selectedLevel === level ? null : level)}
+            onToggleVersion={(version) => setSelectedVersion(version.length > 0 ? version : null)}
             onSelect={onSelect}
         />
     );

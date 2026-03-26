@@ -34,6 +34,7 @@ interface WorkerChartMasterChart {
   title_qualifier: string;
   artist: string;
   genre: string;
+  version?: string | null;
   title_search_key: string;
   inf_unlock_type?: string | null;
   inf_pack_id?: number | null;
@@ -84,6 +85,7 @@ export interface SearchChartsOptions {
   unlock_filter?: MatchSongUnlockFilter;
   difficulty?: ChartDifficulty;
   level?: number;
+  version?: string;
   keyword?: string;
   cursor?: string;
   limit?: number;
@@ -418,8 +420,13 @@ function createChartSearchEntry(chart: WorkerChartMasterChart, chartKey: string)
     title_qualifier: chart.title_qualifier,
     artist: chart.artist,
     genre: chart.genre,
+    ...(typeof chart.version === "string" && chart.version.trim().length > 0 ? { version: chart.version.trim() } : {}),
     title_search_key: chart.title_search_key,
   };
+}
+
+function normalizeVersion(value: string | undefined): string {
+  return value?.trim().toUpperCase() ?? "";
 }
 
 export function createRoomChartMaster(snapshotInput: WorkerChartMasterSnapshot): RoomChartMaster {
@@ -752,12 +759,14 @@ export function createRoomChartMaster(snapshotInput: WorkerChartMasterSnapshot):
       unlock_filter,
       difficulty,
       level,
+      version,
       keyword,
       cursor,
       limit,
     }) {
       const offset = parseCursorOffset(cursor);
       const normalizedKeyword = keyword?.trim() ? normalizeLookupKey(keyword) : "";
+      const normalizedVersion = normalizeVersion(version);
       const pageSize = Math.max(1, Math.min(limit ?? CHART_SEARCH_PAGE_SIZE, CHART_SEARCH_PAGE_SIZE));
       const filteredCharts = searchableCharts.filter(({ chart, keyword_index, source }) => {
         if (chart.play_style !== play_style) {
@@ -773,6 +782,9 @@ export function createRoomChartMaster(snapshotInput: WorkerChartMasterSnapshot):
           return false;
         }
         if (level !== undefined && chart.level !== level) {
+          return false;
+        }
+        if (normalizedVersion.length > 0 && normalizeVersion(chart.version) !== normalizedVersion) {
           return false;
         }
         if (normalizedKeyword.length > 0 && !keyword_index.includes(normalizedKeyword)) {
