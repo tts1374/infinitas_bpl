@@ -18,6 +18,8 @@
 - ラウンド: PLAYING中の1譜面単位（譜面リストのindex）
 - Round Result（曲別リザルト）: 1ラウンド単位の結果表示（UIフェーズ）
 - Match Result（最終結果 / RESULT）: マッチ全体の最終集計表示（`room_state=RESULT`）
+- 自動再戦: `visibility=PRIVATE` かつ `settings.auto_rematch=true` のとき、同一 `room_id` を維持したまま次戦へ自動進行する機能（ルーム再作成はしない）
+- 自動再戦の見た目上の遷移: UIでは `RESULT -> PICKING` に見えてよいが、FSM内部は必ず `RESULT -> LOBBY -> PICKING` を通す（`RESULT` から `PICKING` へ直接遷移しない）
 
 ## 3. ルーム状態（RoomState）
 - `LOBBY`

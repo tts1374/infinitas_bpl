@@ -23,6 +23,7 @@ function createSnapshot() {
         title_qualifier: "",
         artist: "Unit A",
         genre: "TRANCE",
+        version: "11",
         title_search_key: "blue fire",
         inf_unlock_type: "bit",
         inf_pack_id: null,
@@ -36,6 +37,7 @@ function createSnapshot() {
         title_qualifier: "",
         artist: "Unit A",
         genre: "TRANCE",
+        version: "11",
         title_search_key: "blue fire",
         inf_unlock_type: "djp",
         inf_pack_id: null,
@@ -49,6 +51,7 @@ function createSnapshot() {
         title_qualifier: "",
         artist: "Unit B",
         genre: "HOUSE",
+        version: "12",
         title_search_key: "night sky",
         inf_unlock_type: "initial",
         inf_pack_id: null,
@@ -62,6 +65,7 @@ function createSnapshot() {
         title_qualifier: "",
         artist: "Unit A",
         genre: "TRANCE",
+        version: "11",
         title_search_key: "blue fire",
         inf_unlock_type: "pack",
         inf_pack_id: 2,
@@ -107,6 +111,18 @@ test("searchCharts applies filters and pagination", () => {
   assert.equal(page2.charts.length, 1);
   assert.equal(page2.charts[0]?.chart_key, "SP::ANOTHER::blue fire");
   assert.equal(page2.next_cursor, null);
+});
+
+test("searchCharts filters by version", () => {
+  const master = createRoomChartMaster(createSnapshot());
+
+  const result = master.searchCharts({
+    play_style: "SP",
+    level_filter: "ANY",
+    version: "12",
+  });
+
+  assert.deepEqual(result.charts.map((chart) => chart.chart_key), ["SP::NORMAL::night sky"]);
 });
 
 test("resolvePickChartKey supports direct and alias lookup", () => {

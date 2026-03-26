@@ -4,11 +4,13 @@ import {
     Database, Swords, Music, Copy, Check, Clock
 } from 'lucide-react';
 import SongSearchModal from './SongSearchModal';
+import { resolveSongVersionLabel } from './SongSearchModalView';
 
 export interface Song {
     id?: string | number;
     title: string;
     artist: string;
+    version?: string;
     playStyle?: string;
     level: string | number;
     difficulty?: string | undefined;
@@ -237,6 +239,8 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
     const finalResultPlayers = controlled?.finalResultPlayers ?? {};
     const currentPlayingSong = picks[roundCount - 1] || picks[2];
     const currentResultSong = picks[roundCount - 1] || picks[2];
+    const currentPlayingSongVersion = resolveSongVersionLabel(currentPlayingSong?.version);
+    const currentResultSongVersion = resolveSongVersionLabel(currentResultSong?.version);
     const currentPlayingSongPlayStyle = currentPlayingSong?.playStyle ?? '-';
     const currentPlayingSongDifficulty = currentPlayingSong?.difficulty ?? 'A';
     const currentPlayingSongLevel = currentPlayingSong?.level ?? '12';
@@ -691,11 +695,16 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
                                     </div>
                                 </div>
                                 <div className="mt-8">
+                                    {currentPlayingSongVersion && (
+                                        <span className="text-[10px] font-black text-cyan-500 tracking-[0.2em] mb-1 italic block drop-shadow-[0_0_6px_rgba(6,182,212,0.45)]">
+                                            {currentPlayingSongVersion}
+                                        </span>
+                                    )}
                                     <h2 className="text-5xl font-black italic tracking-tighter text-white drop-shadow-[0_0_20px_rgba(255,255,255,0.2)] line-clamp-2 leading-tight break-all">
                                         {currentPlayingSong?.title || (roundCount === 3 ? "SYSTEM RANDOM (MAX 300)" : "Unknown Track")}
                                     </h2>
                                     <div className="flex flex-wrap items-center gap-4 mt-1">
-                                        <span className="text-xl font-bold text-gray-500 tracking-widest truncate max-w-xl">{currentPlayingSong?.artist || '-'}</span>
+                                        <span className="text-xl font-bold text-gray-500 tracking-widest truncate max-w-xs xl:max-w-md">{currentPlayingSong?.artist || '-'}</span>
                                         <div className="h-4 w-[1px] bg-white/20" />
                                         <span className="text-sm font-black italic tracking-[0.25em] text-gray-300">{currentPlayingSongPlayStyle}</span>
                                         <span className={`${getDifficultyBadgeClass(currentPlayingSongDifficulty)} px-3 py-1 rounded-full text-xs font-black italic tracking-[0.2em]`}>{getDifficultyBadgeLabel(currentPlayingSongDifficulty)}</span>
@@ -840,6 +849,11 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
                                         <span className="text-lg font-bold text-gray-500 tracking-[0.2em] uppercase">STAGE {roundCount}</span>
                                     </div>
                                     <div className="mt-2 text-left">
+                                        {currentResultSongVersion && (
+                                            <span className="text-[10px] font-black text-cyan-500 tracking-[0.2em] mb-1 italic block drop-shadow-[0_0_6px_rgba(6,182,212,0.45)]">
+                                                {currentResultSongVersion}
+                                            </span>
+                                        )}
                                         <h2 className="text-3xl font-black italic tracking-tighter text-white leading-tight drop-shadow-2xl line-clamp-1">
                                             {currentResultSong?.title || 'System Random'}
                                         </h2>

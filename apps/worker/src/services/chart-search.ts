@@ -26,6 +26,8 @@ export function searchCharts(url: URL): ChartSearchResponse {
 
   const difficulty = asEnumValue(url.searchParams.get("difficulty"), CHART_DIFFICULTIES);
   const level = parsePositiveInt(url.searchParams.get("level"));
+  const versionRaw = url.searchParams.get("version");
+  const version = versionRaw !== null && versionRaw.trim().length > 0 ? versionRaw.trim() : undefined;
   const keywordRaw = url.searchParams.get("keyword");
   const cursorRaw = url.searchParams.get("cursor");
   const cursor = cursorRaw !== null && cursorRaw.trim().length > 0 ? cursorRaw : undefined;
@@ -35,6 +37,7 @@ export function searchCharts(url: URL): ChartSearchResponse {
     level_filter: levelFilter,
     ...(difficulty === undefined ? {} : { difficulty }),
     ...(level === undefined ? {} : { level }),
+    ...(version === undefined ? {} : { version }),
     ...(keywordRaw === null ? {} : { keyword: keywordRaw }),
     ...(cursor === undefined ? {} : { cursor }),
     limit: parseLimit(url.searchParams.get("limit")),

@@ -126,6 +126,10 @@ Ph1 の画面は以下とする。
 - ロビー公開設定
   - `PUBLIC`
   - `PRIVATE`
+- 自動再戦
+  - 項目名は `自動再戦する`
+  - `PRIVATE` 選択時のみ表示する
+  - デフォルトは OFF
 - `join_code`
   - 自動生成
   - 手入力可
@@ -317,16 +321,23 @@ Ph1 の画面は以下とする。
   - reason
 - rated / unrated と block reason
 - 強制進行の有無
+- 自動再戦情報（`PRIVATE` かつ自動再戦有効時のみ）
+  - `自動再戦ON` バッジ
+  - `次戦まで xx 秒` カウントダウン
 
 ## 9.3 主な操作
 - ホスト:
   - LOBBYへ戻る
+  - `自動再戦を停止`
+- 各プレイヤー:
+  - `今回は不参加`（自分のみ操作可）
 - JSON保存確認（自動保存のみでも可）
 - OBS/HTML用の後続導線（Ph1では未実装でも可）
 
 ## 9.4 備考
 - 正常終了時は `RESULT_READY` を保持したまま `RESULT`
 - `RESULT -> LOBBY` 復帰時は全員 ready と前マッチ揮発データをクリアする
+- 自動再戦の見た目は `RESULT -> PICKING` に見えてよいが、内部遷移は必ず `RESULT -> LOBBY -> PICKING` を通す
 - ホスト解散や timeout close の場合は `CLOSED` へ遷移し、結果未確定の可能性がある
 - 最終ラウンド完了時の表示順序は `Final Round Result -> Match Result` とする
 - 最終ラウンドの Round Result は省略せず、`ROUND_RESULT_SECONDS` 以上表示する

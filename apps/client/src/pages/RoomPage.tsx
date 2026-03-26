@@ -39,6 +39,8 @@ import {
   type Song as BplSong,
 } from "../components/RoomBPL";
 import {
+  resolveSongVersionDbValue,
+  resolveSongVersionLabel,
   SongSearchModalView,
   type SongSearchModalSong,
 } from "../components/SongSearchModalView";
@@ -91,6 +93,10 @@ type ParsedResultRound = {
     metricValue: number | null;
     arenaPoints: number | null;
   }>;
+};
+
+type ChartSearchEntryWithVersion = ChartSearchEntry & {
+  version?: string | null;
 };
 
 const BPL_PICK_CUTIN_SECONDS = 3;
@@ -354,6 +360,15 @@ function compareMetricValues(winMetric: RoomStateSnapshot["settings"]["win_metri
 
 function formatSongArtist(artist: string | null | undefined): string {
   return artist && artist.trim().length > 0 ? artist : "BEMANI Series";
+}
+
+function getChartVersionLabel(chart: ChartSearchEntry | null | undefined): string | null {
+  if (!chart) {
+    return null;
+  }
+
+  const rawVersion = (chart as ChartSearchEntryWithVersion).version;
+  return resolveSongVersionLabel(typeof rawVersion === "string" ? rawVersion : null);
 }
 
 function formatLevelFilterLabel(levelFilter: RoomStateSnapshot["settings"]["level_filter"]): string {
@@ -716,6 +731,7 @@ export function RoomPage() {
   const [chartDifficulty, setChartDifficulty] = useState<(typeof CHART_DIFFICULTIES)[number] | "">("");
   const [chartLevel, setChartLevel] = useState("");
   const [chartKeyword, setChartKeyword] = useState("");
+  const [selectedVersion, setSelectedVersion] = useState<string | null>(null);
   const deferredChartKeyword = useDeferredValue(chartKeyword);
   const [chartResults, setChartResults] = useState<ChartSearchEntry[]>([]);
   const [chartLoading, setChartLoading] = useState(false);
@@ -751,6 +767,7 @@ export function RoomPage() {
 
     const trimmedLevel = chartLevel.trim();
     const parsedLevel = trimmedLevel.length === 0 ? undefined : Number(trimmedLevel);
+    const selectedVersionCode = selectedVersion ? resolveSongVersionDbValue(selectedVersion) : null;
     if (
       parsedLevel !== undefined &&
       (!Number.isInteger(parsedLevel) || parsedLevel < 1 || parsedLevel > 12)
@@ -774,6 +791,7 @@ export function RoomPage() {
               level_filter: snapshot.settings.level_filter,
               ...(chartDifficulty === "" ? {} : { difficulty: chartDifficulty }),
               ...(parsedLevel === undefined ? {} : { level: parsedLevel }),
+              ...(selectedVersionCode === null ? {} : { version: selectedVersionCode }),
               ...(deferredChartKeyword.trim().length === 0 ? {} : { keyword: deferredChartKeyword.trim() }),
               ...(targetCursor === null ? {} : { cursor: targetCursor }),
               limit: CHART_SEARCH_PAGE_SIZE,
@@ -783,6 +801,7 @@ export function RoomPage() {
               level_filter: snapshot.settings.level_filter,
               ...(chartDifficulty === "" ? {} : { difficulty: chartDifficulty }),
               ...(parsedLevel === undefined ? {} : { level: parsedLevel }),
+              ...(selectedVersionCode === null ? {} : { version: selectedVersionCode }),
               ...(deferredChartKeyword.trim().length === 0 ? {} : { keyword: deferredChartKeyword.trim() }),
               ...(targetCursor === null ? {} : { cursor: targetCursor }),
               limit: CHART_SEARCH_PAGE_SIZE,
@@ -833,6 +852,7 @@ export function RoomPage() {
     setChartDifficulty("");
     setChartLevel("");
     setChartKeyword("");
+    setSelectedVersion(null);
   }, [showPickerModal]);
 
   useEffect(() => {
@@ -860,6 +880,7 @@ export function RoomPage() {
   }, [
     chartDifficulty,
     chartLevel,
+    selectedVersion,
     deferredChartKeyword,
     savedSettings.apiBaseUrl,
     snapshot?.room_id,
@@ -1610,6 +1631,13 @@ export function RoomPage() {
       ? `Volume ${savedSettings.voiceVolume}`
       : "Sound disabled";
   const roomPresentationSeStatusLabel = roomPresentationSeEnabled ? "ON" : "OFF";
+  const roomAudioVisible =
+    snapshot.room_state === "LOBBY" ||
+    snapshot.room_state === "PICKING" ||
+    autoRematchPanelVisible;
+  const roomAudioAnchorClass = autoRematchPanelVisible
+    ? "fixed right-4 bottom-[8.5rem] z-[140]"
+    : "fixed right-4 top-4 z-[140]";
 
   function requestLeaveRoom(): void {
     if (leaveRoomDisabled) {
@@ -1668,14 +1696,25 @@ export function RoomPage() {
     (ownPickCutInChart?.chart_key === pickChartKey ? ownPickCutInChart : null) ??
     null
   );
-  const pickerSongs: SongSearchModalSong[] = chartResults.map((chart) => ({
-    id: chart.chart_key,
-    title: chart.title,
-    artist: chart.artist,
-    difficulty: getDifficultyId(chart.difficulty),
-    level: chart.level,
-    genre: chart.genre,
-  }));
+  const filteredPickerCharts = chartResults.filter((chart) => {
+    if (!selectedVersion) {
+      return true;
+    }
+
+    return getChartVersionLabel(chart) === selectedVersion;
+  });
+  const pickerSongs: SongSearchModalSong[] = filteredPickerCharts.map((chart) => {
+    const chartVersion = getChartVersionLabel(chart);
+    return {
+      id: chart.chart_key,
+      title: chart.title,
+      artist: chart.artist,
+      ...(chartVersion ? { version: chartVersion } : {}),
+      difficulty: getDifficultyId(chart.difficulty),
+      level: chart.level,
+      genre: chart.genre,
+    };
+  });
   const handleLoadMoreCharts = () => {
     if (chartLoading || chartNextCursor === null) {
       return;
@@ -1689,9 +1728,10 @@ export function RoomPage() {
       search={chartKeyword}
       selectedDiff={chartDifficulty ? getDifficultyId(chartDifficulty) : null}
       selectedLevel={chartLevel ? Number(chartLevel) : null}
+      selectedVersion={selectedVersion}
       timeLeft={pickingCountdown ?? 120}
       displayedSongs={pickerSongs}
-      totalSongs={chartResults.length}
+      totalSongs={pickerSongs.length}
       hasMore={chartNextCursor !== null}
       isLoadingMore={chartLoading && chartResults.length > 0}
       onSearchChange={setChartKeyword}
@@ -1701,6 +1741,9 @@ export function RoomPage() {
       }}
       onToggleLevel={(level) => {
         setChartLevel(chartLevel === String(level) ? "" : String(level));
+      }}
+      onToggleVersion={(version) => {
+        setSelectedVersion(version.length > 0 ? version : null);
       }}
       onLoadMore={handleLoadMoreCharts}
       onSelect={(song) => {
@@ -1731,6 +1774,7 @@ export function RoomPage() {
     selectionTitle: string;
     playingTitle: string;
     artist: string;
+    version?: string;
     playStyle: string;
     level: string | number;
     difficultyId: string;
@@ -1743,12 +1787,14 @@ export function RoomPage() {
   ) => {
     const cacheKey = getExpectedKeyCacheKey(expectedKey);
     const resolvedChart = cacheKey === null ? null : resolvedChartsByExpectedKey[cacheKey] ?? null;
+    const resolvedChartVersion = getChartVersionLabel(resolvedChart);
     roundSongsByIndex.set(roundIndex, {
       selectionTitle: expectedKey
         ? formatSongKeyTitle(expectedKey.title_search_key, expectedKey.play_style, expectedKey.difficulty)
         : fallbackTitle,
       playingTitle: resolvedChart?.title ?? fallbackTitle,
       artist: formatSongArtist(resolvedChart?.artist ?? null),
+      ...(resolvedChartVersion ? { version: resolvedChartVersion } : {}),
       playStyle: expectedKey?.play_style ?? snapshot.settings.play_style,
       level: resolvedChart?.level ?? fallbackLevel ?? "?",
       difficultyId: getDifficultyId(expectedKey?.difficulty),
@@ -1816,6 +1862,7 @@ export function RoomPage() {
     return {
       title: song?.playingTitle ?? round.title,
       artist: song?.artist ?? formatSongArtist(round.artist),
+      ...(song?.version ? { version: song.version } : {}),
       playStyle: song?.playStyle ?? round.expectedKey?.play_style ?? snapshot.settings.play_style,
       level: song?.level ?? round.level ?? "?",
       ...(song?.difficultyId ? { difficulty: song.difficultyId } : {}),
@@ -1880,6 +1927,7 @@ export function RoomPage() {
       return {
         title: revealActualSong ? roundSong.playingTitle : roundSong.selectionTitle,
         artist: roundSong.artist,
+        ...(roundSong.version ? { version: roundSong.version } : {}),
         playStyle: roundSong.playStyle,
         level: roundSong.level,
         difficulty: roundSong.difficultyId,
@@ -1891,6 +1939,7 @@ export function RoomPage() {
       if (playerPick) {
         const parsedPickChartKey = parsePickChartKey(playerPick.pick_chart_key);
         const resolvedPickChart = getResolvedPickChart(playerPick.pick_chart_key);
+        const resolvedPickChartVersion = getChartVersionLabel(resolvedPickChart);
         return {
           title: parsedPickChartKey
             ? formatSongKeyTitle(
@@ -1900,6 +1949,7 @@ export function RoomPage() {
               )
             : resolvedPickChart?.title ?? "DECIDED",
           artist: formatSongArtist(resolvedPickChart?.artist ?? null),
+          ...(resolvedPickChartVersion ? { version: resolvedPickChartVersion } : {}),
           playStyle: parsedPickChartKey?.play_style ?? snapshot.settings.play_style,
           level: resolvedPickChart?.level ?? "?",
           difficulty: getDifficultyId(parsedPickChartKey?.difficulty ?? resolvedPickChart?.difficulty),
@@ -1928,6 +1978,7 @@ export function RoomPage() {
 
     const resolvedPickChart = getResolvedPickChart(pick.pick_chart_key);
     const parsedPickChartKey = parsePickChartKey(pick.pick_chart_key);
+    const resolvedPickChartVersion = getChartVersionLabel(resolvedPickChart);
     const isOwnPick = pick.player_id === activePlayerId;
 
     arenaPicks[mockId] = {
@@ -1938,6 +1989,7 @@ export function RoomPage() {
             "DECIDED"
           : "DECIDED",
       artist: isOwnPick ? formatSongArtist(resolvedPickChart?.artist ?? null) : "Track Hidden",
+      ...(isOwnPick && resolvedPickChartVersion ? { version: resolvedPickChartVersion } : {}),
       playStyle: parsedPickChartKey?.play_style ?? snapshot.settings.play_style,
       difficulty: isOwnPick
         ? getDifficultyId(parsedPickChartKey?.difficulty ?? resolvedPickChart?.difficulty)
@@ -1954,6 +2006,7 @@ export function RoomPage() {
     arenaPicks[mockId] = {
       title: roundSong.playingTitle,
       artist: roundSong.artist,
+      ...(roundSong.version ? { version: roundSong.version } : {}),
       playStyle: roundSong.playStyle,
       difficulty: roundSong.difficultyId,
       level: typeof roundSong.level === "number" ? roundSong.level : 12,
@@ -2568,8 +2621,8 @@ export function RoomPage() {
         </div>
       ) : null}
 
-      {snapshot.room_state !== "CLOSED" ? (
-        <div className="pointer-events-none fixed right-4 top-4 z-[140]">
+      {roomAudioVisible ? (
+        <div className={`pointer-events-none ${roomAudioAnchorClass}`}>
           <div className="pointer-events-auto relative">
             <button
               type="button"
