@@ -1,6 +1,7 @@
 import { handleGetCharts } from "./routes/charts";
 import { handleGetChartAliasResolve } from "./routes/chart-aliases";
 import { handlePostFeedback } from "./routes/feedback";
+import { handleGetJoin } from "./routes/join";
 import { handleGetLobby } from "./routes/lobby";
 import { handleGetRoomCharts, handlePostRooms, handleRoomWebSocket, matchRoomChartsPath, matchRoomWebSocketPath } from "./routes/rooms";
 import { handleGetSongPacks } from "./routes/song-packs";
@@ -12,6 +13,7 @@ import { methodNotAllowed, noContent, notFound, withCors } from "./utils/http";
 const CHARTS_ALLOWED_METHODS = ["GET"];
 const CHART_ALIAS_RESOLVE_ALLOWED_METHODS = ["GET"];
 const ROOMS_ALLOWED_METHODS = ["POST"];
+const JOIN_ALLOWED_METHODS = ["GET"];
 const LOBBY_ALLOWED_METHODS = ["GET"];
 const FEEDBACK_ALLOWED_METHODS = ["POST"];
 const SONG_PACKS_ALLOWED_METHODS = ["GET"];
@@ -49,6 +51,17 @@ export default {
       }
 
       return withCors(methodNotAllowed([...ROOMS_ALLOWED_METHODS, "OPTIONS"]), request, ROOMS_ALLOWED_METHODS);
+    }
+
+    if (url.pathname === "/api/join") {
+      if (request.method === "OPTIONS") {
+        return withCors(noContent(), request, JOIN_ALLOWED_METHODS);
+      }
+      if (request.method === "GET") {
+        return withCors(await handleGetJoin(request, env), request, JOIN_ALLOWED_METHODS);
+      }
+
+      return withCors(methodNotAllowed([...JOIN_ALLOWED_METHODS, "OPTIONS"]), request, JOIN_ALLOWED_METHODS);
     }
 
     if (url.pathname === "/api/lobby") {
