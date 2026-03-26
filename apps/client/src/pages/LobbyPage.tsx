@@ -1,4 +1,6 @@
 import {
+  BPL4_ROUNDS,
+  BPL_ROUNDS,
   JOIN_CODE_CHARSET,
   JOIN_CODE_LENGTH,
   LEVEL_FILTERS,
@@ -41,8 +43,13 @@ const levelLabels: Record<RoomSettings["level_filter"], string> = {
 
 const modeLabels: Record<RoomSettings["mode"], string> = {
   ARENA: "ARENA",
-  BPL: "BPL (3 STAGE)",
+  BPL: `BPL (${BPL_ROUNDS} STAGE)`,
+  BPL4: `BPL (${BPL4_ROUNDS} STAGE)`,
 };
+
+function isBplMode(mode: RoomSettings["mode"]): boolean {
+  return mode === "BPL" || mode === "BPL4";
+}
 
 const winMetricLabels: Record<RoomSettings["win_metric"], string> = {
   SCORE: "SCORE (EX SCORE)",
@@ -394,7 +401,7 @@ export function LobbyPage() {
                   <div className="flex items-center gap-3">
                     <h3 className="text-lg font-bold transition-colors group-hover:text-cyan-400">{roomTitle(room)}</h3>
                     <span className="rounded border border-cyan-500/20 bg-cyan-500/10 px-2 py-0.5 text-[10px] font-black text-cyan-400">
-                      {room.mode === "BPL" ? "BPL" : room.mode}
+                      {room.mode === "ARENA" ? "ARENA" : room.mode === "BPL4" ? "BPL(4)" : "BPL(3)"}
                     </span>
                     {room.hasJoinCode ? <Lock size={14} className="text-amber-500/70" /> : null}
                   </div>
@@ -567,7 +574,7 @@ export function LobbyPage() {
                         setCreateDraft((current) => ({
                           ...current,
                           mode: nextMode,
-                          max_players: nextMode === "BPL" ? 2 : current.max_players,
+                          max_players: isBplMode(nextMode) ? 2 : current.max_players,
                         }));
                       }}
                     >
@@ -647,7 +654,7 @@ export function LobbyPage() {
                     ))}
                   </div>
                 </div>
-                {createDraft.mode === "BPL" ? (
+                {isBplMode(createDraft.mode) ? (
                   <div className="space-y-2">
                     <label className="flex items-center gap-2 text-xs font-bold text-gray-400">
                       <Users size={14} />

@@ -459,7 +459,7 @@ function createResultReady(args: {
 
   return {
     summary: {
-      match_id: `${args.mode.toLowerCase()}-visual-match`,
+      match_id: `${args.mode}-visual-match`,
       mode: args.mode,
       win_metric: "SCORE",
       total_rounds: args.totalRounds,
