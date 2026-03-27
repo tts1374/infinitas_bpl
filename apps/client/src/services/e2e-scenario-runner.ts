@@ -176,7 +176,7 @@ async function maybeAutoReadyAndStart(): Promise<void> {
   const activePlayerId = getActivePlayerId();
   const me = snapshot.players.find((player) => player.player_id === activePlayerId);
   if (me && !me.ready) {
-    roomStore.send("READY_SET", { ready: true });
+    roomStore.setReady(true);
     return;
   }
 
