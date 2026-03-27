@@ -10,9 +10,15 @@ import type {
 
 export interface CreateRoomResponse {
   room_id: string;
+  generation: number;
   created_at: string;
   expires_at: string;
   settings: RoomSettings;
+}
+
+export interface RecreateRoomRequest {
+  room_id: string;
+  host_player_id: string;
 }
 
 export type ListLobbyResponse = LobbyListResponse;
@@ -158,6 +164,14 @@ export async function createRoom(baseUrl: string, settings: RoomSettings): Promi
   return requestJson<CreateRoomResponse>(`${normalizedBaseUrl}/api/rooms`, {
     method: "POST",
     body: JSON.stringify(settings),
+  });
+}
+
+export async function recreateRoom(baseUrl: string, request: RecreateRoomRequest): Promise<CreateRoomResponse> {
+  const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
+  return requestJson<CreateRoomResponse>(`${normalizedBaseUrl}/api/rooms`, {
+    method: "POST",
+    body: JSON.stringify(request),
   });
 }
 

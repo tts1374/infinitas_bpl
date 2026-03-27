@@ -9,6 +9,12 @@ export interface RequestIdPayload {
   request_id: string;
 }
 
+export interface GenerationPayload {
+  generation: number;
+}
+
+export interface RequestIdWithGenerationPayload extends RequestIdPayload, GenerationPayload {}
+
 export interface RoomJoinPayload {
   join_code?: string;
   display_name: string;
@@ -17,7 +23,7 @@ export interface RoomJoinPayload {
   client_capabilities?: JsonObject;
 }
 
-export interface ReadySetPayload {
+export interface ReadySetPayload extends GenerationPayload {
   ready: boolean;
 }
 
@@ -25,7 +31,7 @@ export interface PickSubmitPayload extends RequestIdPayload {
   pick_chart_key: string;
 }
 
-export interface ResultSubmitPayload extends RequestIdPayload {
+export interface ResultSubmitPayload extends RequestIdWithGenerationPayload {
   round_index: number;
   observed_key: ExpectedKey;
   metric_value: number;
@@ -47,10 +53,10 @@ export interface SourceStatusSetPayload extends RequestIdPayload {
 
 export interface ClientMessagePayloadMap {
   ROOM_JOIN: RoomJoinPayload;
-  ROOM_LEAVE: WsEmptyPayload;
+  ROOM_LEAVE: GenerationPayload;
   READY_SET: ReadySetPayload;
-  START_MATCH: RequestIdPayload;
-  RETURN_TO_LOBBY: RequestIdPayload;
+  START_MATCH: RequestIdWithGenerationPayload;
+  RETURN_TO_LOBBY: RequestIdWithGenerationPayload;
   AUTO_REMATCH_STOP: RequestIdPayload;
   AUTO_REMATCH_OPT_OUT: RequestIdPayload;
   SOURCE_STATUS_SET: SourceStatusSetPayload;

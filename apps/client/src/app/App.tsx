@@ -55,6 +55,7 @@ export function App() {
   const roomSnapshot = useRoomStore((state) => state.snapshot);
   const roomConnectionStatus = useRoomStore((state) => state.connectionStatus);
   const connectionPlayerId = useRoomStore((state) => state.connectionPlayerId);
+  const roomJoinCode = useRoomStore((state) => state.joinCode);
   const dialog = useRoomStore((state) => state.errorDialog);
   const sourceUnresolvedDialog = useSourceStore((state) => state.activeUnresolvedDialog);
   const [activeView, setActiveView] = useState<AppView>("lobby");
@@ -63,6 +64,7 @@ export function App() {
   const roomConnectionStatusRef = useRef(roomConnectionStatus);
   const pendingDeepLinkRoomIdRef = useRef<string | null>(null);
   const [pendingDeepLinkRoomId, setPendingDeepLinkRoomId] = useState<string | null>(null);
+  const [pendingRecoveryJoin, setPendingRecoveryJoin] = useState<{ roomId: string; joinCode: string } | null>(null);
   const [mockScenario] = useState(() =>
     runtimeConfig.mockScenarioId ? getVisualScenario(runtimeConfig.mockScenarioId) : null,
   );
@@ -74,6 +76,12 @@ export function App() {
     connectionPlayerId !== null &&
     roomSnapshot.host_player_id === connectionPlayerId &&
     (roomSnapshot.room_state === "PICKING" || roomSnapshot.room_state === "PLAYING");
+  const canRecreateFromDialog =
+    dialog?.code === "ROOM_EXPIRED" &&
+    roomSnapshot !== null &&
+    roomSnapshot.room_state === "CLOSED" &&
+    connectionPlayerId !== null &&
+    roomSnapshot.host_player_id === connectionPlayerId;
 
   const mockScenarioRequested = runtimeConfig.mockScenarioId !== null;
 
@@ -289,9 +297,35 @@ export function App() {
     });
   }
 
+  function rememberPrivateRecoveryJoinHint(): void {
+    if (roomSnapshot === null || roomSnapshot.settings.visibility !== "PRIVATE") {
+      return;
+    }
+    if (roomJoinCode === null || roomJoinCode.trim().length === 0) {
+      return;
+    }
+    if (dialog?.code !== "ROOM_EXPIRED" && dialog?.code !== "ROOM_STATE_CHANGED") {
+      return;
+    }
+
+    setPendingRecoveryJoin({
+      roomId: roomSnapshot.room_id,
+      joinCode: roomJoinCode.trim(),
+    });
+  }
+
   function dismissDialog(): void {
-    if (dialog?.blocking && roomSnapshot?.room_state === "CLOSED") {
+    if (dialog?.code === "ROOM_STATE_CHANGED") {
+      rememberPrivateRecoveryJoinHint();
       roomStore.leaveRoom();
+      navigate("lobby");
+      return;
+    }
+
+    if (dialog?.blocking && roomSnapshot?.room_state === "CLOSED") {
+      rememberPrivateRecoveryJoinHint();
+      roomStore.leaveRoom();
+      navigate("lobby");
       return;
     }
 
@@ -306,8 +340,26 @@ export function App() {
   }
 
   function backToLobbyFromDialog(): void {
+    rememberPrivateRecoveryJoinHint();
     roomStore.leaveRoom();
     navigate("lobby");
+  }
+
+  async function recreateRoomFromDialog(): Promise<void> {
+    const recreated = await roomStore.recreateClosedRoom({
+      apiBaseUrl: savedSettings.apiBaseUrl,
+      playerId: savedSettings.playerId,
+      displayName: savedSettings.displayName,
+      source: savedSettings.source,
+      bitUnlockEnabled: savedSettings.bitUnlockEnabled,
+      djpUnlockEnabled: savedSettings.djpUnlockEnabled,
+      allowLeggendaria: savedSettings.allowLeggendaria,
+      ownedPackIds: savedSettings.ownedPackIds,
+    });
+    if (recreated) {
+      roomStore.clearError();
+      navigate("room");
+    }
   }
 
   function resolveSourceUnresolvedDialog(action: "accept" | "skip" | "close"): void {
@@ -355,8 +407,12 @@ export function App() {
         {activeView === "lobby" ? (
           <LobbyPage
             pendingJoinRoomId={pendingDeepLinkRoomId}
+            pendingRecoveryJoin={pendingRecoveryJoin}
             onConsumePendingJoinRoomId={() => {
               setPendingDeepLinkRoomId(null);
+            }}
+            onConsumePendingRecoveryJoin={() => {
+              setPendingRecoveryJoin(null);
             }}
           />
         ) : null}
@@ -390,6 +446,7 @@ export function App() {
           onClose={dismissDialog}
           onRetryReconnect={retryReconnectFromDialog}
           onReturnToLobby={backToLobbyFromDialog}
+          {...(canRecreateFromDialog ? { onRecreateRoom: recreateRoomFromDialog } : {})}
         />
       ) : null}
       {shouldShowSetupDialog ? (

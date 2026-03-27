@@ -106,12 +106,16 @@ function ModalPortal({ children }: { children: ReactNode }) {
 
 interface LobbyPageProps {
   pendingJoinRoomId?: string | null;
+  pendingRecoveryJoin?: { roomId: string; joinCode: string } | null;
   onConsumePendingJoinRoomId?: () => void;
+  onConsumePendingRecoveryJoin?: () => void;
 }
 
 export function LobbyPage({
   pendingJoinRoomId = null,
+  pendingRecoveryJoin = null,
   onConsumePendingJoinRoomId,
+  onConsumePendingRecoveryJoin,
 }: LobbyPageProps) {
   const savedSettings = useSettingsStore((state) => state.saved);
   const rooms = useLobbyStore((state) => state.rooms);
@@ -161,6 +165,21 @@ export function LobbyPage({
     setLocalMessage(null);
     onConsumePendingJoinRoomId?.();
   }, [onConsumePendingJoinRoomId, pendingJoinRoomId]);
+
+  useEffect(() => {
+    const roomId = pendingRecoveryJoin?.roomId.trim() ?? "";
+    const joinCode = pendingRecoveryJoin?.joinCode.trim() ?? "";
+    if (roomId.length === 0 || joinCode.length === 0) {
+      return;
+    }
+
+    setShowManualJoinCode(false);
+    setShowManualJoin(true);
+    setManualRoomId(roomId);
+    setManualJoinCode(normalizeJoinCodeInput(joinCode));
+    setLocalMessage(null);
+    onConsumePendingRecoveryJoin?.();
+  }, [onConsumePendingRecoveryJoin, pendingRecoveryJoin]);
 
   function closeManualJoinModal(): void {
     setShowManualJoinCode(false);

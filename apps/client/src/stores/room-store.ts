@@ -12,6 +12,7 @@ import {
   type SoundEffectKey,
   type SourceType,
 } from "@infinitas/shared";
+import { recreateRoom } from "../services/worker-api-client";
 import { logE2EEvent } from "../services/e2e-observability";
 import { RoomSocketClient, type SocketConnectionState } from "../services/ws-client";
 import { createExternalStore, useExternalStore } from "./create-store";
@@ -73,6 +74,8 @@ const DJ_NAME_MAX_LENGTH = 6;
 const RECONNECT_DELAY_MS = 1_200;
 const RECONNECT_WINDOW_SECONDS = REJOIN_COOLDOWN_SECONDS;
 const RECONNECT_MAX_ATTEMPTS = Math.ceil((RECONNECT_WINDOW_SECONDS * 1_000) / RECONNECT_DELAY_MS);
+const ROOM_EXPIRED_MESSAGE = "部屋の有効期限が切れました。一覧に戻って再参加してください。";
+const ROOM_STATE_CHANGED_MESSAGE = "部屋の状態が変わりました。一覧に戻ってください。";
 let reconnectContext: RoomReconnectContext | null = null;
 let reconnectTimer: number | null = null;
 let reconnectAttempts = 0;
@@ -228,6 +231,26 @@ function getOrCreateRequestId(key: string): string {
   return nextId;
 }
 
+function getCurrentGeneration(): number | null {
+  const generation = internalStore.getState().snapshot?.generation;
+  return typeof generation === "number" && Number.isInteger(generation) && generation > 0 ? generation : null;
+}
+
+function requireCurrentGeneration(): number | null {
+  const generation = getCurrentGeneration();
+  if (generation !== null) {
+    return generation;
+  }
+
+  // Mock scenarios can omit generation in snapshots; actions are handled locally.
+  if (activeMockScenarioId !== null) {
+    return 1;
+  }
+
+  setErrorDialog("部屋の状態が変わりました", ROOM_STATE_CHANGED_MESSAGE, "ROOM_STATE_CHANGED", true);
+  return null;
+}
+
 function pushAudioEvent(event: RoomAudioEvent): void {
   internalStore.setState((state) => ({
     ...state,
@@ -323,13 +346,13 @@ function roomClosedDialog(reason: CloseReason): {
       };
     case "MATCH_TTL_EXPIRED":
       return {
-        title: "ルームが終了しました",
-        description: "対戦時間の上限に達したため、ルームを終了しました。",
+        title: "ルームの有効期限が切れました",
+        description: ROOM_EXPIRED_MESSAGE,
       };
     case "READY_CHECK_TTL_EXPIRED":
       return {
-        title: "ルームが終了しました",
-        description: "待機時間を超過したため、ルームを終了しました。",
+        title: "ルームの有効期限が切れました",
+        description: ROOM_EXPIRED_MESSAGE,
       };
     case "HOST_DISCONNECTED":
       return {
@@ -408,13 +431,13 @@ function joinRejectDialog(reason: string, hasSnapshot: boolean): {
     case "ROOM_CLOSED":
       return {
         title: "参加できません",
-        description: "部屋が解散しました",
+        description: ROOM_EXPIRED_MESSAGE,
       };
     case "ROOM_STATE_LOST":
       if (!hasSnapshot) {
         return {
           title: "参加できません",
-          description: "部屋が見つかりませんでした",
+          description: ROOM_EXPIRED_MESSAGE,
         };
       }
 
@@ -574,6 +597,7 @@ function startSocketConnection(
     allowLeggendaria: settings.allowLeggendaria,
     ownedPackIds: settings.ownedPackIds,
     joinCode: connection.joinCode,
+    getCurrentGeneration,
     onMessage(message) {
       handleServerMessage(client, message);
     },
@@ -875,6 +899,9 @@ function handleServerMessage(client: RoomSocketClient, message: ServerMessage): 
     case "ROOM_CLOSED": {
       const payload = message.payload as ServerMessagePayloadMap["ROOM_CLOSED"];
       const closedDialog = roomClosedDialog(payload.close_reason);
+      const isExpiredCloseReason =
+        payload.close_reason === "READY_CHECK_TTL_EXPIRED" ||
+        payload.close_reason === "MATCH_TTL_EXPIRED";
       clearReconnectContext();
       clearRequestIds();
       updateClosedSnapshot(payload.close_reason, payload.closed_at, payload.result_ready);
@@ -890,7 +917,12 @@ function handleServerMessage(client: RoomSocketClient, message: ServerMessage): 
         connectionDetail: closedDialog.description,
       }));
       if (payload.close_reason !== "ALL_ROUNDS_COMPLETED") {
-        setErrorDialog(closedDialog.title, closedDialog.description, "ROOM_CLOSED", true);
+        setErrorDialog(
+          closedDialog.title,
+          closedDialog.description,
+          isExpiredCloseReason ? "ROOM_EXPIRED" : "ROOM_CLOSED",
+          true,
+        );
       }
       return;
     }
@@ -902,30 +934,49 @@ function handleServerMessage(client: RoomSocketClient, message: ServerMessage): 
         scheduledAt: message.server_time,
       });
       const snapshot = internalStore.getState().snapshot;
+      const isRoomStateChanged =
+        payload.code === "INVALID_STATE" &&
+        payload.message.trim() === ROOM_STATE_CHANGED_MESSAGE;
       const description =
-        payload.code === "ROOM_STATE_LOST"
+        isRoomStateChanged
+          ? ROOM_STATE_CHANGED_MESSAGE
+          : payload.code === "ROOM_STATE_LOST"
           ? buildRoomStateLostDescription(payload.message)
           : payload.code === "SOURCE_UNAVAILABLE" && snapshot !== null
             ? buildSourceUnavailableDescription(payload.message, snapshot.room_state)
             : payload.message;
 
-      if (payload.code === "ROOM_STATE_LOST") {
+      if (payload.code === "ROOM_STATE_LOST" || isRoomStateChanged) {
         clearReconnectContext();
         closeCurrentClient(false);
-        updateClosedSnapshot("FORCE_CLOSED", message.server_time, internalStore.getState().resultReady !== null);
-        appendEventLog("Room state lost. Showing the latest local snapshot.");
+        if (payload.code === "ROOM_STATE_LOST") {
+          updateClosedSnapshot("FORCE_CLOSED", message.server_time, internalStore.getState().resultReady !== null);
+          appendEventLog("Room state lost. Showing the latest local snapshot.");
+        } else {
+          appendEventLog("Room generation changed. Return to lobby.");
+        }
       }
 
       internalStore.setState((state) => ({
         ...state,
-        connectionStatus: payload.code === "ROOM_STATE_LOST" ? "CLOSED" : state.connectionStatus,
-        connectionDetail: payload.code === "ROOM_STATE_LOST" ? "Room state lost." : state.connectionDetail,
+        connectionStatus:
+          payload.code === "ROOM_STATE_LOST"
+            ? "CLOSED"
+            : isRoomStateChanged
+              ? "ERROR"
+              : state.connectionStatus,
+        connectionDetail:
+          payload.code === "ROOM_STATE_LOST"
+            ? "Room state lost."
+            : isRoomStateChanged
+              ? ROOM_STATE_CHANGED_MESSAGE
+              : state.connectionDetail,
       }));
       setErrorDialog(
-        errorTitleFromCode(payload.code),
+        isRoomStateChanged ? "部屋の状態が変わりました" : errorTitleFromCode(payload.code),
         description,
-        payload.code,
-        payload.code === "ROOM_STATE_LOST" || payload.code === "SOURCE_UNAVAILABLE",
+        isRoomStateChanged ? "ROOM_STATE_CHANGED" : payload.code,
+        payload.code === "ROOM_STATE_LOST" || payload.code === "SOURCE_UNAVAILABLE" || isRoomStateChanged,
       );
       return;
     }
@@ -1002,6 +1053,48 @@ export const roomStore = {
     clearRequestIds();
     activeMockScenarioId = null;
     internalStore.setState(initialState);
+  },
+  async recreateClosedRoom(settings: RoomConnectionSettings): Promise<boolean> {
+    const state = internalStore.getState();
+    const snapshot = state.snapshot;
+    const hostPlayerId = state.connectionPlayerId;
+    if (
+      snapshot === null ||
+      snapshot.room_state !== "CLOSED" ||
+      hostPlayerId === null ||
+      snapshot.host_player_id !== hostPlayerId
+    ) {
+      setErrorDialog("再作成できません", ROOM_STATE_CHANGED_MESSAGE, "ROOM_STATE_CHANGED", true);
+      return false;
+    }
+
+    try {
+      const response = await recreateRoom(settings.apiBaseUrl, {
+        room_id: snapshot.room_id,
+        host_player_id: hostPlayerId,
+      });
+
+      clearReconnectContext();
+      closeCurrentClient(false);
+      clearRequestIds();
+      activeMockScenarioId = null;
+      internalStore.setState((currentState) => ({
+        ...currentState,
+        errorDialog: null,
+      }));
+
+      return this.connect(
+        {
+          roomId: response.room_id,
+          joinCode: response.settings.visibility === "PRIVATE" ? response.settings.join_code : null,
+        },
+        settings,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "同じ ROOM ID での再作成に失敗しました。";
+      setErrorDialog("再作成に失敗しました", message);
+      return false;
+    }
   },
   clearError(): void {
     internalStore.setState((state) => ({
@@ -1109,14 +1202,37 @@ export const roomStore = {
       return false;
     }
   },
+  setReady(ready: boolean): boolean {
+    const generation = requireCurrentGeneration();
+    if (generation === null) {
+      return false;
+    }
+
+    return this.send("READY_SET", {
+      ready,
+      generation,
+    });
+  },
   startMatch(): boolean {
+    const generation = requireCurrentGeneration();
+    if (generation === null) {
+      return false;
+    }
+
     return this.send("START_MATCH", {
       request_id: getOrCreateRequestId("START_MATCH"),
+      generation,
     });
   },
   returnToLobby(): boolean {
+    const generation = requireCurrentGeneration();
+    if (generation === null) {
+      return false;
+    }
+
     return this.send("RETURN_TO_LOBBY", {
       request_id: getOrCreateRequestId("RETURN_TO_LOBBY"),
+      generation,
     });
   },
   stopAutoRematch(): boolean {
@@ -1161,11 +1277,17 @@ export const roomStore = {
     metric_value: number;
     source_meta?: ClientMessagePayloadMap["RESULT_SUBMIT"]["source_meta"];
   }): boolean {
+    const generation = requireCurrentGeneration();
+    if (generation === null) {
+      return false;
+    }
+
     const requestKey =
       `RESULT_SUBMIT:${input.round_index}:${input.metric_value}:` +
       `${input.observed_key.play_style}:${input.observed_key.difficulty}:${input.observed_key.title_search_key}`;
     return this.send("RESULT_SUBMIT", {
       request_id: getOrCreateRequestId(requestKey),
+      generation,
       round_index: input.round_index,
       observed_key: input.observed_key,
       metric_value: input.metric_value,

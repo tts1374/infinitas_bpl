@@ -16,13 +16,18 @@ import type { CreateRoomResponse } from "../types/api";
 import type { WorkerEnv } from "../types/env";
 import { upsertLobbyDirectoryRoom } from "./lobby-directory";
 import { generateJoinCode, isValidJoinCode, normalizeJoinCode } from "./join-code";
-import { initializeRoomDurableObject } from "./room-do";
+import { initializeRoomDurableObject, recreateRoomDurableObject } from "./room-do";
 import { asEnumValue, asNullableString, asOptionalString, isRecord } from "../utils/validation";
 
 interface CreateRoomInput {
   settings: RoomSettings;
   createdAt: Date;
   expiresAt: Date;
+}
+
+interface RecreateRoomInput {
+  roomId: string;
+  hostPlayerId: string;
 }
 
 function normalizeVisibility(value: unknown): RoomSettings["visibility"] | undefined {
@@ -131,6 +136,23 @@ function parseCreateRoomPayload(payload: unknown): CreateRoomInput {
   };
 }
 
+function parseRecreateRoomPayload(payload: unknown): RecreateRoomInput | null {
+  if (!isRecord(payload)) {
+    return null;
+  }
+
+  const roomId = asOptionalString(payload.room_id)?.trim() ?? "";
+  const hostPlayerId = asOptionalString(payload.host_player_id)?.trim() ?? "";
+  if (roomId.length === 0 || hostPlayerId.length === 0) {
+    return null;
+  }
+
+  return {
+    roomId,
+    hostPlayerId,
+  };
+}
+
 function deriveRoomName(settings: RoomSettings): string {
   const comment = settings.room_comment.trim();
   if (comment.length > 0) {
@@ -167,6 +189,21 @@ export async function createRoom(
   env: WorkerEnv,
   payload: unknown,
 ): Promise<CreateRoomResponse> {
+  const recreateInput = parseRecreateRoomPayload(payload);
+  if (recreateInput !== null) {
+    const recreated = await recreateRoomDurableObject(env, recreateInput.roomId, recreateInput.hostPlayerId);
+    const recreatedAt = new Date(recreated.created_at);
+    const expiresAt = computeRoomExpiry(recreatedAt);
+
+    return {
+      room_id: recreated.room_id,
+      generation: recreated.generation,
+      created_at: recreated.created_at,
+      expires_at: expiresAt.toISOString(),
+      settings: recreated.settings,
+    };
+  }
+
   const parsed = parseCreateRoomPayload(payload);
   const roomId = crypto.randomUUID();
   const createdAtIso = parsed.createdAt.toISOString();
@@ -179,6 +216,7 @@ export async function createRoom(
 
   return {
     room_id: roomId,
+    generation: 1,
     created_at: createdAtIso,
     expires_at: parsed.expiresAt.toISOString(),
     settings: parsed.settings,

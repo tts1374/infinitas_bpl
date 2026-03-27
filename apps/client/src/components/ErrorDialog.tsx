@@ -8,9 +8,10 @@ interface ErrorDialogProps {
   onClose: () => void;
   onRetryReconnect?: () => void;
   onReturnToLobby?: () => void;
+  onRecreateRoom?: () => void;
 }
 
-export function ErrorDialog({ dialog, onClose, onRetryReconnect, onReturnToLobby }: ErrorDialogProps) {
+export function ErrorDialog({ dialog, onClose, onRetryReconnect, onReturnToLobby, onRecreateRoom }: ErrorDialogProps) {
   const archiveStatus = useLocalResultArchiveStore((state) => state.status);
   const archiveStorage = useLocalResultArchiveStore((state) => state.storage);
   const archivePath = useLocalResultArchiveStore((state) => state.filePath);
@@ -28,6 +29,15 @@ export function ErrorDialog({ dialog, onClose, onRetryReconnect, onReturnToLobby
           buttonClass: "bg-red-500 text-black hover:bg-red-400 shadow-[0_10px_30px_rgba(239,68,68,0.3)]",
           footerLabel: "Capacity Reached",
         }
+      : dialog.code === "ROOM_EXPIRED"
+        ? {
+            Icon: ShieldAlert,
+            accentClass: "text-amber-400",
+            iconClass: "border-amber-500/20 bg-amber-500/10 text-amber-400",
+            cardClass: "border-amber-500/20 shadow-[0_30px_90px_rgba(245,158,11,0.2)]",
+            buttonClass: "bg-amber-500 text-black hover:bg-amber-400 shadow-[0_10px_30px_rgba(245,158,11,0.25)]",
+            footerLabel: "有効期限切れ",
+          }
       : dialog.code === "ROOM_CLOSED"
         ? {
             Icon: ShieldAlert,
@@ -59,6 +69,10 @@ export function ErrorDialog({ dialog, onClose, onRetryReconnect, onReturnToLobby
   const showReconnectActions =
     dialog.code === "RECONNECT_TIMEOUT" &&
     typeof onRetryReconnect === "function" &&
+    typeof onReturnToLobby === "function";
+  const showRecreateActions =
+    dialog.code === "ROOM_EXPIRED" &&
+    typeof onRecreateRoom === "function" &&
     typeof onReturnToLobby === "function";
 
   return (
@@ -126,6 +140,23 @@ export function ErrorDialog({ dialog, onClose, onRetryReconnect, onReturnToLobby
               className={`w-full rounded-2xl py-4 text-xs font-black uppercase tracking-widest transition-all ${variant.buttonClass}`}
             >
               再試行
+            </button>
+          </div>
+        ) : showRecreateActions ? (
+          <div className="grid grid-cols-2 gap-4 px-8 pb-8">
+            <button
+              type="button"
+              onClick={onReturnToLobby}
+              className="w-full rounded-2xl border border-white/15 bg-white/5 py-4 text-xs font-black uppercase tracking-widest text-gray-200 transition-all hover:bg-white/10"
+            >
+              一覧に戻る
+            </button>
+            <button
+              type="button"
+              onClick={onRecreateRoom}
+              className={`w-full rounded-2xl py-4 text-xs font-black uppercase tracking-widest transition-all ${variant.buttonClass}`}
+            >
+              同じROOM IDで再作成
             </button>
           </div>
         ) : (
