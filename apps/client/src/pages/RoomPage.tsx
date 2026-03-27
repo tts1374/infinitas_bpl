@@ -112,7 +112,7 @@ type ChartSearchEntryWithVersion = ChartSearchEntry & {
 const BPL_PICK_CUTIN_SECONDS = 3;
 const BPL_RESULT_PHASE_SECONDS = 10;
 const ARENA_RESULT_PHASE_SECONDS = 10;
-const DEFAULT_JOIN_PAGE_URL = "https://tts1374.github.io/infinitas_arena/join";
+const DEFAULT_JOIN_PAGE_URL = "https://tts1374.github.io/infinitas_arena/join/";
 const X_SHARE_HASHTAGS = ["INFINITAS_ARENA"] as const;
 
 function isBplMode(mode: RoomStateSnapshot["settings"]["mode"]): boolean {
@@ -438,6 +438,9 @@ function formatRoomTitle(
 function buildJoinPageUrl(baseUrl: string, roomId: string): string {
   try {
     const resolved = new URL(baseUrl, window.location.origin);
+    if (!resolved.pathname.endsWith("/")) {
+      resolved.pathname = `${resolved.pathname}/`;
+    }
     resolved.searchParams.set("r", roomId);
     return resolved.toString();
   } catch {
