@@ -446,7 +446,7 @@ export function App() {
           onClose={dismissDialog}
           onRetryReconnect={retryReconnectFromDialog}
           onReturnToLobby={backToLobbyFromDialog}
-          onRecreateRoom={canRecreateFromDialog ? recreateRoomFromDialog : undefined}
+          {...(canRecreateFromDialog ? { onRecreateRoom: recreateRoomFromDialog } : {})}
         />
       ) : null}
       {shouldShowSetupDialog ? (
