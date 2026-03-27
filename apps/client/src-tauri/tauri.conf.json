@@ -33,6 +33,11 @@
     ]
   },
   "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["infinitas-arena"]
+      }
+    },
     "updater": {
       "endpoints": [],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDRBNEFEREU1NjQwMkNBNEYKUldSUHlnSms1ZDFLU2xHSTAxcVZpblRWWHdoWTNzdWlYY0JMRzFSeXNqUjJIYklIcUhjWEppYWgK",

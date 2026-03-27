@@ -29,6 +29,7 @@ export interface WorkerEnv {
   ROOM_DO: RoomDurableObjectNamespace;
   LOBBY_DIRECTORY_DO: LobbyDirectoryDurableObjectNamespace;
   FEEDBACK_KV: WorkerKVNamespace;
+  APP_DOWNLOAD_URL?: string;
   REPO_OWNER_GITHUB: string;
   REPO_NAME_GITHUB: string;
   APP_ENV: string;

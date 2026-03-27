@@ -30,7 +30,7 @@ export const WEB_LINKS = Object.freeze({
 export const WEB_RUNTIME = Object.freeze({
   basePath,
   deepLinkScheme: envOrDefault(import.meta.env.VITE_DEEP_LINK_SCHEME, "infinitas-arena://join"),
-  joinApiEndpoint: import.meta.env.VITE_JOIN_API_ENDPOINT?.trim() ?? "",
+  joinApiEndpoint: envOrDefault(import.meta.env.VITE_JOIN_API_ENDPOINT, "/api/join"),
 });
 
 export const JOIN_DEMO_QUERY = "demo-open";

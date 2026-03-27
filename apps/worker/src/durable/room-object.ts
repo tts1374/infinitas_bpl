@@ -105,6 +105,7 @@ interface RoomDurableRecord {
   processed_request_keys: string[];
   seen_client_message_ids?: SeenClientMessageIdsRecord;
   next_event_seq: number;
+  share_recruitment_closed?: boolean;
 }
 
 type RoomDoLogLevel = "INFO" | "WARN" | "ERROR";
@@ -157,6 +158,15 @@ type ClientEnvelopeLogContext = {
   player_id: string;
   client_msg_id: string;
 };
+
+type InternalJoinRecruitmentStatus = "recruiting" | "full" | "closed";
+
+interface InternalJoinStatusPayload {
+  room_name: string;
+  recruitment_status: InternalJoinRecruitmentStatus;
+  shareable: boolean;
+  updated_at: string;
+}
 
 function summarizeExpectedKey(expectedKey: ExpectedKey): JsonObject {
   return {
@@ -692,6 +702,7 @@ export class RoomDurableObject {
   private readonly minSupportedClientVersion: ParsedClientVersion;
   private processedRequestKeys: string[] = [];
   private nextEventSeq = 0;
+  private shareRecruitmentClosed = false;
   private readonly readyPromise: Promise<void>;
 
   constructor(
@@ -712,6 +723,8 @@ export class RoomDurableObject {
           this.seenClientMessageIds.set(playerId, messageIds);
         }
         this.nextEventSeq = record.next_event_seq;
+        this.shareRecruitmentClosed =
+          record.share_recruitment_closed === true || this.roomState.getRoomState() !== "LOBBY";
       }
 
       this.rebuildSessionsFromWebSockets();
@@ -831,6 +844,12 @@ export class RoomDurableObject {
     if (url.pathname === "/internal/init" && request.method === "POST") {
       return this.handleInternalInitialize(request);
     }
+    if (url.pathname === "/join-status") {
+      if (request.method !== "GET") {
+        return jsonResponse(405, { error: "Method not allowed." });
+      }
+      return this.handleInternalJoinStatus();
+    }
     if (url.pathname === "/charts") {
       if (request.method !== "GET") {
         return jsonResponse(405, { error: "Method not allowed." });
@@ -935,6 +954,41 @@ export class RoomDurableObject {
     });
 
     return jsonResponse(200, response);
+  }
+
+  private buildInternalJoinStatus(snapshot: RoomStateSnapshot): InternalJoinStatusPayload | null {
+    if (snapshot.settings.visibility !== "PUBLIC") {
+      return null;
+    }
+
+    const currentPlayers = snapshot.players.length;
+    const maxPlayers = snapshot.settings.max_players;
+    const isFull = currentPlayers >= maxPlayers;
+    const inRecruitingLobby = snapshot.room_state === "LOBBY";
+    const recruitmentClosed = this.shareRecruitmentClosed || !inRecruitingLobby;
+    const recruitmentStatus: InternalJoinRecruitmentStatus =
+      recruitmentClosed ? "closed" : isFull ? "full" : "recruiting";
+
+    return {
+      room_name: this.deriveLobbyRoomName(snapshot),
+      recruitment_status: recruitmentStatus,
+      shareable: recruitmentStatus === "recruiting",
+      updated_at: new Date().toISOString(),
+    };
+  }
+
+  private handleInternalJoinStatus(): Response {
+    if (!this.roomState.isInitialized()) {
+      return jsonResponse(404, { error: "ROOM_STATE_LOST" });
+    }
+
+    const snapshot = this.roomState.toSnapshot();
+    const payload = this.buildInternalJoinStatus(snapshot);
+    if (payload === null) {
+      return jsonResponse(404, { error: "NOT_PUBLIC_ROOM" });
+    }
+
+    return jsonResponse(200, payload);
   }
 
   async webSocketMessage(
@@ -1767,6 +1821,8 @@ export class RoomDurableObject {
       return;
     }
 
+    // Host-initiated room recreation reopens recruitment for the same shared URL.
+    this.shareRecruitmentClosed = false;
     this.rememberRequest(session.playerId, message.type, payload.request_id);
     await this.persistRoomRecord();
     await this.syncAlarm();
@@ -2638,12 +2694,16 @@ export class RoomDurableObject {
       // CLOSED means the room lifecycle ended, so message-level dedupe history is discarded.
       this.clearSeenClientMessageIds();
     }
+    if (!this.shareRecruitmentClosed && this.roomState.getRoomState() !== "LOBBY") {
+      this.shareRecruitmentClosed = true;
+    }
 
     const record: RoomDurableRecord = {
       room_state: this.roomState.toPersistenceRecord(),
       processed_request_keys: [...this.processedRequestKeys],
       seen_client_message_ids: serializeSeenClientMessageIds(this.seenClientMessageIds),
       next_event_seq: this.nextEventSeq,
+      share_recruitment_closed: this.shareRecruitmentClosed,
     };
     await this.state.storage.put(ROOM_RECORD_STORAGE_KEY, record);
   }

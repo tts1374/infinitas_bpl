@@ -14,11 +14,41 @@ import { initializeE2EObservability } from "../services/e2e-observability";
 import { startE2EScenarioRunner } from "../services/e2e-scenario-runner";
 import { runtimeConfig } from "../runtime/runtime-config";
 import { statsArchiveService } from "../services/stats-archive";
+import { logClientShareAnalytics } from "../services/share-analytics";
+import { getCurrentDeepLinkUrls, listenToDeepLinkUrls } from "../services/tauri-bridge";
 import { voiceAnnouncerService } from "../services/voice-announcer";
 import { lobbyStore } from "../stores/lobby-store";
 import { roomStore, useRoomStore } from "../stores/room-store";
 import { sourceStore, useSourceStore } from "../stores/source-store";
 import { isRoomEntryReady, settingsStore, useSettingsStore } from "../stores/settings-store";
+
+function parseJoinRoomRefFromDeepLink(rawUrl: string): string | null {
+  try {
+    const parsed = new URL(rawUrl);
+    if (parsed.protocol !== "infinitas-arena:") {
+      return null;
+    }
+    if (parsed.hostname !== "join" && parsed.pathname !== "/join") {
+      return null;
+    }
+
+    const roomRef = parsed.searchParams.get("r")?.trim();
+    return roomRef && roomRef.length > 0 ? roomRef : null;
+  } catch {
+    return null;
+  }
+}
+
+function pickRoomRefFromDeepLinkUrls(urls: string[]): string | null {
+  for (const url of urls) {
+    const roomRef = parseJoinRoomRefFromDeepLink(url);
+    if (roomRef !== null) {
+      return roomRef;
+    }
+  }
+
+  return null;
+}
 
 export function App() {
   const savedSettings = useSettingsStore((state) => state.saved);
@@ -29,6 +59,10 @@ export function App() {
   const sourceUnresolvedDialog = useSourceStore((state) => state.activeUnresolvedDialog);
   const [activeView, setActiveView] = useState<AppView>("lobby");
   const activeViewRef = useRef<AppView>(activeView);
+  const roomSnapshotRef = useRef(roomSnapshot);
+  const roomConnectionStatusRef = useRef(roomConnectionStatus);
+  const pendingDeepLinkRoomIdRef = useRef<string | null>(null);
+  const [pendingDeepLinkRoomId, setPendingDeepLinkRoomId] = useState<string | null>(null);
   const [mockScenario] = useState(() =>
     runtimeConfig.mockScenarioId ? getVisualScenario(runtimeConfig.mockScenarioId) : null,
   );
@@ -46,6 +80,11 @@ export function App() {
   useEffect(() => {
     activeViewRef.current = activeView;
   }, [activeView]);
+
+  useEffect(() => {
+    roomSnapshotRef.current = roomSnapshot;
+    roomConnectionStatusRef.current = roomConnectionStatus;
+  }, [roomConnectionStatus, roomSnapshot]);
 
   useEffect(() => {
     if (roomSnapshot !== null && activeView !== "room") {
@@ -154,6 +193,89 @@ export function App() {
   ]);
 
   useEffect(() => {
+    if (mockScenarioRequested) {
+      return;
+    }
+
+    let disposed = false;
+    let stopListening: (() => void) | null = null;
+
+    const handleDeepLinkUrls = (urls: string[], trigger: "startup" | "runtime"): void => {
+      const roomRef = pickRoomRefFromDeepLinkUrls(urls);
+      if (roomRef === null) {
+        return;
+      }
+
+      const hasActiveRoom =
+        roomSnapshotRef.current !== null ||
+        roomConnectionStatusRef.current === "CONNECTING" ||
+        roomConnectionStatusRef.current === "JOINING" ||
+        roomConnectionStatusRef.current === "CONNECTED";
+      if (hasActiveRoom) {
+        logClientShareAnalytics("join_page_deep_link_ignored", {
+          trigger,
+          roomId: roomRef,
+          reason: "active_room",
+          roomState: roomSnapshotRef.current?.room_state ?? null,
+          connectionStatus: roomConnectionStatusRef.current,
+        });
+        return;
+      }
+
+      pendingDeepLinkRoomIdRef.current = roomRef;
+      setPendingDeepLinkRoomId(roomRef);
+      logClientShareAnalytics("join_page_deep_link_received", {
+        trigger,
+        roomId: roomRef,
+      });
+      startTransition(() => {
+        setActiveView("lobby");
+      });
+    };
+
+    void (async () => {
+      try {
+        const startUrls = await getCurrentDeepLinkUrls();
+        handleDeepLinkUrls(startUrls, "startup");
+        stopListening = await listenToDeepLinkUrls((urls) => {
+          handleDeepLinkUrls(urls, "runtime");
+        });
+        if (disposed && stopListening !== null) {
+          stopListening();
+          stopListening = null;
+        }
+      } catch {
+        // no-op: deep-link plugin may be unavailable in non-desktop contexts.
+      }
+    })();
+
+    return () => {
+      disposed = true;
+      if (stopListening !== null) {
+        stopListening();
+        stopListening = null;
+      }
+    };
+  }, [mockScenarioRequested]);
+
+  useEffect(() => {
+    if (roomSnapshot === null || roomConnectionStatus !== "CONNECTED") {
+      return;
+    }
+
+    if (pendingDeepLinkRoomIdRef.current !== roomSnapshot.room_id) {
+      return;
+    }
+
+    logClientShareAnalytics("join_page_join_succeeded", {
+      roomId: roomSnapshot.room_id,
+      roomState: roomSnapshot.room_state,
+    });
+    pendingDeepLinkRoomIdRef.current = null;
+    setPendingDeepLinkRoomId(null);
+  }, [roomConnectionStatus, roomSnapshot]);
+
+  useEffect(() => {
     void initializeE2EObservability();
     const stopRunner = startE2EScenarioRunner(() => activeViewRef.current);
     return () => {
@@ -230,7 +352,14 @@ export function App() {
       {activeView !== "room" ? <AppSidebar activeView={activeView} hasRoom={roomSnapshot !== null} onNavigate={navigate} /> : null}
 
       <section className={activeView === "room" ? "relative min-w-0 flex-1 overflow-hidden" : "custom-scrollbar relative min-w-0 flex-1 overflow-y-auto p-8"}>
-        {activeView === "lobby" ? <LobbyPage /> : null}
+        {activeView === "lobby" ? (
+          <LobbyPage
+            pendingJoinRoomId={pendingDeepLinkRoomId}
+            onConsumePendingJoinRoomId={() => {
+              setPendingDeepLinkRoomId(null);
+            }}
+          />
+        ) : null}
         {activeView === "settings" ? (
           <SettingsPage
             roomJoined={roomSnapshot !== null}

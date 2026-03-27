@@ -21,3 +21,13 @@ export interface ChartSearchResponse {
   charts: ChartSearchEntry[];
   next_cursor: string | null;
 }
+
+export type RecruitmentStatus = "recruiting" | "full" | "closed" | "expired";
+
+export interface JoinRoomStatusResponse {
+  room_name: string;
+  recruitment_status: RecruitmentStatus;
+  shareable: boolean;
+  download_url: string;
+  updated_at: ISO8601String;
+}

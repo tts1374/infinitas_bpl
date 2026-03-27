@@ -297,3 +297,88 @@ test("SOURCE_STATUS_SET changed update persists and syncs alarm", async () => {
   assert.equal(persistCalls, 2);
   assert.equal(syncAlarmCalls, 1);
 });
+
+test("internal join-status returns recruiting for PUBLIC LOBBY room", async () => {
+  const roomObject = await createRoomObject();
+  const response = await roomObject.fetch(new Request("https://room.internal/join-status", { method: "GET" }));
+  assert.equal(response.status, 200);
+
+  const payload = await response.json();
+  assert.equal(payload.room_name, "room object test");
+  assert.equal(payload.recruitment_status, "recruiting");
+  assert.equal(payload.shareable, true);
+});
+
+test("internal join-status returns full when lobby is at capacity", async () => {
+  const roomObject = await createRoomObject();
+  roomObject.roomState.settings.max_players = 2;
+  const hostSocket = new TestSocket();
+  const guestSocket = new TestSocket();
+  await joinPlayer(roomObject, hostSocket, "host", "msg-1");
+  await joinPlayer(roomObject, guestSocket, "guest", "msg-2");
+
+  const response = await roomObject.fetch(new Request("https://room.internal/join-status", { method: "GET" }));
+  assert.equal(response.status, 200);
+
+  const payload = await response.json();
+  assert.equal(payload.recruitment_status, "full");
+  assert.equal(payload.shareable, false);
+});
+
+test("internal join-status returns closed after match has started", async () => {
+  const roomObject = await createRoomObject();
+  const now = new Date("2026-03-08T00:00:00.000Z");
+  const hostSocket = new TestSocket();
+  const guestSocket = new TestSocket();
+
+  await joinPlayer(roomObject, hostSocket, "host", "msg-1");
+  await joinPlayer(roomObject, guestSocket, "guest", "msg-2");
+  roomObject.roomState.setPlayerReady("host", true);
+  roomObject.roomState.setPlayerReady("guest", true);
+  const startResult = roomObject.roomState.startMatch("host", now);
+  assert.equal(startResult.ok, true);
+
+  const response = await roomObject.fetch(new Request("https://room.internal/join-status", { method: "GET" }));
+  assert.equal(response.status, 200);
+
+  const payload = await response.json();
+  assert.equal(payload.recruitment_status, "closed");
+  assert.equal(payload.shareable, false);
+});
+
+test("internal join-status returns recruiting after host recreates room via RETURN_TO_LOBBY", async () => {
+  const roomObject = await createRoomObject();
+  const now = new Date();
+  const hostSocket = new TestSocket();
+  const guestSocket = new TestSocket();
+
+  await joinPlayer(roomObject, hostSocket, "host", "msg-1");
+  await joinPlayer(roomObject, guestSocket, "guest", "msg-2");
+  roomObject.roomState.setPlayerReady("host", true);
+  roomObject.roomState.setPlayerReady("guest", true);
+  const startResult = roomObject.roomState.startMatch("host", now);
+  assert.equal(startResult.ok, true);
+  await roomObject.persistRoomRecord();
+
+  roomObject.roomState.enterResult(new Date(now.getTime() + 1_000));
+  await roomObject.webSocketMessage(
+    hostSocket,
+    JSON.stringify({
+      type: "RETURN_TO_LOBBY",
+      client_msg_id: "msg-3",
+      room_id: "room-1",
+      player_id: "host",
+      payload: {
+        request_id: "return-1",
+      },
+    }),
+  );
+  assert.equal(roomObject.roomState.getRoomState(), "LOBBY");
+
+  const response = await roomObject.fetch(new Request("https://room.internal/join-status", { method: "GET" }));
+  assert.equal(response.status, 200);
+
+  const payload = await response.json();
+  assert.equal(payload.recruitment_status, "recruiting");
+  assert.equal(payload.shareable, true);
+});

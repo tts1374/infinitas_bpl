@@ -14,7 +14,7 @@ import {
   type RoomSettings,
 } from "@infinitas/shared";
 import { AlertCircle, Eye, EyeOff, Key, Lock, MessageSquare, Plus, RefreshCcw, Search, Trophy, Users, X } from "lucide-react";
-import { useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { createRoom } from "../services/worker-api-client";
 import { lobbyStore, useLobbyStore } from "../stores/lobby-store";
@@ -104,7 +104,15 @@ function ModalPortal({ children }: { children: ReactNode }) {
   return createPortal(children, document.body);
 }
 
-export function LobbyPage() {
+interface LobbyPageProps {
+  pendingJoinRoomId?: string | null;
+  onConsumePendingJoinRoomId?: () => void;
+}
+
+export function LobbyPage({
+  pendingJoinRoomId = null,
+  onConsumePendingJoinRoomId,
+}: LobbyPageProps) {
   const savedSettings = useSettingsStore((state) => state.saved);
   const rooms = useLobbyStore((state) => state.rooms);
   const loading = useLobbyStore((state) => state.loading);
@@ -139,6 +147,20 @@ export function LobbyPage() {
   const manualJoinCodeError = validateJoinCode(manualJoinCode);
   const createJoinCodeError = validateJoinCode(createDraft.join_code ?? "");
   const createBusy = busyAction === "create";
+
+  useEffect(() => {
+    const trimmedRoomId = pendingJoinRoomId?.trim() ?? "";
+    if (trimmedRoomId.length === 0) {
+      return;
+    }
+
+    setShowManualJoinCode(false);
+    setShowManualJoin(true);
+    setManualRoomId(trimmedRoomId);
+    setManualJoinCode("");
+    setLocalMessage(null);
+    onConsumePendingJoinRoomId?.();
+  }, [onConsumePendingJoinRoomId, pendingJoinRoomId]);
 
   function closeManualJoinModal(): void {
     setShowManualJoinCode(false);
