@@ -47,6 +47,7 @@ export interface RoomTimers {
 
 export interface RoomStateSnapshot {
   room_id: string;
+  generation?: number;
   current_match_id?: string;
   room_state: RoomState;
   settings: RoomSettings;

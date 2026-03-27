@@ -15,6 +15,7 @@
 
 ### 2.1 Room（DO状態）
 - `room_id: string`（UUID）
+- `generation: int`（同一 `room_id` の世代番号。初期作成=1、再作成ごとに+1）
 - `join_code: string|null`
 - `visibility: PUBLIC|PRIVATE`
 - `settings: RoomSettings`
@@ -39,6 +40,7 @@
 - `result_ready_payload: object|null`（`RESULT` 中は保持し、`RESULT -> LOBBY` 復帰時にクリア。`summary.is_rated / rated_block_reason / rating_*` を含む）
 - `match_song_unlock_filter: { include_bit: bool, include_djp: bool, include_leggendaria: bool, common_pack_ids: int[] }|null`（`START_MATCH` 成功時に固定し、マッチ中の選曲候補抽出へ適用）
 - `event_seq: int`
+- `room_recreate_window_ms: 1800000`（30分。最後のHOSTのみ同一 `room_id` 再作成可）
 
 ### 2.2 RoomSettings（Ph1）
 - `mode: ARENA|BPL|BPL4`

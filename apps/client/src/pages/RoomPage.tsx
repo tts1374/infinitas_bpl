@@ -1186,7 +1186,7 @@ export function RoomPage() {
       snapshot?.host_player_id === activePlayerId || roomHost?.role === "HOST";
 
     if (snapshot?.room_state === "LOBBY" && amHost && roomHost && !roomHost.ready) {
-      roomStore.send("READY_SET", { ready: true });
+      roomStore.setReady(true);
     }
   }, [activePlayerId, snapshot]);
 
@@ -2603,7 +2603,7 @@ export function RoomPage() {
       if (isHost) {
         roomStore.startMatch();
       } else {
-        roomStore.send("READY_SET", { ready: !(me?.ready ?? false) });
+        roomStore.setReady(!(me?.ready ?? false));
       }
     };
     const onReturnToLobby = () => {

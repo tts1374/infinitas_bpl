@@ -7,6 +7,7 @@ import {
   MODES,
   PLAY_STYLES,
   READY_CHECK_TTL_MS,
+  ROOM_RECREATE_WINDOW_MINUTES,
   SKIP_REASONS,
   SOURCE_TYPES,
   WIN_METRICS,
@@ -88,9 +89,11 @@ const REQUEST_ID_LOG_LIMIT = 300;
 const OPEN_WEBSOCKET_STATE = 1;
 const SWITCHING_PROTOCOLS_STATUS = 101;
 const ROOM_RECORD_STORAGE_KEY = "room-record";
-const DEFAULT_MIN_SUPPORTED_CLIENT_VERSION = "1.0.2";
+const DEFAULT_MIN_SUPPORTED_CLIENT_VERSION = "1.1.1";
 const CLIENT_VERSION_UNSUPPORTED_REASON = "CLIENT_VERSION_UNSUPPORTED";
 const CLIENT_VERSION_PATTERN = /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+const ROOM_RECREATE_WINDOW_MS = ROOM_RECREATE_WINDOW_MINUTES * 60_000;
+const ROOM_STATE_CHANGED_ERROR_MESSAGE = "部屋の状態が変わりました。一覧に戻ってください。";
 
 interface ParsedClientVersion {
   major: number;
@@ -364,6 +367,28 @@ function parseInitializationInput(payload: unknown): RoomInitializationInput | n
   };
 }
 
+interface ParsedRecreateInput {
+  room_id: string;
+  host_player_id: string;
+}
+
+function parseRecreateInput(payload: unknown): ParsedRecreateInput | null {
+  if (!isRecord(payload)) {
+    return null;
+  }
+
+  const roomId = asOptionalString(payload.room_id)?.trim() ?? "";
+  const hostPlayerId = asOptionalString(payload.host_player_id)?.trim() ?? "";
+  if (roomId.length === 0 || hostPlayerId.length === 0) {
+    return null;
+  }
+
+  return {
+    room_id: roomId,
+    host_player_id: hostPlayerId,
+  };
+}
+
 interface ParsedRoomJoinPayload extends RoomJoinPayload {
   song_unlocks: SongUnlockSettings;
   client_version?: string;
@@ -496,13 +521,27 @@ function parseRoomJoinPayload(payload: unknown): ParsedRoomJoinPayload | null {
   };
 }
 
-function parseReadySetPayload(payload: unknown): { ready: boolean } | null {
+function parseGeneration(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
+    return null;
+  }
+
+  return value;
+}
+
+function parseReadySetPayload(payload: unknown): { ready: boolean; generation: number } | null {
   if (!isRecord(payload) || typeof payload.ready !== "boolean") {
+    return null;
+  }
+
+  const generation = parseGeneration(payload.generation);
+  if (generation === null) {
     return null;
   }
 
   return {
     ready: payload.ready,
+    generation,
   };
 }
 
@@ -519,6 +558,36 @@ function parseRequestIdPayload(payload: unknown): RequestIdPayload | null {
   return {
     request_id: requestId,
   };
+}
+
+function parseRequestIdWithGenerationPayload(payload: unknown): (RequestIdPayload & { generation: number }) | null {
+  if (!isRecord(payload)) {
+    return null;
+  }
+
+  const requestIdPayload = parseRequestIdPayload(payload);
+  const generation = parseGeneration(payload.generation);
+  if (requestIdPayload === null || generation === null) {
+    return null;
+  }
+
+  return {
+    ...requestIdPayload,
+    generation,
+  };
+}
+
+function parseRoomLeavePayload(payload: unknown): { generation: number } | null {
+  if (!isRecord(payload)) {
+    return null;
+  }
+
+  const generation = parseGeneration(payload.generation);
+  if (generation === null) {
+    return null;
+  }
+
+  return { generation };
 }
 
 function parseSourceStatusSetPayload(payload: unknown): { request_id: string; available: boolean } | null {
@@ -587,6 +656,7 @@ function parseResultSubmitPayload(
   payload: unknown,
 ): {
   request_id: string;
+  generation: number;
   round_index: number;
   observed_key: ExpectedKey;
   metric_value: number;
@@ -597,12 +667,14 @@ function parseResultSubmitPayload(
   }
 
   const requestId = asOptionalString(payload.request_id)?.trim() ?? "";
+  const generation = parseGeneration(payload.generation);
   const roundIndex = typeof payload.round_index === "number" ? payload.round_index : Number.NaN;
   const metricValue = typeof payload.metric_value === "number" ? payload.metric_value : Number.NaN;
   const observedKey = parseExpectedKey(payload.observed_key);
   const sourceMeta = payload.source_meta;
   if (
     requestId.length === 0 ||
+    generation === null ||
     !Number.isInteger(roundIndex) ||
     roundIndex < 0 ||
     !Number.isInteger(metricValue) ||
@@ -615,6 +687,7 @@ function parseResultSubmitPayload(
 
   return {
     request_id: requestId,
+    generation,
     round_index: roundIndex,
     observed_key: observedKey,
     metric_value: metricValue,
@@ -844,6 +917,9 @@ export class RoomDurableObject {
     if (url.pathname === "/internal/init" && request.method === "POST") {
       return this.handleInternalInitialize(request);
     }
+    if (url.pathname === "/internal/recreate" && request.method === "POST") {
+      return this.handleInternalRecreate(request);
+    }
     if (url.pathname === "/join-status") {
       if (request.method !== "GET") {
         return jsonResponse(405, { error: "Method not allowed." });
@@ -915,6 +991,53 @@ export class RoomDurableObject {
     return jsonResponse(200, {
       ok: true,
       room_id: this.roomState.getRoomId(),
+    });
+  }
+
+  private async handleInternalRecreate(request: Request): Promise<Response> {
+    let payload: unknown;
+    try {
+      payload = await request.json();
+    } catch {
+      return jsonResponse(400, { error: "Invalid JSON payload." });
+    }
+
+    const parsed = parseRecreateInput(payload);
+    if (parsed === null) {
+      return jsonResponse(400, { error: "Invalid room recreate payload." });
+    }
+
+    if (!this.roomState.isInitialized()) {
+      return jsonResponse(409, { error: "ROOM_STATE_LOST" });
+    }
+
+    if (parsed.room_id !== this.roomState.getRoomId()) {
+      return jsonResponse(400, { error: "room_id mismatch." });
+    }
+
+    const recreateResult = this.roomState.recreateAsLastHost(parsed.host_player_id, new Date(), ROOM_RECREATE_WINDOW_MS);
+    if (!recreateResult.ok) {
+      return jsonResponse(409, { error: recreateResult.reason ?? "ROOM_RECREATE_REJECTED" });
+    }
+
+    this.clearSeenClientMessageIds();
+    this.clearProcessedRequestHistory();
+    this.shareRecruitmentClosed = false;
+    await this.persistRoomRecord();
+    await this.syncAlarm();
+    await this.syncLobbyDirectory();
+    if (this.sessionsBySocket.size > 0) {
+      this.disconnectAll(4000, "Room recreated.");
+    }
+    this.broadcastRoomUpdated();
+
+    const snapshot = this.roomState.toSnapshot();
+    return jsonResponse(200, {
+      ok: true,
+      room_id: snapshot.room_id,
+      generation: snapshot.generation ?? this.roomState.getGeneration(),
+      created_at: snapshot.created_at ?? new Date().toISOString(),
+      settings: snapshot.settings,
     });
   }
 
@@ -1298,7 +1421,7 @@ export class RoomDurableObject {
           await this.handleRoomJoin(session, message as ClientMessage<"ROOM_JOIN">);
           return;
         case "ROOM_LEAVE":
-          await this.handleRoomLeave(session, true);
+          await this.handleRoomLeaveMessage(session, message as ClientMessage<"ROOM_LEAVE">);
           return;
         case "READY_SET":
           await this.handleReadySet(session, message as ClientMessage<"READY_SET">);
@@ -1561,6 +1684,29 @@ export class RoomDurableObject {
     this.broadcastRoomUpdated();
   }
 
+  private async handleRoomLeaveMessage(session: RoomSocketSession, message: ClientMessage<"ROOM_LEAVE">): Promise<void> {
+    if (session.playerId === null) {
+      this.sendError(session.socket, "INVALID_STATE", "Send ROOM_JOIN before this message.", this.buildMessageLogInput(message));
+      return;
+    }
+
+    const payload = parseRoomLeavePayload(message.payload);
+    if (payload === null) {
+      this.sendError(session.socket, "INVALID_STATE", "ROOM_LEAVE payload is invalid.", this.buildMessageLogInput(message, {
+        detail: {
+          validation: "invalid_room_leave_payload",
+        },
+      }));
+      return;
+    }
+
+    if (!this.ensureGenerationMatch(session, message, payload.generation)) {
+      return;
+    }
+
+    await this.handleRoomLeave(session, true);
+  }
+
   private async handleRoomLeave(session: RoomSocketSession, closeSocket: boolean): Promise<void> {
     const playerId = session.playerId;
     const previousState = this.roomState.isInitialized() ? this.roomState.getRoomState() : "(uninitialized)";
@@ -1630,6 +1776,34 @@ export class RoomDurableObject {
     }
   }
 
+  private ensureGenerationMatch(
+    session: RoomSocketSession,
+    message: ClientEnvelopeLogContext,
+    observedGeneration: number,
+    input: RoomDoMessageLogContext = {},
+  ): boolean {
+    const currentGeneration = this.roomState.getGeneration();
+    if (observedGeneration === currentGeneration) {
+      return true;
+    }
+
+    this.sendError(
+      session.socket,
+      "INVALID_STATE",
+      ROOM_STATE_CHANGED_ERROR_MESSAGE,
+      this.buildMessageLogInput(message, {
+        ...input,
+        detail: {
+          ...(input.detail ?? {}),
+          reason: "STALE_GENERATION",
+          observed_generation: observedGeneration,
+          current_generation: currentGeneration,
+        },
+      }),
+    );
+    return false;
+  }
+
   private async handleReadySet(session: RoomSocketSession, message: ClientMessage<"READY_SET">): Promise<void> {
     if (session.playerId === null) {
       this.sendError(session.socket, "INVALID_STATE", "Send ROOM_JOIN before this message.", this.buildMessageLogInput(message));
@@ -1643,6 +1817,10 @@ export class RoomDurableObject {
           validation: "invalid_ready_set_payload",
         },
       }));
+      return;
+    }
+
+    if (!this.ensureGenerationMatch(session, message, payload.generation)) {
       return;
     }
 
@@ -1680,13 +1858,19 @@ export class RoomDurableObject {
       return;
     }
 
-    const payload = parseRequestIdPayload(message.payload);
+    const payload = parseRequestIdWithGenerationPayload(message.payload);
     if (payload === null) {
       this.sendError(session.socket, "INVALID_STATE", "START_MATCH payload is invalid.", this.buildMessageLogInput(message, {
         detail: {
           validation: "invalid_request_id_payload",
         },
       }));
+      return;
+    }
+
+    if (!this.ensureGenerationMatch(session, message, payload.generation, {
+      request_id: payload.request_id,
+    })) {
       return;
     }
 
@@ -1779,13 +1963,19 @@ export class RoomDurableObject {
       return;
     }
 
-    const payload = parseRequestIdPayload(message.payload);
+    const payload = parseRequestIdWithGenerationPayload(message.payload);
     if (payload === null) {
       this.sendError(session.socket, "INVALID_STATE", "RETURN_TO_LOBBY payload is invalid.", this.buildMessageLogInput(message, {
         detail: {
           validation: "invalid_request_id_payload",
         },
       }));
+      return;
+    }
+
+    if (!this.ensureGenerationMatch(session, message, payload.generation, {
+      request_id: payload.request_id,
+    })) {
       return;
     }
 
@@ -2098,6 +2288,13 @@ export class RoomDurableObject {
           validation: "invalid_result_submit_payload",
         },
       }));
+      return;
+    }
+
+    if (!this.ensureGenerationMatch(session, message, payload.generation, {
+      request_id: payload.request_id,
+      round_index: payload.round_index,
+    })) {
       return;
     }
 
@@ -2626,6 +2823,11 @@ export class RoomDurableObject {
 
   private clearSeenClientMessageIds(): void {
     this.seenClientMessageIds.clear();
+  }
+
+  private clearProcessedRequestHistory(): void {
+    this.processedRequestKeys = [];
+    this.processedRequestKeySet.clear();
   }
 
   private buildRequestKey(playerId: string, type: string, requestId: string): string {

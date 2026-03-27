@@ -328,6 +328,7 @@ test("RESULT -> LOBBY clears ready and match transient state without auto-start"
   const state = createState();
   const initialSnapshot = state.toSnapshot();
   assert.equal(initialSnapshot.current_match_id, "room-1");
+  assert.equal(initialSnapshot.generation, 1);
 
   assert.equal(state.getRoomState(), "LOBBY");
   assert.equal(state.getHostPlayerId(), "host");
@@ -373,6 +374,7 @@ test("RESULT -> LOBBY clears ready and match transient state without auto-start"
   assert.equal(lobbySnapshot.host_player_id, "host");
   assert.equal(lobbySnapshot.settings.mode, "ARENA");
   assert.equal(lobbySnapshot.current_match_id, "room-1");
+  assert.equal(lobbySnapshot.generation, 1);
   assert.equal(lobbySnapshot.players.map((player) => player.player_id).join(","), "host,guest");
   assert.equal(lobbySnapshot.players.every((player) => player.ready === false), true);
   assert.equal(lobbySnapshot.picks.length, 0);
@@ -578,6 +580,46 @@ test("HOST_DISCONNECTED closes room when cooldown expires", () => {
   assert.equal(snapshot.room_state, "CLOSED");
   assert.equal(snapshot.close_reason, "HOST_DISCONNECTED");
   assert.equal(state.getNextAlarmAt(), null);
+});
+
+test("recreateAsLastHost increments generation and resets to empty LOBBY", () => {
+  const state = createState();
+  state.close("MATCH_TTL_EXPIRED", new Date("2026-03-08T00:20:00.000Z"));
+
+  const recreateResult = state.recreateAsLastHost(
+    "host",
+    new Date("2026-03-08T00:30:00.000Z"),
+    30 * 60_000,
+  );
+  assert.deepEqual(recreateResult, { ok: true, generation: 2 });
+  assert.equal(state.getGeneration(), 2);
+  assert.equal(state.getRoomState(), "LOBBY");
+
+  const snapshot = state.toSnapshot();
+  assert.equal(snapshot.generation, 2);
+  assert.equal(snapshot.room_state, "LOBBY");
+  assert.equal(snapshot.players.length, 0);
+  assert.equal(snapshot.close_reason, null);
+  assert.equal(snapshot.closed_at, null);
+});
+
+test("recreateAsLastHost rejects when active generation exists", () => {
+  const state = createState();
+  const recreateResult = state.recreateAsLastHost("host", new Date("2026-03-08T00:10:00.000Z"), 30 * 60_000);
+  assert.deepEqual(recreateResult, { ok: false, reason: "ACTIVE_GENERATION_EXISTS" });
+  assert.equal(state.getGeneration(), 1);
+});
+
+test("recreateAsLastHost rejects after recreate window expires", () => {
+  const state = createState();
+  state.close("READY_CHECK_TTL_EXPIRED", new Date("2026-03-08T00:20:00.000Z"));
+  const recreateResult = state.recreateAsLastHost(
+    "host",
+    new Date("2026-03-08T00:50:01.000Z"),
+    30 * 60_000,
+  );
+  assert.deepEqual(recreateResult, { ok: false, reason: "RECREATE_WINDOW_EXPIRED" });
+  assert.equal(state.getGeneration(), 1);
 });
 
 test("strict rated match is true only on fully completed clean match", () => {

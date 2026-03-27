@@ -126,7 +126,7 @@ function createJoinMessage(playerId, clientMessageId) {
     payload: {
       display_name: playerId.toUpperCase(),
       source: "inf-notebook",
-      client_version: "1.0.2",
+      client_version: "1.1.1",
     },
   };
 }
@@ -370,6 +370,7 @@ test("internal join-status returns recruiting after host recreates room via RETU
       player_id: "host",
       payload: {
         request_id: "return-1",
+        generation: 1,
       },
     }),
   );
@@ -381,4 +382,78 @@ test("internal join-status returns recruiting after host recreates room via RETU
   const payload = await response.json();
   assert.equal(payload.recruitment_status, "recruiting");
   assert.equal(payload.shareable, true);
+});
+
+test("READY_SET with stale generation is rejected", async () => {
+  const roomObject = await createRoomObject();
+  const hostSocket = new TestSocket();
+  await joinPlayer(roomObject, hostSocket, "host", "msg-1");
+  roomObject.roomState.readyCheckDeadline = new Date("2099-01-01T00:00:00.000Z");
+
+  await roomObject.webSocketMessage(
+    hostSocket,
+    JSON.stringify({
+      type: "READY_SET",
+      client_msg_id: "msg-2",
+      room_id: "room-1",
+      player_id: "host",
+      payload: {
+        ready: true,
+        generation: 2,
+      },
+    }),
+  );
+
+  const lastMessage = hostSocket.sent.at(-1);
+  assert.ok(lastMessage);
+  assert.equal(lastMessage.type, "ERROR");
+  assert.equal(lastMessage.payload.code, "INVALID_STATE");
+  assert.equal(lastMessage.payload.message, "部屋の状態が変わりました。一覧に戻ってください。");
+  const host = roomObject.roomState.toSnapshot().players.find((player) => player.player_id === "host");
+  assert.ok(host);
+  assert.equal(host.ready, false);
+});
+
+test("internal recreate increments generation for last host on closed room", async () => {
+  const roomObject = await createRoomObject();
+  const hostSocket = new TestSocket();
+  await joinPlayer(roomObject, hostSocket, "host", "msg-1");
+
+  roomObject.roomState.close("READY_CHECK_TTL_EXPIRED", new Date(Date.now() - 5 * 60_000));
+  await roomObject.persistRoomRecord();
+
+  const response = await roomObject.fetch(
+    new Request("https://room.internal/internal/recreate", {
+      method: "POST",
+      body: JSON.stringify({
+        room_id: "room-1",
+        host_player_id: "host",
+      }),
+    }),
+  );
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.equal(payload.generation, 2);
+  assert.equal(roomObject.roomState.getGeneration(), 2);
+  assert.equal(roomObject.roomState.getRoomState(), "LOBBY");
+  assert.equal(roomObject.roomState.toSnapshot().players.length, 0);
+});
+
+test("internal recreate rejects when active generation exists", async () => {
+  const roomObject = await createRoomObject();
+  const hostSocket = new TestSocket();
+  await joinPlayer(roomObject, hostSocket, "host", "msg-1");
+
+  const response = await roomObject.fetch(
+    new Request("https://room.internal/internal/recreate", {
+      method: "POST",
+      body: JSON.stringify({
+        room_id: "room-1",
+        host_player_id: "host",
+      }),
+    }),
+  );
+  assert.equal(response.status, 409);
+  const payload = await response.json();
+  assert.equal(payload.error, "ACTIVE_GENERATION_EXISTS");
 });

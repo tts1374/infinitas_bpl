@@ -48,15 +48,15 @@
   - 備考: WS接続直後に必ず送る（DOがJOIN完了するまでstate配信しない）
   - 備考: `client_capabilities.song_unlocks = { bit_unlocked: boolean, djp_unlocked: boolean, allow_leggendaria: boolean, owned_pack_ids: number[] }` を送ると、`START_MATCH` 時の共通解禁フィルタ計算に利用される
 - `ROOM_LEAVE`
-  - payload: `{}`
+  - payload: `{ generation: number }`
 
 ### 3.2 LOBBY
 - `READY_SET`
-  - payload: `{ ready: boolean }`
+  - payload: `{ ready: boolean, generation: number }`
 - `START_MATCH`（ホスト）
-  - payload: `{ request_id: string }`
+  - payload: `{ request_id: string, generation: number }`
 - `RETURN_TO_LOBBY`（ホスト）
-  - payload: `{ request_id: string }`
+  - payload: `{ request_id: string, generation: number }`
 
 ### 3.2.1 RESULT（自動再戦）
 - `AUTO_REMATCH_STOP`（ホスト）
@@ -72,7 +72,7 @@
 
 ### 3.4 PLAYING（提出/スキップ/強制）
 - `RESULT_SUBMIT`
-  - payload: `{ request_id: string, round_index: number, observed_key: ExpectedKey, metric_value: number, source_meta?: object }`
+  - payload: `{ request_id: string, generation: number, round_index: number, observed_key: ExpectedKey, metric_value: number, source_meta?: object }`
 - `SKIP_SELF`
   - payload: `{ request_id: string, round_index: number, reason: "UNOWNED"|"TECH"|"OTHER" }`
 - `SKIP_HOST_ASSIGN`（ホスト / 予約）
@@ -173,6 +173,7 @@
 ```json
 {
   "room_id": "string",
+  "generation": 1,
   "current_match_id": "string",
   "room_state": "LOBBY|PICKING|PLAYING|RESULT|CLOSED",
   "settings": { "...": "..." },
@@ -246,5 +247,6 @@
   - `play_style/difficulty/title_search_key` は常に一致必須
   - `chart_id` は双方にある場合のみ一致必須。`expected_key.chart_id` がある `daken_counter_v3` 観測で `observed_key.chart_id` 欠落時は不採用
 - ROOM_JOIN: `client_version >= MIN_SUPPORTED_CLIENT_VERSION` を満たさない場合は `ROOM_JOIN_REJECTED` を返す
+- `READY_SET / START_MATCH / RETURN_TO_LOBBY / RESULT_SUBMIT / ROOM_LEAVE` は `payload.generation == current_generation` のときのみ受理し、不一致時は操作を拒否する
 - PICKING timeout: 未pickプレイヤーへランダム割当を行ってから `PICK_FROZEN` / `ROUND_BEGIN` を配信
 - `RESULT_READY` 生成後の `RESULT` / `CLOSED` では提出系はすべて拒否（勝敗改変防止）
