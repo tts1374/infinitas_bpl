@@ -10,6 +10,7 @@ import { RoomPage } from "../pages/RoomPage";
 import { SettingsPage } from "../pages/SettingsPage";
 import { StatsPage } from "../pages/StatsPage";
 import { localResultArchiveService } from "../services/result-archive";
+import { matchHistoryOverlayService } from "../services/match-history-overlay";
 import { initializeE2EObservability } from "../services/e2e-observability";
 import { startE2EScenarioRunner } from "../services/e2e-scenario-runner";
 import { runtimeConfig } from "../runtime/runtime-config";
@@ -168,12 +169,14 @@ export function App() {
 
     void sourceStore.attach();
     localResultArchiveService.start();
+    matchHistoryOverlayService.start();
     statsArchiveService.start();
     voiceAnnouncerService.start();
 
     return () => {
       voiceAnnouncerService.stop();
       statsArchiveService.stop();
+      matchHistoryOverlayService.stop();
       localResultArchiveService.stop();
       sourceStore.detach();
     };

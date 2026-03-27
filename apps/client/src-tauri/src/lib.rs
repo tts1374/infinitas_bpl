@@ -8,6 +8,7 @@ use commands::{
     validate_source_directory, write_e2e_binary_file, write_e2e_text_file,
 };
 use commands::save_local_result_json;
+use commands::save_match_history_overlay;
 use watchers::SourceWatcherManager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -39,6 +40,7 @@ pub fn run() {
             get_source_watcher_state,
             pick_directory,
             save_local_result_json,
+            save_match_history_overlay,
             start_source_watcher,
             stop_source_watcher,
             validate_source_directory,

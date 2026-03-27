@@ -33,6 +33,7 @@ export interface ClientSettings {
   dakenCounterV3Port: number;
   sourcePaths: SourcePaths;
   sourceDirectories: SourceDirectories;
+  obsOutputDirectory: string;
   voiceEnabled: boolean;
   voiceVolume: number;
   voiceMuted: boolean;
@@ -58,6 +59,7 @@ interface PartialClientSettings {
   dakenCounterV3Port?: number;
   sourcePaths?: Partial<SourcePaths>;
   sourceDirectories?: Partial<SourceDirectories>;
+  obsOutputDirectory?: string;
   voiceEnabled?: boolean;
   voiceVolume?: number;
   voiceMuted?: boolean;
@@ -296,6 +298,7 @@ function createDefaultSettings(): ClientSettings {
     dakenCounterV3Port: normalizeDakenCounterV3Port(runtimeConfig.settingsDefaults.dakenCounterV3Port),
     sourcePaths,
     sourceDirectories,
+    obsOutputDirectory: "",
     voiceEnabled: true,
     voiceVolume: DEFAULT_VOICE_VOLUME,
     voiceMuted: false,
@@ -344,6 +347,7 @@ function normalizeSettings(rawSettings: PartialClientSettings | null): ClientSet
     dakenCounterV3Port: normalizeDakenCounterV3Port(rawSettings?.dakenCounterV3Port ?? defaults.dakenCounterV3Port),
     sourcePaths,
     sourceDirectories,
+    obsOutputDirectory: normalizeDirectory(rawSettings?.obsOutputDirectory) || defaults.obsOutputDirectory,
     ...voiceSettings,
     enablePresentationSe: rawSettings?.enablePresentationSe ?? defaults.enablePresentationSe,
     bitUnlockEnabled: rawSettings?.bitUnlockEnabled === true,
