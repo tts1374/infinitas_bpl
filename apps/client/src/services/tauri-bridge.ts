@@ -85,6 +85,18 @@ export interface SaveLocalResultJsonResponse {
   filePath: string;
 }
 
+export interface SaveMatchHistoryOverlayRequest {
+  jsonText: string;
+  outputDirectory?: string | null;
+}
+
+export interface SaveMatchHistoryOverlayResponse {
+  jsonFilePath: string;
+  htmlFilePath: string;
+  cssFilePath: string;
+  jsFilePath: string;
+}
+
 export interface NativeTtsSpeakRequest {
   text: string;
   voiceId?: string | null;
@@ -172,6 +184,17 @@ export async function saveLocalResultJson(
 
   const { invoke } = await import("@tauri-apps/api/core");
   return invoke<SaveLocalResultJsonResponse>("save_local_result_json", { request });
+}
+
+export async function saveMatchHistoryOverlay(
+  request: SaveMatchHistoryOverlayRequest,
+): Promise<SaveMatchHistoryOverlayResponse> {
+  if (!isTauriRuntime()) {
+    throw new Error("Match history overlay output is available only inside the Tauri desktop app.");
+  }
+
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<SaveMatchHistoryOverlayResponse>("save_match_history_overlay", { request });
 }
 
 export async function pickDirectory(): Promise<string | null> {

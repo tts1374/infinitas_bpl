@@ -76,6 +76,7 @@ const BASE_SETTINGS: Omit<ClientSettings, "playerId" | "displayName" | "source" 
     notebookDirectory: "",
     refluxDirectory: "",
   },
+  obsOutputDirectory: "",
   voiceEnabled: true,
   voiceVolume: 80,
   voiceMuted: false,
