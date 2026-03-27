@@ -1656,6 +1656,55 @@ export function RoomPage() {
   const shareJoinCode =
     includeJoinCodeInXShare && joinCodeLabel.trim().length > 0 ? joinCodeLabel.trim() : null;
   const xShareText = buildXShareText(shareRoomName, shareJoinPageUrl, shareJoinCode);
+  const publicSharePanel: ReactNode = canShowSharePanel ? (
+    <div className="rounded-2xl border border-cyan-400/30 bg-[#10151d]/95 p-4 shadow-[0_14px_36px_rgba(0,0,0,0.55)] backdrop-blur-sm">
+      <div className="mb-3 flex items-center justify-between">
+        <p className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.24em] text-cyan-200">
+          <Share2 size={12} />
+          Public Share
+        </p>
+        <span className="rounded-full border border-cyan-400/35 bg-cyan-400/10 px-2 py-0.5 text-[10px] font-bold text-cyan-100">
+          Host only
+        </span>
+      </div>
+      <p className="text-sm font-semibold text-white">{shareRoomName}</p>
+      <p className="mt-1 break-all text-xs text-cyan-100/80">{shareJoinPageUrl}</p>
+      <label className="mt-3 flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-gray-200">
+        <span className="font-semibold">X本文に join_code を含める</span>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={includeJoinCodeInXShare}
+          onClick={() => setIncludeJoinCodeInXShare((current) => !current)}
+          className={`rounded-lg border px-2 py-1 text-[10px] font-black uppercase tracking-[0.2em] transition-all ${
+            includeJoinCodeInXShare
+              ? "border-cyan-400 bg-cyan-400/15 text-cyan-100"
+              : "border-white/15 bg-black/30 text-gray-400 hover:border-white/30"
+          }`}
+        >
+          {includeJoinCodeInXShare ? "ON" : "OFF"}
+        </button>
+      </label>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={handleShareToX}
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-500 px-3 py-2 text-xs font-black uppercase tracking-[0.2em] text-black transition-all hover:bg-cyan-400"
+        >
+          <ExternalLink size={14} />
+          X共有
+        </button>
+        <button
+          type="button"
+          onClick={handleCopyShareUrl}
+          className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/20 bg-black/25 px-3 py-2 text-xs font-black uppercase tracking-[0.2em] text-gray-100 transition-all hover:border-white/35 hover:bg-white/10"
+        >
+          {copiedShareUrl ? <Check size={14} /> : <Copy size={14} />}
+          {copiedShareUrl ? "Copied" : "URLコピー"}
+        </button>
+      </div>
+    </div>
+  ) : null;
   const currentExpectedKey = currentRound?.expected_key ?? null;
   const currentExpectedKeyCacheKey = getExpectedKeyCacheKey(currentExpectedKey);
   const currentResolvedChart =
@@ -2684,6 +2733,7 @@ export function RoomPage() {
       pickingCountdownSeconds: pickingCountdown ?? 0,
       logs: arenaLobbyLogs,
       matchInfoItems: arenaMatchInfoItems,
+      publicSharePanel,
       playTime: playElapsedSeconds,
       playingPhase: mockPlayingPhase,
       playingCountdownSeconds: playingCountdown?.remainingSeconds ?? null,
@@ -2722,58 +2772,6 @@ export function RoomPage() {
   return (
     <section id="visual-capture-root" className="flex h-full min-h-0 w-full flex-col text-white font-sans">
       {roomSurface}
-
-      {canShowSharePanel ? (
-        <div className="pointer-events-none fixed left-4 top-4 z-[146] w-[min(360px,calc(100vw-2rem))]">
-          <div className="pointer-events-auto rounded-2xl border border-cyan-400/30 bg-[#10151d]/95 p-4 shadow-[0_14px_36px_rgba(0,0,0,0.55)] backdrop-blur-sm">
-            <div className="mb-3 flex items-center justify-between">
-              <p className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.24em] text-cyan-200">
-                <Share2 size={12} />
-                Public Share
-              </p>
-              <span className="rounded-full border border-cyan-400/35 bg-cyan-400/10 px-2 py-0.5 text-[10px] font-bold text-cyan-100">
-                Host only
-              </span>
-            </div>
-            <p className="text-sm font-semibold text-white">{shareRoomName}</p>
-            <p className="mt-1 break-all text-xs text-cyan-100/80">{shareJoinPageUrl}</p>
-            <label className="mt-3 flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-gray-200">
-              <span className="font-semibold">X本文に join_code を含める</span>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={includeJoinCodeInXShare}
-                onClick={() => setIncludeJoinCodeInXShare((current) => !current)}
-                className={`rounded-lg border px-2 py-1 text-[10px] font-black uppercase tracking-[0.2em] transition-all ${
-                  includeJoinCodeInXShare
-                    ? "border-cyan-400 bg-cyan-400/15 text-cyan-100"
-                    : "border-white/15 bg-black/30 text-gray-400 hover:border-white/30"
-                }`}
-              >
-                {includeJoinCodeInXShare ? "ON" : "OFF"}
-              </button>
-            </label>
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={handleShareToX}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-500 px-3 py-2 text-xs font-black uppercase tracking-[0.2em] text-black transition-all hover:bg-cyan-400"
-              >
-                <ExternalLink size={14} />
-                X共有
-              </button>
-              <button
-                type="button"
-                onClick={handleCopyShareUrl}
-                className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/20 bg-black/25 px-3 py-2 text-xs font-black uppercase tracking-[0.2em] text-gray-100 transition-all hover:border-white/35 hover:bg-white/10"
-              >
-                {copiedShareUrl ? <Check size={14} /> : <Copy size={14} />}
-                {copiedShareUrl ? "Copied" : "URLコピー"}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
 
       {autoRematchPanelVisible ? (
         <div className="pointer-events-none fixed bottom-4 left-0 right-0 z-[145] px-4 md:left-auto md:right-4 md:w-[min(460px,calc(100vw-2rem))]">

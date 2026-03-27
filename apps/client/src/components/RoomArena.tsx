@@ -84,6 +84,7 @@ export interface RoomArenaControlledState {
     pickingCountdownSeconds?: number | null;
     logs?: RoomArenaLogEntry[];
     matchInfoItems?: RoomArenaMatchInfoItem[];
+    publicSharePanel?: ReactNode;
     playTime: number;
     playingPhase: 'MUSIC_SELECT' | 'PLAY_START' | 'IN_PLAY';
     playingCountdownSeconds?: number | null;
@@ -284,6 +285,7 @@ export default function RoomArena({ onNavigate, initialStatus, controlled }: Roo
         { label: 'Mode', value: 'ARENA' },
         { label: 'Scoring', value: 'EX SCORE' },
     ];
+    const publicSharePanel = controlled?.publicSharePanel ?? null;
 
     const allMockPlayers = controlled?.allPlayers ?? [
         { id: '1', name: 'PLAYER_ONE (HOST)', isReady: true, isHost: true },
@@ -1140,7 +1142,13 @@ export default function RoomArena({ onNavigate, initialStatus, controlled }: Roo
                     </div>
                 </section>
 
-                <section className="pt-6 border-t border-white/5">
+                {publicSharePanel ? (
+                    <section className="pt-6 border-t border-white/5">
+                        {publicSharePanel}
+                    </section>
+                ) : null}
+
+                <section className={publicSharePanel ? "pt-6" : "pt-6 border-t border-white/5"}>
                     <h3 className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-4 flex items-center gap-2">
                         <Info size={14} /> Match Info
                     </h3>
