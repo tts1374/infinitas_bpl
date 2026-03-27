@@ -451,13 +451,14 @@ function buildXShareText(
   joinPageUrl: string,
   joinCode: string | null,
 ): string {
-  const lines = [`INFINITAS Arena: ${roomName}`, joinPageUrl];
+  const parts = [`【INFINITAS Arena】${roomName}`];
   if (joinCode !== null && joinCode.trim().length > 0) {
-    lines.push(`join code: ${joinCode.trim()}`);
+    parts.push(`join code:${joinCode.trim()}`);
   }
-  lines.push(X_SHARE_HASHTAGS.map((tag) => `#${tag}`).join(" "));
+  parts.push(X_SHARE_HASHTAGS.map((tag) => `#${tag}`).join(" "));
+  parts.push(joinPageUrl);
 
-  return lines.join("\n");
+  return parts.join(" ");
 }
 
 function getLobbyStartIssues(snapshot: RoomStateSnapshot): string[] {
@@ -1659,7 +1660,6 @@ export function RoomPage() {
   const shareJoinCode =
     includeJoinCodeInXShare && joinCodeLabel.trim().length > 0 ? joinCodeLabel.trim() : null;
   const xShareText = buildXShareText(shareRoomName, shareJoinPageUrl, shareJoinCode);
-  const xShareHashtagCsv = X_SHARE_HASHTAGS.join(",");
   const publicSharePanel: ReactNode = canShowSharePanel ? (
     <div className="rounded-2xl border border-cyan-400/30 bg-[#10151d]/95 p-4 shadow-[0_14px_36px_rgba(0,0,0,0.55)] backdrop-blur-sm">
       <div className="mb-3 flex items-center justify-between">
@@ -1854,9 +1854,6 @@ export function RoomPage() {
     });
     const intentUrl = new URL("https://x.com/intent/tweet");
     intentUrl.searchParams.set("text", xShareText);
-    if (xShareHashtagCsv.length > 0) {
-      intentUrl.searchParams.set("hashtags", xShareHashtagCsv);
-    }
 
     try {
       await openExternalUrl(intentUrl.toString());
