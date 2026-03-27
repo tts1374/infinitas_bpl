@@ -121,6 +121,17 @@ export interface ReturnToLobbyResult {
   reason?: "INVALID_STATE" | "NOT_HOST";
 }
 
+export interface RecreateRoomResult {
+  ok: boolean;
+  reason?:
+    | "ROOM_NOT_INITIALIZED"
+    | "ACTIVE_GENERATION_EXISTS"
+    | "NOT_LAST_HOST"
+    | "STALE_STATE"
+    | "RECREATE_WINDOW_EXPIRED";
+  generation?: number;
+}
+
 export interface AutoRematchStopResult {
   ok: boolean;
   reason?: "INVALID_STATE" | "NOT_HOST" | "AUTO_REMATCH_NOT_ACTIVE";
@@ -256,6 +267,7 @@ export interface RoomStatePersistenceRecord {
   version: 1;
   initialized: boolean;
   room_id: string;
+  generation?: number;
   room_state: RoomState;
   settings: RoomSettings;
   host_player_id: string | null;
@@ -564,6 +576,7 @@ function resolveArenaWinnerPlayerIds(
 export class RoomLobbyState {
   private initialized = false;
   private roomId = "";
+  private generation = 1;
   private roomState: RoomState = "LOBBY";
   private settings: RoomSettings = { ...DEFAULT_SETTINGS };
   private hostPlayerId: string | null = null;
@@ -613,6 +626,7 @@ export class RoomLobbyState {
 
     this.initialized = true;
     this.roomId = input.room_id;
+    this.generation = 1;
     this.settings = normalizeSettingsVisibility({ ...input.settings });
     this.autoRematchEnabled = this.settings.visibility === "PRIVATE" && this.settings.auto_rematch === true;
     this.createdAt = createdAt;
@@ -629,6 +643,10 @@ export class RoomLobbyState {
 
   getRoomId(): string {
     return this.roomId;
+  }
+
+  getGeneration(): number {
+    return this.generation;
   }
 
   getRoomState(): RoomState {
@@ -840,6 +858,41 @@ export class RoomLobbyState {
 
     this.resetLobbyState(now);
     return { ok: true };
+  }
+
+  recreateAsLastHost(playerId: string, now: Date, recreateWindowMs: number): RecreateRoomResult {
+    if (!this.initialized) {
+      return { ok: false, reason: "ROOM_NOT_INITIALIZED" };
+    }
+
+    if (this.roomState !== "CLOSED") {
+      return { ok: false, reason: "ACTIVE_GENERATION_EXISTS" };
+    }
+
+    if (this.hostPlayerId === null || playerId !== this.hostPlayerId) {
+      return { ok: false, reason: "NOT_LAST_HOST" };
+    }
+
+    if (this.closedAt === null) {
+      return { ok: false, reason: "STALE_STATE" };
+    }
+
+    const elapsedMs = now.getTime() - this.closedAt.getTime();
+    if (!Number.isFinite(elapsedMs) || elapsedMs < 0) {
+      return { ok: false, reason: "STALE_STATE" };
+    }
+    if (elapsedMs > recreateWindowMs) {
+      return { ok: false, reason: "RECREATE_WINDOW_EXPIRED" };
+    }
+
+    this.generation += 1;
+    this.createdAt = now;
+    this.resetLobbyState(now);
+    this.hostPlayerId = null;
+    this.players.clear();
+    this.sourceUnavailablePlayerIds.clear();
+    this.nextMatchOptOutPlayerIds.clear();
+    return { ok: true, generation: this.generation };
   }
 
   stopAutoRematch(playerId: string): AutoRematchStopResult {
@@ -1489,6 +1542,7 @@ export class RoomLobbyState {
 
     return {
       room_id: this.roomId,
+      generation: this.generation,
       current_match_id: this.currentMatchId ?? this.roomId,
       room_state: this.roomState,
       settings: this.settings,
@@ -1540,6 +1594,7 @@ export class RoomLobbyState {
       version: 1,
       initialized: this.initialized,
       room_id: this.roomId,
+      generation: this.generation,
       room_state: this.roomState,
       settings: { ...this.settings },
       auto_rematch_enabled: this.autoRematchEnabled,
@@ -1621,6 +1676,10 @@ export class RoomLobbyState {
 
     this.initialized = true;
     this.roomId = record.room_id;
+    this.generation =
+      typeof record.generation === "number" && Number.isInteger(record.generation) && record.generation > 0
+        ? record.generation
+        : 1;
     // Legacy pre-release snapshots may still contain READY_CHECK; fold them into LOBBY on restore.
     const persistedRoomState = record.room_state as RoomState | "READY_CHECK";
     this.roomState = persistedRoomState === "READY_CHECK" ? "LOBBY" : persistedRoomState;

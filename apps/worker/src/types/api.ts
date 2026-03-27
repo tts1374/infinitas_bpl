@@ -10,6 +10,7 @@ export interface ApiErrorResponse {
 
 export interface CreateRoomResponse {
   room_id: string;
+  generation: number;
   created_at: ISO8601String;
   expires_at: ISO8601String;
   settings: RoomSettings;
