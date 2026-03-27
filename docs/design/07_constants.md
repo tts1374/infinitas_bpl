@@ -39,6 +39,8 @@ Ph1で固定するタイマー値、制約値、表示/運用上の定数を整�
 - `MATCH_TTL_MINUTES = 30`
   - マッチ全体の寿命
   - TTL到達時は未確定をTIMEOUTとして結果を確定し、必要なら `RESULT` または `CLOSED` へ遷移
+- `ROOM_RECREATE_WINDOW_MINUTES = 30`
+  - `CLOSED` 後、最後のHOSTが同一 `room_id` を再作成できる猶予
 - `AUTO_REMATCH_RESULT_SECONDS = 20`
   - `PRIVATE` + `auto_rematch=true` の `RESULT` で次戦開始まで待機する秒数
 
@@ -62,7 +64,7 @@ Ph1で固定するタイマー値、制約値、表示/運用上の定数を整�
   - v1 のロビー一覧同期周期（polling）
 
 ## 2.3 クライアント version gate
-- `MIN_SUPPORTED_CLIENT_VERSION = "1.0.2"`
+- `MIN_SUPPORTED_CLIENT_VERSION = "1.1.1"`
   - `ROOM_JOIN` 時に `client_version` がこの値未満、または未送信の場合は参加拒否
 - `CLIENT_VERSION_UNSUPPORTED`
   - `ROOM_JOIN_REJECTED.reason` の先頭識別子として利用（更新案内文を後続に含める）

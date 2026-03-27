@@ -8,6 +8,7 @@
 
 ## 1. 識別子
 - `room_id`: UUID（表示・参照用）
+- `generation`: 同一 `room_id` 内の世代番号（初期作成=1、再作成ごとに+1）
 - `durable_object_id`: `idFromName(room_id)` のように room_id から決定（安定ルーティング）
 - `join_code`: 任意（短い文字列）。公開/非公開に関わらず設定可能。
 
@@ -36,6 +37,7 @@
 - `PLAYING` -> `RESULT`（全ラウンド消化時。`RESULT_READY` を保持）
 - `RESULT` -> `LOBBY`（ホスト操作。再戦準備のため ready / 揮発状態をリセット）
 - `RESULT` -> `LOBBY` -> `PICKING`（`visibility=PRIVATE` かつ `settings.auto_rematch=true` の場合、20秒カウント満了で内部イベントにより次戦開始）
+- `CLOSED` -> `LOBBY`（最後のHOSTのみ、同一 `room_id` で再作成。内部的には `generation+1` の新世代）
 - 任意状態 -> `CLOSED`（ホスト切断/終了、lobby ready ttl超過、異常終了）
 - `current_match_id` は `START_MATCH` / 自動再戦開始時に新規発行し、`RESULT`/`CLOSED` まで固定する。`RESULT -> LOBBY` 復帰時は `room_id` に戻す
 
@@ -58,6 +60,7 @@
 - `round_soft_ttl = 5min`（`count_go` 以降。超過で未確定者をTIMEOUT確定）
 - `host_skip_unlock_seconds = 240s`（`SKIP_HOST_ASSIGN` 用の予約値。現行v1では操作を受理しない）
 - `match_ttl = 30min`（`START_MATCH` 成功時、すなわち `PICKING` 開始時から固定）
+- `room_recreate_window = 30min`（`CLOSED` 後に最後のHOSTが同じ `room_id` で再作成できる猶予）
 - `rejoin_cooldown = 40s`（退出後の同一ルーム再入室抑止。ホスト非明示切断時の再接続猶予にも使用）
 
 ## 5. ルーム作成設定（RoomSettings / Ph1）
