@@ -63,6 +63,7 @@ import {
   setRoomPresentationSeOverride,
   useVoicePlaybackStore,
 } from "../services/voice-announcer";
+import { openExternalUrl } from "../services/tauri-bridge";
 import { roomStore, useRoomStore, type RoomConnectionStatus } from "../stores/room-store";
 import { isVoicePlaybackEnabled, useSettingsStore } from "../stores/settings-store";
 import { formatDateTime, stringifyJson } from "../utils/format";
@@ -112,6 +113,7 @@ const BPL_PICK_CUTIN_SECONDS = 3;
 const BPL_RESULT_PHASE_SECONDS = 10;
 const ARENA_RESULT_PHASE_SECONDS = 10;
 const DEFAULT_JOIN_PAGE_URL = "https://tts1374.github.io/infinitas_arena/join";
+const X_SHARE_HASHTAGS = ["INFINITAS_ARENA"] as const;
 
 function isBplMode(mode: RoomStateSnapshot["settings"]["mode"]): boolean {
   return mode === "BPL" || mode === "BPL4";
@@ -453,6 +455,7 @@ function buildXShareText(
   if (joinCode !== null && joinCode.trim().length > 0) {
     lines.push(`join code: ${joinCode.trim()}`);
   }
+  lines.push(X_SHARE_HASHTAGS.map((tag) => `#${tag}`).join(" "));
 
   return lines.join("\n");
 }
@@ -1656,6 +1659,7 @@ export function RoomPage() {
   const shareJoinCode =
     includeJoinCodeInXShare && joinCodeLabel.trim().length > 0 ? joinCodeLabel.trim() : null;
   const xShareText = buildXShareText(shareRoomName, shareJoinPageUrl, shareJoinCode);
+  const xShareHashtagCsv = X_SHARE_HASHTAGS.join(",");
   const publicSharePanel: ReactNode = canShowSharePanel ? (
     <div className="rounded-2xl border border-cyan-400/30 bg-[#10151d]/95 p-4 shadow-[0_14px_36px_rgba(0,0,0,0.55)] backdrop-blur-sm">
       <div className="mb-3 flex items-center justify-between">
@@ -1668,7 +1672,19 @@ export function RoomPage() {
         </span>
       </div>
       <p className="text-sm font-semibold text-white">{shareRoomName}</p>
-      <p className="mt-1 break-all text-xs text-cyan-100/80">{shareJoinPageUrl}</p>
+      <div className="mt-2 flex items-start gap-2 rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+        <p className="min-w-0 flex-1 break-all text-xs leading-4 text-cyan-100/80 max-h-8 overflow-hidden">
+          {shareJoinPageUrl}
+        </p>
+        <button
+          type="button"
+          onClick={handleCopyShareUrl}
+          className="inline-flex shrink-0 items-center justify-center gap-1 rounded-lg border border-white/20 bg-black/25 px-2 py-1 text-[10px] font-black uppercase tracking-[0.15em] text-gray-100 transition-all hover:border-white/35 hover:bg-white/10"
+        >
+          {copiedShareUrl ? <Check size={12} /> : <Copy size={12} />}
+          {copiedShareUrl ? "Copied" : "Copy"}
+        </button>
+      </div>
       <label className="mt-3 flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-gray-200">
         <span className="font-semibold">X本文に join_code を含める</span>
         <button
@@ -1685,22 +1701,14 @@ export function RoomPage() {
           {includeJoinCodeInXShare ? "ON" : "OFF"}
         </button>
       </label>
-      <div className="mt-3 grid grid-cols-2 gap-2">
+      <div className="mt-3">
         <button
           type="button"
           onClick={handleShareToX}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-500 px-3 py-2 text-xs font-black uppercase tracking-[0.2em] text-black transition-all hover:bg-cyan-400"
+          className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-cyan-500 px-3 py-2 text-xs font-black uppercase tracking-[0.2em] text-black transition-all hover:bg-cyan-400"
         >
           <ExternalLink size={14} />
           X共有
-        </button>
-        <button
-          type="button"
-          onClick={handleCopyShareUrl}
-          className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/20 bg-black/25 px-3 py-2 text-xs font-black uppercase tracking-[0.2em] text-gray-100 transition-all hover:border-white/35 hover:bg-white/10"
-        >
-          {copiedShareUrl ? <Check size={14} /> : <Copy size={14} />}
-          {copiedShareUrl ? "Copied" : "URLコピー"}
         </button>
       </div>
     </div>
@@ -1833,7 +1841,7 @@ export function RoomPage() {
     handleCopy(shareJoinPageUrl, setCopiedShareUrl);
   }
 
-  function handleShareToX(): void {
+  async function handleShareToX(): Promise<void> {
     if (!shareJoinPageUrl) {
       return;
     }
@@ -1846,7 +1854,19 @@ export function RoomPage() {
     });
     const intentUrl = new URL("https://x.com/intent/tweet");
     intentUrl.searchParams.set("text", xShareText);
-    window.open(intentUrl.toString(), "_blank", "noopener,noreferrer");
+    if (xShareHashtagCsv.length > 0) {
+      intentUrl.searchParams.set("hashtags", xShareHashtagCsv);
+    }
+
+    try {
+      await openExternalUrl(intentUrl.toString());
+    } catch (error) {
+      logClientShareAnalytics("share_url_generated", {
+        roomId: roomIdLabel,
+        source: "x_intent_failed",
+        reason: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   function submitManualResult(): void {
