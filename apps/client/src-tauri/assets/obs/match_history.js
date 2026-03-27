@@ -161,10 +161,50 @@ function updateDOM(data) {
             ? `${formatPoint(match.summary?.arena_points ?? 0)} pt`
             : toBplScore(match.summary, chartCount);
 
-        let chartsHTML = "";
+        const matchElement = document.createElement("div");
+        matchElement.className = "match-list-item";
+        const matchMain = document.createElement("div");
+        matchMain.className = "match-main";
+
+        const matchLeft = document.createElement("div");
+        matchLeft.className = "match-left";
+
+        const matchBadge = document.createElement("div");
+        matchBadge.className = `match-badge ${badge.className}`;
+        matchBadge.textContent = badge.text;
+
+        const matchInfo = document.createElement("div");
+        matchInfo.className = "match-info";
+
+        const matchOpponents = document.createElement("span");
+        matchOpponents.className = "match-opponents";
+        matchOpponents.textContent = opponentsText;
+
+        const matchTime = document.createElement("span");
+        matchTime.className = "match-time";
+        matchTime.textContent = timeText;
+
+        const matchRight = document.createElement("div");
+        matchRight.className = "match-right";
+
+        const matchScore = document.createElement("span");
+        matchScore.className = "match-score";
+        matchScore.textContent = scoreText;
+
+        matchInfo.appendChild(matchOpponents);
+        matchInfo.appendChild(matchTime);
+        matchLeft.appendChild(matchBadge);
+        matchLeft.appendChild(matchInfo);
+        matchRight.appendChild(matchScore);
+        matchMain.appendChild(matchLeft);
+        matchMain.appendChild(matchRight);
+        matchElement.appendChild(matchMain);
+
         if (Array.isArray(match.charts) && match.charts.length > 0) {
             const sortedCharts = [...match.charts].sort((left, right) => Number(left.order) - Number(right.order));
-            chartsHTML = "<div class=\"charts-container\">";
+            const chartsContainer = document.createElement("div");
+            chartsContainer.className = "charts-container";
+
             sortedCharts.forEach((chart) => {
                 const chartOrder = Number.isFinite(Number(chart.order)) ? Number(chart.order) : 0;
                 const selfScore = Number.isFinite(Number(chart.self_score)) ? Number(chart.self_score) : 0;
@@ -174,40 +214,52 @@ function updateDOM(data) {
                 const difficulty = typeof chart.difficulty === "string" ? chart.difficulty : "-";
                 const title = typeof chart.title === "string" ? chart.title : "-";
 
-                chartsHTML += `
-                    <div class="chart-row">
-                        <div class="chart-main">
-                            <div class="chart-title"><span class="chart-order">#${chartOrder}</span>${title}</div>
-                            <div class="chart-meta">${playStyle} / ${difficulty}</div>
-                        </div>
-                        <div class="chart-stats">
-                            <span class="c-val c-ex">EX ${selfScore}</span>
-                            <span class="c-val c-bp">BP ${selfMiss}</span>
-                            <span class="c-val c-pt">${formatPoint(selfPoint)}pt</span>
-                        </div>
-                    </div>
-                `;
-            });
-            chartsHTML += "</div>";
-        }
+                const chartRow = document.createElement("div");
+                chartRow.className = "chart-row";
 
-        const matchElement = document.createElement("div");
-        matchElement.className = "match-list-item";
-        matchElement.innerHTML = `
-            <div class="match-main">
-                <div class="match-left">
-                    <div class="match-badge ${badge.className}">${badge.text}</div>
-                    <div class="match-info">
-                        <span class="match-opponents">${opponentsText}</span>
-                        <span class="match-time">${timeText}</span>
-                    </div>
-                </div>
-                <div class="match-right">
-                    <span class="match-score">${scoreText}</span>
-                </div>
-            </div>
-            ${chartsHTML}
-        `;
+                const chartMain = document.createElement("div");
+                chartMain.className = "chart-main";
+
+                const chartTitle = document.createElement("div");
+                chartTitle.className = "chart-title";
+
+                const chartOrderElement = document.createElement("span");
+                chartOrderElement.className = "chart-order";
+                chartOrderElement.textContent = `#${chartOrder}`;
+
+                const chartMeta = document.createElement("div");
+                chartMeta.className = "chart-meta";
+                chartMeta.textContent = `${playStyle} / ${difficulty}`;
+
+                const chartStats = document.createElement("div");
+                chartStats.className = "chart-stats";
+
+                const exStat = document.createElement("span");
+                exStat.className = "c-val c-ex";
+                exStat.textContent = `EX ${selfScore}`;
+
+                const bpStat = document.createElement("span");
+                bpStat.className = "c-val c-bp";
+                bpStat.textContent = `BP ${selfMiss}`;
+
+                const pointStat = document.createElement("span");
+                pointStat.className = "c-val c-pt";
+                pointStat.textContent = `${formatPoint(selfPoint)}pt`;
+
+                chartTitle.appendChild(chartOrderElement);
+                chartTitle.appendChild(document.createTextNode(title));
+                chartMain.appendChild(chartTitle);
+                chartMain.appendChild(chartMeta);
+                chartStats.appendChild(exStat);
+                chartStats.appendChild(bpStat);
+                chartStats.appendChild(pointStat);
+                chartRow.appendChild(chartMain);
+                chartRow.appendChild(chartStats);
+                chartsContainer.appendChild(chartRow);
+            });
+
+            matchElement.appendChild(chartsContainer);
+        }
         historyContainer.appendChild(matchElement);
     });
 }
