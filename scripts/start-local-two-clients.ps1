@@ -266,7 +266,14 @@ function Build-QueryString([pscustomobject]$Spec) {
 }
 
 function Write-TauriDevConfig([pscustomobject]$Spec) {
+  $identifierSuffix = ([string]$Spec.Id).ToLowerInvariant()
+  $identifierSuffix = ($identifierSuffix -replace "[^a-z0-9\-]", "-").Trim("-")
+  if ([string]::IsNullOrWhiteSpace($identifierSuffix)) {
+    $identifierSuffix = "client"
+  }
+
   $config = [ordered]@{
+    identifier = "com.infinitas.arena.client.local.$identifierSuffix"
     build = [ordered]@{
       beforeDevCommand = "cmd /c exit 0"
       devUrl = "http://localhost:1420$(Build-QueryString $Spec)"
