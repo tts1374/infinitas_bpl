@@ -24,6 +24,7 @@ interface RoomSocketClientOptions {
   allowLeggendaria: boolean;
   ownedPackIds: number[];
   joinCode?: string | null;
+  getCurrentGeneration?: () => number | null;
   onMessage: (message: ServerMessage) => void;
   onStateChange?: (state: SocketConnectionState, detail: string) => void;
   onError?: (error: Error) => void;
@@ -105,7 +106,12 @@ export class RoomSocketClient {
 
     if (sendLeaveMessage && socket.readyState === WebSocket.OPEN) {
       try {
-        this.send("ROOM_LEAVE", {});
+        const generation = this.options.getCurrentGeneration?.() ?? null;
+        if (generation !== null) {
+          this.send("ROOM_LEAVE", {
+            generation,
+          });
+        }
       } catch {
         // no-op
       }
