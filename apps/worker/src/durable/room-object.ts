@@ -1821,6 +1821,8 @@ export class RoomDurableObject {
       return;
     }
 
+    // Host-initiated room recreation reopens recruitment for the same shared URL.
+    this.shareRecruitmentClosed = false;
     this.rememberRequest(session.playerId, message.type, payload.request_id);
     await this.persistRoomRecord();
     await this.syncAlarm();

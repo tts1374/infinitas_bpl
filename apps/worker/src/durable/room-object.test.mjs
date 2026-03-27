@@ -346,9 +346,9 @@ test("internal join-status returns closed after match has started", async () => 
   assert.equal(payload.shareable, false);
 });
 
-test("internal join-status remains closed after returning to LOBBY once match started", async () => {
+test("internal join-status returns recruiting after host recreates room via RETURN_TO_LOBBY", async () => {
   const roomObject = await createRoomObject();
-  const now = new Date("2026-03-08T00:00:00.000Z");
+  const now = new Date();
   const hostSocket = new TestSocket();
   const guestSocket = new TestSocket();
 
@@ -360,15 +360,25 @@ test("internal join-status remains closed after returning to LOBBY once match st
   assert.equal(startResult.ok, true);
   await roomObject.persistRoomRecord();
 
-  roomObject.roomState.enterResult(new Date("2026-03-08T00:05:00.000Z"));
-  const returnResult = roomObject.roomState.returnToLobby("host", new Date("2026-03-08T00:06:00.000Z"));
-  assert.equal(returnResult.ok, true);
-  await roomObject.persistRoomRecord();
+  roomObject.roomState.enterResult(new Date(now.getTime() + 1_000));
+  await roomObject.webSocketMessage(
+    hostSocket,
+    JSON.stringify({
+      type: "RETURN_TO_LOBBY",
+      client_msg_id: "msg-3",
+      room_id: "room-1",
+      player_id: "host",
+      payload: {
+        request_id: "return-1",
+      },
+    }),
+  );
+  assert.equal(roomObject.roomState.getRoomState(), "LOBBY");
 
   const response = await roomObject.fetch(new Request("https://room.internal/join-status", { method: "GET" }));
   assert.equal(response.status, 200);
 
   const payload = await response.json();
-  assert.equal(payload.recruitment_status, "closed");
-  assert.equal(payload.shareable, false);
+  assert.equal(payload.recruitment_status, "recruiting");
+  assert.equal(payload.shareable, true);
 });
