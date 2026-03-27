@@ -242,6 +242,11 @@ function requireCurrentGeneration(): number | null {
     return generation;
   }
 
+  // Mock scenarios can omit generation in snapshots; actions are handled locally.
+  if (activeMockScenarioId !== null) {
+    return 1;
+  }
+
   setErrorDialog("部屋の状態が変わりました", ROOM_STATE_CHANGED_MESSAGE, "ROOM_STATE_CHANGED", true);
   return null;
 }
