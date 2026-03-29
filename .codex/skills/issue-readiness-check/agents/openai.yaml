@@ -1,0 +1,4 @@
+interface:
+  display_name: "Issue Readiness Check"
+  short_description: "Phase 1 exit gate for issue execution readiness decisions"
+  default_prompt: "Assess whether an issue is ready for execution planning, identify blocking gaps, and return ready/not ready with concrete next steps."

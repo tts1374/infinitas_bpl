@@ -135,6 +135,56 @@ Every delegated implementation or audit task must be bounded and should include,
 
 Do not delegate with only a vague issue title when a concrete bounded packet can be prepared first.
 
+### 2.6 Phase model and transition rule
+Use the following repository-wide phases:
+
+- **A — Requirement shaping**
+  - from idea / vague issue to specification-ready issue
+- **B — Execution planning**
+  - from specification-ready issue to execution-ready bounded plan
+- **C — Implementation and audit**
+  - from bounded plan to reviewable implementation state
+- **D — Closure and release preparation**
+  - from reviewed implementation result to follow-up shaping, release preparation, and next-cycle improvements
+
+Phase boundaries:
+
+- **A -> B**
+  - allowed only when a specification-confirmed state exists
+  - practical boundary: an implementation-ready specification comment or equivalent normalized issue update exists
+  - must make explicit:
+    - fixed decisions
+    - pending decisions
+    - in-scope / out-of-scope
+    - acceptance criteria
+    - execution readiness
+
+- **B -> C**
+  - allowed only when bounded execution framing exists
+  - implementers must be able to start without re-deriving scope or redesigning the task
+  - task breakdown belongs to Phase B, not Phase C
+
+- **C -> D**
+  - allowed only when implementation, required validation, and required audit outputs are available in reviewable form
+
+Rules:
+- Do not bypass unresolved requirement work by jumping from Phase A directly to implementers.
+- Do not bypass bounded execution planning by jumping from Phase B ambiguity into Phase C implementation.
+- Release execution may be outside repository-phase routing, but release preparation belongs to Phase D.
+
+### 2.7 Agent and Skill responsibility rule
+Use the following responsibility split:
+
+- **Agents**
+  - own intake, routing, judgment, delegation topology, and bounded handoff framing
+- **Skills**
+  - own reusable workflows, normalization patterns, and repeated check/transform routines
+
+Rules:
+- Do not duplicate stable reusable workflows across multiple agent prompts when they can be represented as Skills.
+- Do not use Skills as a substitute for routing or delegation judgment.
+- When root governance and Skills already define a stable workflow, prompts should carry only task-specific delta whenever practical.
+
 ---
 
 ## 3. System Architecture (Ph1)
@@ -231,6 +281,21 @@ When planning is required:
 When planning is not required:
 - small local tasks may proceed directly
 - however, if the task becomes cross-layer, contract-sensitive, or ambiguous during execution, re-evaluate whether planning is now required
+
+### 6.4 Phase-specific planning rule
+Rules:
+- Phase A is requirement shaping only.
+- In Phase A:
+  - do not implement
+  - do not start execution planning
+  - do not delegate to implementers as a substitute for requirement clarification
+- In Phase B:
+  - planning output must produce bounded execution framing
+  - task breakdown, PR split strategy, and validation expectation belong here
+- In Phase C:
+  - execute only against approved bounded scope unless minimal justified expansion is required
+- In Phase D:
+  - focus on closure, release preparation inputs, and next-cycle shaping rather than silent scope reopening
 
 ---
 
@@ -437,3 +502,13 @@ A delegated bounded task should return, at minimum:
 - whether the bounded task is complete, blocked, or requires escalation
 
 A task is not reviewable if the returned result omits completion status or material open risks.
+
+### 13.3 Phase-D closure expectation
+When work has reached post-implementation closure:
+- separate bounded task completion from broader follow-up opportunities
+- capture technical debt and next-cycle items explicitly
+- prepare release-impact inputs explicitly when relevant:
+  - release scope candidate
+  - version-impact framing
+  - release-note input
+- do not silently treat release preparation as implementation scope expansion

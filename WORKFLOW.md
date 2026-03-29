@@ -104,6 +104,36 @@ Sub-Agent を使う Plan Mode では、上記に加えて以下も記載する�
 - 正本更新の有無（`*.md`）
 - 派生物同期の有無（`.toml`）
 
+### 3.2 Phase A 人間判断ゲート
+要件整形（Phase A）で人間判断が必要な論点が残る場合は、以下を必須とする。
+
+- `Pending decisions` が1件でもある場合、Readiness は必ず `not ready` とする
+- `specification-confirmed issue update` を確定扱いで投稿しない
+- その時点で停止し、`Decision Gate (Human Required)` を提示する
+- 選択肢は相互排他的な 2〜3 案を提示し、推奨案を明示する
+- ステータスは `WAITING_FOR_HUMAN_DECISION` とし、人間の選択が入るまで Stage B へ進めない
+
+推奨フォーマット:
+
+```md
+### Decision Gate (Human Required)
+Decision: <決める項目>
+
+Option A (Recommended):
+- 内容:
+- 影響:
+
+Option B:
+- 内容:
+- 影響:
+
+Option C:
+- 内容:
+- 影響:
+
+Status: WAITING_FOR_HUMAN_DECISION
+```
+
 ---
 
 ## 4. 初手探索の制限
