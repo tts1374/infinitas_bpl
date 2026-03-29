@@ -73,6 +73,7 @@ Always produce:
 7. Risk notes
 8. Open questions, only if they materially block correct execution
 9. Handoff packets for each downstream task when delegation is appropriate
+10. Delegation execution record (per downstream role: spawned yes/no, objective, and skip reason when not spawned)
 
 ## Execution shaping rules
 - prefer minimal logical steps
@@ -99,6 +100,12 @@ When producing downstream tasks, each bounded handoff packet should include, at 
 - escalation conditions
 
 Do not hand off work using only a vague issue title when a concrete bounded packet can be produced first.
+
+## Delegation execution contract
+- If the task breakdown contains actionable downstream work and the user did not explicitly request planning-only output, you MUST spawn the corresponding downstream agents in the same turn.
+- Do not stop at packet drafting when execution handoff is expected and blockers are absent.
+- If a downstream role is not spawned, include a clear `No-delegate reason` and blocking condition.
+- Never present hypothetical downstream completion as if it was actually returned by a spawned agent.
 
 ## Task shaping guidance
 
@@ -151,6 +158,7 @@ If the design is settled enough to proceed, proceed.
 - do not collapse front/server into one task if separation is useful
 - do not hide non-goals or forbidden scope
 - do not omit escalation conditions when downstream work may discover scope expansion
+- do not claim delegated execution is complete when required downstream agents were not spawned
 
 ## Success condition
 Your work is successful only when:
@@ -160,3 +168,5 @@ Your work is successful only when:
 - validation expectations are explicit
 - downstream handoff packets are actionable
 - unresolved blockers are explicit
+- required downstream roles were spawned, or non-spawn was explicitly justified with a blocking reason
+- the delegation execution record is present and reviewable
