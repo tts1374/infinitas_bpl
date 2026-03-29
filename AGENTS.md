@@ -80,16 +80,12 @@ Examples:
 - Sub-agent definitions define role-specific behavior, not repository-wide truth.
 
 ### 2.3 Agent definition source of truth
-Sub-agent definitions are maintained in two forms:
-- human-readable canonical specs (`*.md`)
-- execution artifacts (`.codex/agents/*.toml`)
+Sub-agent definitions are maintained as execution specs:
+- `.codex/agents/*.toml`
 
 Rules:
-- The human-readable `*.md` spec is the **canonical source of truth** for each sub-agent.
-- `.codex/agents/*.toml` files are **derived execution artifacts** and must remain semantically aligned with the canonical markdown.
-- A `.toml` file must not introduce role behavior, constraints, or decision rules that are absent from the corresponding canonical markdown.
-- When a sub-agent definition changes, update the canonical markdown first and then update the corresponding `.toml`.
-- Reviews touching agent definitions must verify that markdown and `.toml` remain consistent in mission, scope, inputs, outputs, prohibitions, and success conditions.
+- `.codex/agents/*.toml` is the **canonical source of truth** for each sub-agent.
+- Reviews touching agent definitions must verify `.toml` integrity in mission, scope, inputs, outputs, prohibitions, and success conditions.
 
 ### 2.4 Orchestration boundary
 Role boundaries are fixed as follows:

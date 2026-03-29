@@ -10,6 +10,7 @@
     "version:bump": "node ./scripts/bump-version.mjs",
     "lint": "eslint \"apps/**/*.{ts,tsx}\" \"packages/**/*.{ts,tsx}\" --max-warnings 0",
     "check:design-contracts": "node ./scripts/check-design-contracts.mjs",
+    "check:agents": "node ./scripts/check-agent-definitions.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "typecheck:client": "npm --workspace @infinitas/client run typecheck",
     "typecheck:web": "npm --workspace @infinitas/web run typecheck",

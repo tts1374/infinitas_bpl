@@ -6,7 +6,7 @@
 - 局所修正は、計画書より実装修正を優先する。
 - 状態機械（Room FSM / WS protocol / timers / aggregation）を壊す変更は単独PRで扱う。
 - `v1` を基本ブランチとする。
-- Agent 定義は **人間可読正本 (`*.md`) を先に更新し、実行用派生物 (`.codex/agents/*.toml`) を後で同期する**。
+- Agent 定義は **`.codex/agents/*.toml` を正本として更新する**。
 - Sub-Agent を使う場合でも、1タスク1目的・最小差分・明示スコープの原則は変わらない。
 
 ---
@@ -55,7 +55,7 @@
 - セキュリティ・再現性・整合性に影響する変更
 - docs/design の規範仕様を変更してから実装する必要がある変更
 - Sub-Agent の責務境界や委譲方式そのものを変更する場合
-- Agent 定義の正本 (`*.md`) と派生物 (`.toml`) を同時に更新する場合で、役割・入力・出力・禁止事項・成功条件のいずれかに意味差分が入る場合
+- Agent 定義（`.codex/agents/*.toml`）で、役割・入力・出力・禁止事項・成功条件のいずれかに意味差分が入る場合
 
 以下は原則として **Plan Mode 不要**。
 
@@ -65,7 +65,7 @@
 - 文言、翻訳、軽微なバリデーション変更
 - テスト追加のみ（仕様変更を伴わないもの）
 - 既存 Agent 定義の誤字修正や説明改善のみで、意味差分がない場合
-- `.md` 正本に既に確定している内容を `.toml` 派生物へ同期するだけの場合
+- `.toml` の意味差分を伴わない軽微な文言修正のみの場合
 
 ---
 
@@ -101,8 +101,7 @@ Sub-Agent を使う Plan Mode では、上記に加えて以下も記載する�
 - 各 subtask の完了条件
 - 監査の要否
 - Blocker / Must fix / Should fix / Note の扱い
-- 正本更新の有無（`*.md`）
-- 派生物同期の有無（`.toml`）
+- 正本更新の有無（`.toml`）
 
 ### 3.2 Phase A 人間判断ゲート
 要件整形（Phase A）で人間判断が必要な論点が残る場合は、以下を必須とする。
@@ -133,6 +132,18 @@ Option C:
 
 Status: WAITING_FOR_HUMAN_DECISION
 ```
+
+### 3.3 Sub-Agent 解決契約
+Sub-Agent 呼び出し時の識別子解決は、`.codex/agents/*.toml` の `name` を唯一のキーとする。
+
+ルール:
+- 呼び出しは `name` を指定する（例: `strategy-orchestrator`）
+- `name` は kebab-case を必須とする
+- `.toml` のファイル名ベースは `name` と一致させる
+
+検証:
+- `npm run check:agents` で `name` / ファイル名の整合と snake_case 別名混入を検証する
+- CI でも同チェックを必須化する
 
 ---
 
@@ -176,13 +187,12 @@ Status: WAITING_FOR_HUMAN_DECISION
 ### 5.3 Agent 定義変更時のコミット方針
 Agent 定義を変更する場合は、原則として以下の順で扱う。
 
-1. canonical markdown (`*.md`) 更新
-2. `.codex/agents/*.toml` 同期
-3. 必要なら `AGENTS.md` / `WORKFLOW.md` / `QUALITY.md` の関連更新
-4. 整合確認
+1. `.codex/agents/*.toml` 正本更新
+2. 必要なら `AGENTS.md` / `WORKFLOW.md` / `QUALITY.md` の関連更新
+3. 整合確認
 
 意味差分を含む場合:
-- 正本更新コミットと派生物同期コミットを分けてもよい
+- 正本更新コミットと governance 更新コミットを分けてもよい
 - ただしレビュー時に対応関係が明確であること
 
 意味差分を含まない単純同期の場合:
@@ -212,10 +222,8 @@ Agent 定義を変更する場合は、原則として以下の順で扱う。
 ### 7.1 Agent 定義差分規律
 Agent 定義変更時は以下を守る。
 
-- `*.md` 正本と `.toml` 派生物の意味差分を放置しない
 - `.toml` 側だけで role behavior を増やさない
 - `Mission / Inputs / Process / Output / Prohibited / Success condition` の意味整合を崩さない
-- 正本未更新のまま `.toml` を先行変更しない
 - 人間可読説明と実行設定で矛盾した model / reasoning / role boundary を残さない
 
 ### 7.2 Scope を越える場合
@@ -248,9 +256,9 @@ Agent 定義変更時は以下を守る。
 ### 8.1 Agent 定義変更時の検証
 Agent 定義変更時は、通常の差分検証に加えて以下を確認する。
 
-- `*.md` と `.toml` の対応関係が明確である
+- `.toml` の定義が一意である
 - 役割境界が root `AGENTS.md` と矛盾しない
-- `name` / `description` / `model` / `model_reasoning_effort` / `developer_instructions` が正本の意図と一致する
+- `name` / `description` / `model` / `model_reasoning_effort` / `developer_instructions` が `.toml` 正本で整合している
 - 禁止事項や成功条件が `.toml` 側で脱落していない
 - `.toml` にだけ存在する新しい判断ルールがない
 
@@ -287,8 +295,7 @@ PRには以下を含める。
 ### 9.1 Agent / governance 変更時の追加項目
 Agent 定義や統治文書を変えるPRでは、追加で以下を含める。
 
-- canonical markdown 更新有無
-- `.toml` 同期有無
+- `.toml` 正本更新有無
 - 役割境界変更の有無
 - 既存 Agent への影響
 - 試運転要否
@@ -307,9 +314,7 @@ Agent 定義や統治文書を変えるPRでは、追加で以下を含める。
 ### 10.1 Agent 定義更新の完了条件
 Agent 定義更新は、以下を満たしたときに完了とする。
 
-- `*.md` 正本が更新済み
-- 必要な `.toml` 派生物が同期済み
-- 両者に意味矛盾がない
+- `.toml` 正本が更新済み
 - root `AGENTS.md` と責務境界が矛盾していない
 - 関連する `WORKFLOW.md` / `QUALITY.md` の更新要否を確認済み
 - レビュー可能な差分説明がある
@@ -380,5 +385,5 @@ Sub-Agent 運用の初期試運転は、以下の順で行う。
 - execution coordinator が bounded task を安定生成できる
 - implementer の返却物が reviewable
 - auditor の返却物が severity 分類される
-- `.md` 正本 / `.toml` 派生物ルールで破綻しない
+- `.toml` 正本ルールで破綻しない
 - 完了 / blocked / escalation の判定が揺れない

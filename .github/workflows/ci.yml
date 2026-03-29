@@ -40,6 +40,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Check agent definition consistency
+        run: npm run check:agents
+
       - name: Lint TypeScript
         run: npm run lint
 
