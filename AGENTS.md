@@ -181,6 +181,14 @@ Rules:
 - Do not use Skills as a substitute for routing or delegation judgment.
 - When root governance and Skills already define a stable workflow, prompts should carry only task-specific delta whenever practical.
 
+### 2.8 Delegated write ownership rule
+Rules:
+- Enforce `1 write scope = 1 owner`.
+- While a delegated implementer owns a write scope, the parent agent must not edit that same file/subtree.
+- During delegated implementation, the parent agent is limited to read-only coordination work (progress tracking, audit routing, validation planning).
+- If delegated execution is delayed or stalled, do not switch the parent agent to direct implementation by default; resolve by wait extension, follow-up instruction, or replacement delegation.
+- If parent takeover is exceptionally required, first declare delegation stop and reason, then reassign write ownership explicitly before editing.
+
 ---
 
 ## 3. System Architecture (Ph1)
