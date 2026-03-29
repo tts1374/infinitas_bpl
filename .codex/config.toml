@@ -1,0 +1,5 @@
+model = "gpt-5.4"
+
+[agents]
+max_threads = 6
+max_depth = 1

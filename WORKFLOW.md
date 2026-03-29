@@ -1,5 +1,3 @@
-# WORKFLOW.md
-
 ## 0. 基本原則
 
 - 1PR1目的。
@@ -8,6 +6,8 @@
 - 局所修正は、計画書より実装修正を優先する。
 - 状態機械（Room FSM / WS protocol / timers / aggregation）を壊す変更は単独PRで扱う。
 - `v1` を基本ブランチとする。
+- Agent 定義は **人間可読正本 (`*.md`) を先に更新し、実行用派生物 (`.codex/agents/*.toml`) を後で同期する**。
+- Sub-Agent を使う場合でも、1タスク1目的・最小差分・明示スコープの原則は変わらない。
 
 ---
 
@@ -54,6 +54,8 @@
 - client / worker / shared をまたぐクロスレイヤ変更
 - セキュリティ・再現性・整合性に影響する変更
 - docs/design の規範仕様を変更してから実装する必要がある変更
+- Sub-Agent の責務境界や委譲方式そのものを変更する場合
+- Agent 定義の正本 (`*.md`) と派生物 (`.toml`) を同時に更新する場合で、役割・入力・出力・禁止事項・成功条件のいずれかに意味差分が入る場合
 
 以下は原則として **Plan Mode 不要**。
 
@@ -62,6 +64,8 @@
 - UI表示だけの修正
 - 文言、翻訳、軽微なバリデーション変更
 - テスト追加のみ（仕様変更を伴わないもの）
+- 既存 Agent 定義の誤字修正や説明改善のみで、意味差分がない場合
+- `.md` 正本に既に確定している内容を `.toml` 派生物へ同期するだけの場合
 
 ---
 
@@ -86,6 +90,19 @@
 - [ ] テスト
 - [ ] 回帰確認
 - [ ] ドキュメント更新
+
+### 3.1 Multi-agent task の追記事項
+Sub-Agent を使う Plan Mode では、上記に加えて以下も記載する。
+
+- 入口担当（通常は `strategy_orchestrator`）
+- 実行担当（`execution_coordinator` / implementer / auditor）
+- 委譲単位
+- 委譲順序
+- 各 subtask の完了条件
+- 監査の要否
+- Blocker / Must fix / Should fix / Note の扱い
+- 正本更新の有無（`*.md`）
+- 派生物同期の有無（`.toml`）
 
 ---
 
@@ -126,6 +143,21 @@
 5. テスト追加
 6. ドキュメント更新
 
+### 5.3 Agent 定義変更時のコミット方針
+Agent 定義を変更する場合は、原則として以下の順で扱う。
+
+1. canonical markdown (`*.md`) 更新
+2. `.codex/agents/*.toml` 同期
+3. 必要なら `AGENTS.md` / `WORKFLOW.md` / `QUALITY.md` の関連更新
+4. 整合確認
+
+意味差分を含む場合:
+- 正本更新コミットと派生物同期コミットを分けてもよい
+- ただしレビュー時に対応関係が明確であること
+
+意味差分を含まない単純同期の場合:
+- 1論理コミットにまとめてよい
+
 ---
 
 ## 6. worktree / ブランチ運用
@@ -146,6 +178,19 @@
 - 宣言したスコープを越える場合は、なぜ必要かを明示する
 - 生成物（`dist` 等）を直接編集しない
 - 依存更新の意図がない限り lockfile を触らない
+
+### 7.1 Agent 定義差分規律
+Agent 定義変更時は以下を守る。
+
+- `*.md` 正本と `.toml` 派生物の意味差分を放置しない
+- `.toml` 側だけで role behavior を増やさない
+- `Mission / Inputs / Process / Output / Prohibited / Success condition` の意味整合を崩さない
+- 正本未更新のまま `.toml` を先行変更しない
+- 人間可読説明と実行設定で矛盾した model / reasoning / role boundary を残さない
+
+### 7.2 Scope を越える場合
+- Agent 変更のつもりが governance 変更に及ぶ場合は、`AGENTS.md` / `WORKFLOW.md` / `QUALITY.md` の更新要否を再判定する
+- implementer 変更のつもりが orchestrator / auditor の責務変更に及ぶ場合は、局所修正として処理しない
 
 ---
 
@@ -170,6 +215,25 @@
 - 最低限のE2E
 - DO state loss / lobby listing / expected_key enforcement / idempotency
 
+### 8.1 Agent 定義変更時の検証
+Agent 定義変更時は、通常の差分検証に加えて以下を確認する。
+
+- `*.md` と `.toml` の対応関係が明確である
+- 役割境界が root `AGENTS.md` と矛盾しない
+- `name` / `description` / `model` / `model_reasoning_effort` / `developer_instructions` が正本の意図と一致する
+- 禁止事項や成功条件が `.toml` 側で脱落していない
+- `.toml` にだけ存在する新しい判断ルールがない
+
+### 8.2 Multi-agent 実行時の検証
+Sub-Agent を使った実行では、必要に応じて以下も確認する。
+
+- 委譲 packet が bounded である
+- 返却物に completion status がある
+- 監査結果が severity 分類されている
+- Blocker が未解決のまま完了扱いされていない
+- Must fix の扱いが明示されている
+- broader follow-up が現タスクへ無断混入していない
+
 ---
 
 ## 9. PR本文テンプレート
@@ -190,6 +254,16 @@ PRには以下を含める。
 - Cloudflare resources 影響
 - docs/design 更新有無
 
+### 9.1 Agent / governance 変更時の追加項目
+Agent 定義や統治文書を変えるPRでは、追加で以下を含める。
+
+- canonical markdown 更新有無
+- `.toml` 同期有無
+- 役割境界変更の有無
+- 既存 Agent への影響
+- 試運転要否
+- 導入順（例: 4役先行 → auditor 追加）
+
 ---
 
 ## 10. 完了条件（ワークフロー観点）
@@ -199,3 +273,82 @@ PRには以下を含める。
 - 目的外変更がない
 - QUALITY基準を満たす
 - `git status` がクリーンである
+
+### 10.1 Agent 定義更新の完了条件
+Agent 定義更新は、以下を満たしたときに完了とする。
+
+- `*.md` 正本が更新済み
+- 必要な `.toml` 派生物が同期済み
+- 両者に意味矛盾がない
+- root `AGENTS.md` と責務境界が矛盾していない
+- 関連する `WORKFLOW.md` / `QUALITY.md` の更新要否を確認済み
+- レビュー可能な差分説明がある
+
+### 10.2 Multi-agent タスクの完了条件
+Sub-Agent を使うタスクは、以下を満たしたときに完了とする。
+
+- 必要な委譲結果が全て返却済み
+- required audit がある場合、その結果が返却済み
+- Blocker が未解決でない
+- Must fix を残す場合は、スコープ見直しまたは明示的 defer がされている
+- completion / blocked / escalation の状態が明示されている
+
+---
+
+## 11. 初期試運転手順
+
+Sub-Agent 運用の初期試運転は、以下の順で行う。
+
+### 11.1 第1段階
+まず以下の4役のみで回す。
+
+- `strategy_orchestrator`
+- `execution_coordinator`
+- `front_implementer`
+- `server_implementer`
+
+目的:
+- intake 判定が安定するか
+- bounded task 化が安定するか
+- implementer が勝手にスコープ再定義しないか
+- execution coordinator の分割粒度が妥当か
+
+### 11.2 第2段階
+次に監査2役を追加する。
+
+- `contract_auditor`
+- `implementation_auditor`
+
+目的:
+- 監査観点が重複しすぎないか
+- severity 分類が機能するか
+- implementation 結果を監査で閉じられるか
+- broader follow-up を別建てに分離できるか
+
+### 11.3 試運転向けタスク条件
+初回試運転タスクは以下を満たすものを選ぶ。
+
+- 小〜中規模
+- `client` または `worker` の片側中心、または軽い cross-layer
+- shared breaking change を含まない
+- FSM / timer / lifecycle の中核変更を含まない
+- 成功条件が明文化しやすい
+- 実装後に差分・検証・監査が追いやすい
+
+避けるもの:
+- Room FSM 改変
+- WS contract 変更
+- settings / snapshot 互換変更
+- source I/O 仕様変更
+- CI/CD 変更
+- Agent 基盤自身の大改修と同時実装
+
+### 11.4 運用開始可の判定
+以下を満たしたら運用開始可とみなす。
+
+- 入口担当が安定して判定できる
+- execution coordinator が bounded task を安定生成できる
+- implementer の返却物が reviewable
+- auditor の返却物が severity 分類される
+- `.md` 正本 / `.toml` 派生物ルールで破綻しない
+- 完了 / blocked / escalation の判定が揺れない
