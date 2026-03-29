@@ -1,9 +1,8 @@
 # Validation Output Template
 
-Use this template for status reporting.
+Use this template for validation planning and reporting.
 
-```markdown
-## Validation Plan
+## Validation Recommendation
 
 Required now:
 - [ ] <check 1>
@@ -22,10 +21,11 @@ Not required:
 ## Residual Risks
 
 - <risk from any failed or not-run check, or `None`>
-```
 
 ## Notes
 
-- Keep the checklist aligned to changed areas only.
-- Do not report checks outside scope as mandatory.
-- Keep evidence concise and factual.
+* Keep the checklist aligned to changed areas only.
+* Do not report checks outside scope as mandatory.
+* Keep evidence concise and factual.
+* If checks remain `not run`, make the resulting risk explicit rather than implying completion.
+* Do not use this template as a substitute for audit or completion ownership.

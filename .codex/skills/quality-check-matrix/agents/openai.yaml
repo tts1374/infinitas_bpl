@@ -1,4 +1,4 @@
 interface:
   display_name: "Quality Check Matrix"
-  short_description: "Select required checks from QUALITY.md"
-  default_prompt: "Map changed areas to required verification checks and output a concise checklist before completion."
+  short_description: "Reference skill for validation-scope selection"
+  default_prompt: "Use this only to support validation-scope selection for an orchestrator, implementer, or auditor. Do not replace audit/completion decisions."

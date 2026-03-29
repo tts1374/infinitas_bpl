@@ -1,52 +1,79 @@
 ---
 name: quality-check-matrix
-description: "Select required verification checks for infinitas_arena tasks using QUALITY.md, AGENTS.md, and WORKFLOW.md. Use when validating completion, preparing a PR, or reviewing risky changes to produce an area-aware checklist that always includes technical and diff validation, and conditionally adds FSM/Protocol, monitoring source, and E2E checks."
+description: "Reference skill for validation-scope selection. Used by orchestrators, implementers, or auditors to map touched areas to the minimum required verification groups from QUALITY.md. This skill does not replace audit/completion decisions and does not by itself declare a task complete."
 ---
 
 # Quality Check Matrix
 
 ## Overview
 
-Determine the smallest sufficient verification set for a given change.
-Apply universal checks to every task, then add area-specific checks only when related files or behaviors are touched.
+Use this skill only as a reference aid for `strategy_orchestrator`, `execution_coordinator`, implementers, or auditors when deciding which verification groups are required for a given change.
+
+This skill does not:
+- replace implementation ownership
+- replace audit ownership
+- declare a task complete by itself
+- decide pass/fail for the whole task by itself
+
+It only helps determine:
+- which validation groups are required now
+- which validation groups are not required
+- what residual risk remains when checks are not run
 
 ## Inputs
 
 - Requested change summary
+- Current task framing from the calling agent
 - Expected changed files/layers
-- Current mode (`Local Execution Mode` or `Plan Mode`)
+- Current execution mode if already known (`Local Execution Mode` or `Plan Mode`)
 - Repository quality rules:
   - `QUALITY.md`
   - `AGENTS.md`
   - `WORKFLOW.md`
 
+Invoke this skill only after the calling agent has framed the task enough to identify the likely touched areas.
+
 ## Workflow
 
-1. Identify touched areas from the request and changed files.
+1. Identify touched areas from the request and expected changed files/layers.
 2. Load `references/quality-verification-matrix.md`.
 3. Select required checks:
    - Always include universal checks.
    - Add conditional checks only for matched areas.
-4. Output a concise checklist using `references/validation-output-template.md`.
-5. Execute available checks and record evidence.
-6. Report skipped checks with explicit reasons.
+4. Return only:
+   - required validation groups
+   - not-required validation groups with reasons
+   - residual risks when checks are expected to remain `not run`
+
+Do not:
+- execute implementation work
+- declare completion by yourself
+- replace audit verdicts by yourself
 
 ## Decision Rules
 
-- Include all checks from QUALITY section 1 and section 2 on every task.
-- Include QUALITY section 3 only when FSM, timers, protocol, idempotency, host authority, or KV listing behavior is changed.
-- Include QUALITY section 4 only when monitoring source parsers/watchers or observed/expected key handling is changed.
-- Include QUALITY section 5 only when gameplay flow, timeout/force-advance, skip, or DO state loss behavior is changed.
-- Include QUALITY section 6 when preparing a release-oriented change.
+- Include all universal checks on every task.
+- Include area-specific checks only when the touched area matches the matrix.
+- If uncertain whether a conditional area is touched, recommend including the safer additional checks.
+- If an environment constraint may prevent execution, keep the check in scope and surface the resulting residual risk explicitly.
 
-## Output Requirements
+These rules support execution and review. They do not replace orchestrator, implementer, or auditor ownership of final decisions.
 
-- Keep output minimal and actionable.
-- Separate `Required now` from `Not required`.
-- For each required check, show pass/fail/not-run and one-line evidence.
-- If a check is not run, state why and what risk remains.
+## Output Format
+
+Validation recommendation
+
+Required now:
+- [ ] <check group or concrete check>
+- [ ] <check group or concrete check>
+
+Not required:
+- <check group>: <reason>
+
+Residual risks if not run:
+- <risk or None>
 
 ## References
 
-- `references/quality-verification-matrix.md`
-- `references/validation-output-template.md`
+* `references/quality-verification-matrix.md`
+* `references/validation-output-template.md`

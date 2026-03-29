@@ -3,7 +3,6 @@
 Use this template when `Plan Mode` is required.
 Create `tasks/<branch-or-pr-name>.md` before implementation.
 
-```markdown
 # <task-name>
 
 ## Purpose
@@ -24,7 +23,7 @@ Create `tasks/<branch-or-pr-name>.md` before implementation.
 
 ## Target Files / Layers
 - Files: <explicit file list>
-- Layers: <client / worker / shared / KV / docs>
+- Layers: <client / worker / shared / docs / CI / web / update-worker>
 
 ## Test Focus
 - <build/lint/test and area-specific checks>
@@ -43,10 +42,12 @@ Create `tasks/<branch-or-pr-name>.md` before implementation.
 - [ ] Tests completed
 - [ ] Regression checks completed
 - [ ] Documentation updates completed (if required)
-```
 
 ## Usage Notes
 
-- Keep the plan minimal and directly tied to the requested change.
-- Do not start implementation before this file exists.
-- Keep one PR per purpose and avoid unrelated changes.
+* Keep the plan minimal and directly tied to the requested change.
+* Do not start implementation before this file exists.
+* Keep one PR per purpose and avoid unrelated changes.
+* Use explicit non-goals to prevent scope drift.
+* If the task spans multiple layers, keep the dependency order visible.
+* If the task includes contract-sensitive or compatibility-sensitive work, make the rollout and validation intent explicit.

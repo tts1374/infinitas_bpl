@@ -1,4 +1,4 @@
 interface:
   display_name: "FSM Protocol Guard"
-  short_description: "Guard FSM and WS contract changes"
-  default_prompt: "Detect risky FSM/protocol changes and produce required invariants and validation checklist before implementation."
+  short_description: "Reference skill for high-risk FSM/protocol review support"
+  default_prompt: "Use this only to support orchestrator or reviewer judgment for high-risk FSM/protocol work. Do not bypass stage/routing/audit decisions."

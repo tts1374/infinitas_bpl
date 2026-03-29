@@ -8,16 +8,17 @@ If one or more plan-required triggers match, choose `Plan Mode`.
 | Trigger | Typical examples | Source |
 | --- | --- | --- |
 | Architecture change | Responsibility split changes, major flow redesign | `WORKFLOW.md` 2 |
-| DO core behavior change | FSM, timers, aggregation, authority, idempotency | `WORKFLOW.md` 2, `AGENTS.md` 7.2, 8 |
-| WebSocket contract change | `type`/`payload` schema changes | `WORKFLOW.md` 2, `AGENTS.md` 7.2 |
-| Monitoring source I/O spec change | `inf_daken_counter` / `inf-notebook` input behavior changes | `WORKFLOW.md` 2, `AGENTS.md` 7.2, 9 |
-| KV lobby contract change | Schema/list/paging behavior for lobby metadata | `WORKFLOW.md` 2, `AGENTS.md` 8.3 |
-| Compatibility-impacting format change | `settings` / result snapshot format changes | `WORKFLOW.md` 2, `AGENTS.md` 7.2 |
-| CI or deployment change | Wrangler, Workers, DO, KV pipeline/resource config | `WORKFLOW.md` 2, `AGENTS.md` 7.2 |
-| Dependency update | Package/crate updates, lockfile change | `WORKFLOW.md` 2, `AGENTS.md` 7.2 |
-| Cross-layer change | Spans client + worker + shared | `WORKFLOW.md` 2, `AGENTS.md` 7.2 |
+| DO core behavior change | FSM, timers, aggregation, authority, idempotency | `WORKFLOW.md` 2, root/local worker governance |
+| WebSocket contract change | `type`/`payload` schema changes | `WORKFLOW.md` 2, root/shared governance |
+| Monitoring source I/O spec change | `inf_daken_counter` / `inf-notebook` / source acceptance behavior changes | `WORKFLOW.md` 2, root/local client/shared governance |
+| Public lobby contract change | Schema/list/filtering/visibility behavior for lobby summaries | `WORKFLOW.md` 2, local worker/shared governance |
+| Compatibility-impacting format change | `settings` / result snapshot / persistence-facing format changes | `WORKFLOW.md` 2, root/local client/shared governance |
+| CI or deployment change | Wrangler, Workers, DO, updater/web deployment/resource config | `WORKFLOW.md` 2, root governance |
+| Dependency update | Package/crate updates, lockfile change | `WORKFLOW.md` 2, root governance |
+| Cross-layer change | Spans client + worker + shared, or requires coordinated contract rollout | `WORKFLOW.md` 2, root/shared governance |
 | Security/reproducibility/integrity impact | Authz, replay safety, consistency constraints | `WORKFLOW.md` 2 |
-| Requires design-doc contract update first | Implementation must follow updated `docs/design/*` | `WORKFLOW.md` 2, `AGENTS.md` 3 |
+| Requires design-doc contract update first | Implementation must follow updated `docs/design/*` | `WORKFLOW.md` 2, root `AGENTS.md` |
+| Agent/governance definition change | Changes to agent role boundaries, orchestration rules, canonical `*.md` and `.toml` semantics | `WORKFLOW.md`, root `AGENTS.md` |
 
 ## Usually Local Execution
 
@@ -26,6 +27,7 @@ If one or more plan-required triggers match, choose `Plan Mode`.
 | Localized change in existing responsibility | Single-file bug fix, local validation tweak | `WORKFLOW.md` 1.A, 2 |
 | UI-only update | Text, i18n, small rendering fix | `WORKFLOW.md` 1.A, 2 |
 | Test-only reinforcement | Add test without behavior change | `WORKFLOW.md` 1.A, 2 |
+| Canonical-to-derived sync only | Sync `.toml` from already-finalized `*.md` without semantic change | `WORKFLOW.md`, root `AGENTS.md` |
 
 ## Validation Scope Mapping
 
@@ -37,6 +39,8 @@ Add checks only when changed area matches:
 - FSM/Protocol touched: apply `QUALITY.md` section 3 checks.
 - Monitoring source touched: apply `QUALITY.md` section 4 checks.
 - End-to-end room flow touched: apply `QUALITY.md` section 5 checks.
+- Persistence/settings/snapshot compatibility touched: apply compatibility-focused checks required by root/local governance.
+- Agent/governance definitions touched: apply markdown/toml consistency checks and responsibility-boundary checks.
 
 ## Tie-Breaker Rule
 

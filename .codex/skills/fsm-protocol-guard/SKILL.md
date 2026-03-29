@@ -1,19 +1,32 @@
 ---
 name: fsm-protocol-guard
-description: "Guard high-risk Room FSM and WebSocket protocol work in infinitas_arena. Use when a task touches Durable Objects state transitions, timers, aggregation, expected_key enforcement, idempotency, host authority, WS schema/payload contracts, lobby KV behavior, or ROOM_STATE_LOST failure handling, to enforce Plan Mode and produce invariant-aware verification requirements."
+description: "Reference skill for high-risk Room FSM and WebSocket protocol review support. Used by strategy_orchestrator, contract_design_reviewer, contract_auditor, or implementation_auditor to identify high-risk FSM/protocol work, impacted invariants, and required validation. This skill does not replace stage/routing/audit decisions and does not by itself authorize implementation or completion."
 ---
 
-# Fsm Protocol Guard
+# FSM Protocol Guard
 
 ## Overview
 
-Use this skill before implementing or reviewing high-risk room flow changes.
-Force explicit guardrails so FSM/protocol changes remain contract-safe and testable.
+Use this skill only as a reference aid for `strategy_orchestrator`, `contract_design_reviewer`, `contract_auditor`, or `implementation_auditor` when a task may touch high-risk room flow behavior.
+
+This skill does not:
+- replace stage classification
+- replace team-shape selection
+- replace contract review or implementation audit
+- authorize implementation by itself
+- declare the task complete by itself
+
+It only helps identify:
+- whether the task belongs to a high-risk FSM/protocol surface
+- which invariants are affected
+- which validation scope is required
+- what residual risk must remain visible
 
 ## Inputs
 
-- User request and intended behavior change
-- Candidate files and layers
+- User request or bounded change summary
+- Current task framing from the orchestrating/reviewing agent
+- Expected affected files and layers
 - Existing contract sources:
   - `AGENTS.md`
   - `WORKFLOW.md`
@@ -23,52 +36,53 @@ Force explicit guardrails so FSM/protocol changes remain contract-safe and testa
   - `docs/design/03_data_model.md`
   - `docs/design/07_constants.md`
 
+Invoke this skill only after the calling agent has framed the task enough to judge whether FSM/protocol risk may exist.
+
 ## Workflow
 
 1. Detect whether the change touches FSM/protocol risk areas with `references/fsm-protocol-risk-matrix.md`.
-2. Require `Plan Mode` when one or more risk triggers match.
+2. Determine whether repository rules imply:
+   - `high-risk treatment`
+   - `Plan Mode recommendation`
 3. Check invariant impact with `references/fsm-protocol-invariants.md`.
-4. If contracts must change, update design docs first, then implement.
-5. Produce a verification checklist using `references/fsm-protocol-checklist-template.md`.
-6. Block completion until all required checks are executed or explicitly marked `not run` with residual risk.
+4. If contract behavior changes are implied, identify which design docs must be updated first.
+5. Produce only:
+   - risk recommendation
+   - impacted invariants
+   - required validation groups
+   - residual risks or unresolved uncertainty
 
-## Guard Rules
+Do not:
+- create downstream handoff packets
+- proceed into implementation by yourself
+- declare the task complete by yourself
 
-- Worker routes remain thin; Durable Object owns FSM, timers, aggregation, authority, idempotency, and broadcast.
-- Enforce idempotency with `client_msg_id` de-dup by `(player_id, client_msg_id)`.
-- Enforce `observed_key == expected_key` and round-index validity before confirm/submit paths.
-- Keep lobby KV lightweight metadata only; exclude expired rooms by `expires_at`.
-- Handle DO state loss by closing room with `ROOM_STATE_LOST`.
+## Decision Rules
 
-## Required Validation Scope
+- Recommend high-risk treatment when the task touches FSM transitions, timer/deadline semantics, authoritative acceptance rules, idempotency behavior, public lobby summary behavior, failure/recovery behavior, or WS schema/payload contracts.
+- Recommend `Plan Mode` when one or more plan-required triggers match.
+- If uncertain, recommend the safer high-risk/Plan Mode path.
 
-- Always include `QUALITY.md` section 1 and section 2 checks.
-- Always include `QUALITY.md` section 3 for FSM/protocol changes.
-- Add `QUALITY.md` section 4 and section 5 when source I/O or end-to-end behavior is touched.
+These rules support orchestration and review. They do not replace orchestrator or auditor ownership of final decisions.
 
 ## Output Format
 
-Use this structure:
-
-```markdown
-Mode decision: Plan Mode
-Risk triggers:
+Risk recommendation: <high-risk / not high-risk>
+Plan Mode recommendation: <required / not required>
+Matched triggers:
 - <trigger 1>
 - <trigger 2>
 
 Invariants impacted:
-- <invariant id>: <impact summary>
+- <invariant id>: preserved | tightened | changed
+  - Note: <impact summary>
 
-Required checks:
-- [ ] <check>
-- [ ] <check>
-
-Not required:
-- <check group>: <reason>
+Required validation groups:
+- <group>
+- <group>
 
 Residual risks:
 - <risk or None>
-```
 
 ## References
 
