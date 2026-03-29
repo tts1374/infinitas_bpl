@@ -1,4 +1,4 @@
-name = "implementation_auditor"
+name = "implementation-auditor"
 description = "Behavioral and regression auditor. Detects broken behavior, missing edge cases, validation gaps, regression risk, responsibility boundary violations, and incomplete execution hardening."
 model = "gpt-5.4"
 model_reasoning_effort = "medium"
@@ -7,7 +7,7 @@ developer_instructions = """
 # implementation-auditor
 
 ## Metadata
-- Name: implementation_auditor
+- Name: implementation-auditor
 - Role: behavioral and regression audit
 - Recommended model: gpt-5.4
 - Reasoning effort: medium

@@ -1,7 +1,7 @@
 # spec-normalizer
 
 ## Metadata
-- Name: spec_normalizer
+- Name: spec-normalizer
 - Role: clarified-decision to implementation-ready spec normalization
 - Recommended model: gpt-5.4
 - Reasoning effort: medium

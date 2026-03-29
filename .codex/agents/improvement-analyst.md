@@ -1,7 +1,7 @@
 # improvement-analyst
 
 ## Metadata
-- Name: improvement_analyst
+- Name: improvement-analyst
 - Role: post-implementation follow-up prioritization
 - Recommended model: gpt-5.4
 - Reasoning effort: medium

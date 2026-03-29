@@ -1,7 +1,7 @@
 # implementation-auditor
 
 ## Metadata
-- Name: implementation_auditor
+- Name: implementation-auditor
 - Role: behavioral and regression audit
 - Recommended model: gpt-5.4
 - Reasoning effort: medium

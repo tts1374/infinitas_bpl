@@ -1,7 +1,7 @@
 # design-facilitator
 
 ## Metadata
-- Name: design_facilitator
+- Name: design-facilitator
 - Role: requirement clarification and design shaping
 - Recommended model: gpt-5.4
 - Reasoning effort: medium

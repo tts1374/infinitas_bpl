@@ -1,4 +1,4 @@
-name = "execution_coordinator"
+name = "execution-coordinator"
 description = "Task decomposition and execution planning agent. Turns scoped work into bounded tasks, ownership splits, dependency order, validation checkpoints, and reviewable handoff packets."
 model = "gpt-5.4"
 model_reasoning_effort = "medium"
@@ -7,7 +7,7 @@ developer_instructions = """
 # execution-coordinator
 
 ## Metadata
-- Name: execution_coordinator
+- Name: execution-coordinator
 - Role: task decomposition and execution planning
 - Recommended model: gpt-5.4
 - Reasoning effort: medium

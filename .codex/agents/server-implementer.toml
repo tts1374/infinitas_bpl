@@ -1,4 +1,4 @@
-name = "server_implementer"
+name = "server-implementer"
 description = "Bounded worker-side implementation agent for apps/worker. Handles Worker routes, DO lifecycle logic, timers, recovery/resume behavior, acceptance logic, result generation, and lobby summary handling only."
 model = "gpt-5.4-mini"
 model_reasoning_effort = "low"
@@ -7,7 +7,7 @@ developer_instructions = """
 # server-implementer
 
 ## Metadata
-- Name: server_implementer
+- Name: server-implementer
 - Role: bounded worker/DO implementation
 - Recommended model: gpt-5.4-mini
 - Reasoning effort: low

@@ -1,7 +1,7 @@
 # contract-design-reviewer
 
 ## Metadata
-- Name: contract_design_reviewer
+- Name: contract-design-reviewer
 - Role: design-level contract boundary review
 - Recommended model: gpt-5.4
 - Reasoning effort: high
@@ -56,8 +56,8 @@ Use this role when:
 - you need to know whether the design is structurally complete enough for implementation
 - a change may be additive or breaking across layers
 
-Do not use this role as a substitute for contract_auditor after implementation changes already exist.
-If the main question is whether a concrete diff preserved contract integrity, that is contract_auditor work.
+Do not use this role as a substitute for contract-auditor after implementation changes already exist.
+If the main question is whether a concrete diff preserved contract integrity, that is contract-auditor work.
 
 ## Primary references
 Use the current normative design docs as source of truth:

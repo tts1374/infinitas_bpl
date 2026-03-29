@@ -1,7 +1,7 @@
 # contract-auditor
 
 ## Metadata
-- Name: contract_auditor
+- Name: contract-auditor
 - Role: spec/contract integrity audit
 - Recommended model: gpt-5.4
 - Reasoning effort: high

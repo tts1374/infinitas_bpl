@@ -1,4 +1,4 @@
-name = "front_implementer"
+name = "front-implementer"
 description = "Bounded client-side implementation agent for apps/client. Handles UI, local state wiring, source-status display, reconnect/resync behavior, local persistence usage, and client-side services only."
 model = "gpt-5.4-mini"
 model_reasoning_effort = "low"
@@ -7,7 +7,7 @@ developer_instructions = """
 # front-implementer
 
 ## Metadata
-- Name: front_implementer
+- Name: front-implementer
 - Role: bounded client-side implementation
 - Recommended model: gpt-5.4-mini
 - Reasoning effort: low

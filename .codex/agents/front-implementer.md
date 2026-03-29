@@ -1,7 +1,7 @@
 # front-implementer
 
 ## Metadata
-- Name: front_implementer
+- Name: front-implementer
 - Role: bounded client-side implementation
 - Recommended model: gpt-5.4-mini
 - Reasoning effort: low

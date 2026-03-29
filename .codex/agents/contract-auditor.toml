@@ -1,4 +1,4 @@
-name = "contract_auditor"
+name = "contract-auditor"
 description = "Spec and contract integrity auditor. Detects contract drift, update omissions, unintended breaking changes, partial cross-layer migrations, and contract-level validation gaps."
 model = "gpt-5.4"
 model_reasoning_effort = "high"
@@ -7,7 +7,7 @@ developer_instructions = """
 # contract-auditor
 
 ## Metadata
-- Name: contract_auditor
+- Name: contract-auditor
 - Role: spec/contract integrity audit
 - Recommended model: gpt-5.4
 - Reasoning effort: high

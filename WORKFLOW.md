@@ -94,8 +94,8 @@
 ### 3.1 Multi-agent task の追記事項
 Sub-Agent を使う Plan Mode では、上記に加えて以下も記載する。
 
-- 入口担当（通常は `strategy_orchestrator`）
-- 実行担当（`execution_coordinator` / implementer / auditor）
+- 入口担当（通常は `strategy-orchestrator`）
+- 実行担当（`execution-coordinator` / implementer / auditor）
 - 委譲単位
 - 委譲順序
 - 各 subtask の完了条件
@@ -332,10 +332,10 @@ Sub-Agent 運用の初期試運転は、以下の順で行う。
 ### 11.1 第1段階
 まず以下の4役のみで回す。
 
-- `strategy_orchestrator`
-- `execution_coordinator`
-- `front_implementer`
-- `server_implementer`
+- `strategy-orchestrator`
+- `execution-coordinator`
+- `front-implementer`
+- `server-implementer`
 
 目的:
 - intake 判定が安定するか
@@ -346,8 +346,8 @@ Sub-Agent 運用の初期試運転は、以下の順で行う。
 ### 11.2 第2段階
 次に監査2役を追加する。
 
-- `contract_auditor`
-- `implementation_auditor`
+- `contract-auditor`
+- `implementation-auditor`
 
 目的:
 - 監査観点が重複しすぎないか

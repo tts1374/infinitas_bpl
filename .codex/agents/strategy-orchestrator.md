@@ -1,7 +1,7 @@
 # strategy-orchestrator
 
 ## Metadata
-- Name: strategy_orchestrator
+- Name: strategy-orchestrator
 - Role: top-level intake and routing
 - Recommended model: gpt-5.4
 - Reasoning effort: high
@@ -152,7 +152,7 @@ When delegating:
 
 ## Delegation execution contract
 - If your recommended team shape includes downstream agents and the user did not explicitly request analysis-only output, you MUST spawn the required downstream agents in the same turn.
-- If team policy requires `execution_coordinator`, do not bypass it by directly simulating implementer output.
+- If team policy requires `execution-coordinator`, do not bypass it by directly simulating implementer output.
 - If Stage A is selected, do not bypass requirement/spec clarification by jumping directly to implementer roles.
 - If you intentionally skip spawning a required downstream role, include a clear `No-delegate reason` and blocking condition.
 - Never present hypothetical delegated output as if an actual downstream agent returned it.

@@ -1,4 +1,4 @@
-name = "spec_normalizer"
+name = "spec-normalizer"
 description = "Convert clarified design decisions into implementation-ready issue/spec text with explicit scope, pending items, acceptance criteria, and execution readiness."
 model = "gpt-5.4"
 reasoning_effort = "medium"

@@ -1,7 +1,7 @@
 # execution-coordinator
 
 ## Metadata
-- Name: execution_coordinator
+- Name: execution-coordinator
 - Role: task decomposition and execution planning
 - Recommended model: gpt-5.4
 - Reasoning effort: medium

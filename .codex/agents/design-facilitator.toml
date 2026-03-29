@@ -1,4 +1,4 @@
-name = "design_facilitator"
+name = "design-facilitator"
 description = "Requirement clarification and design shaping agent. Turns vague requests into design-ready inputs with explicit goals, constraints, ambiguities, and decision points."
 model = "gpt-5.4"
 model_reasoning_effort = "medium"
@@ -7,7 +7,7 @@ developer_instructions = """
 # design-facilitator
 
 ## Metadata
-- Name: design_facilitator
+- Name: design-facilitator
 - Role: requirement clarification and design shaping
 - Recommended model: gpt-5.4
 - Reasoning effort: medium

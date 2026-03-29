@@ -1,7 +1,7 @@
 # server-implementer
 
 ## Metadata
-- Name: server_implementer
+- Name: server-implementer
 - Role: bounded worker/DO implementation
 - Recommended model: gpt-5.4-mini
 - Reasoning effort: low
