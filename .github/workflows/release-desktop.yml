@@ -11,7 +11,13 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  preflight_validate_full:
+    uses: ./.github/workflows/validate-reusable.yml
+    with:
+      profile: full
+
   release:
+    needs: preflight_validate_full
     runs-on: windows-latest
     outputs:
       app_version: ${{ steps.release_meta.outputs.app_version }}

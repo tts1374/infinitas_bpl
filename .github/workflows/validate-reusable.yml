@@ -1,0 +1,76 @@
+name: Validate Reusable
+
+on:
+  workflow_call:
+    inputs:
+      profile:
+        description: Validation profile (`quick` or `full`)
+        required: true
+        type: string
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Validate profile input
+        run: |
+          $profile = "${{ inputs.profile }}"
+          if ($profile -ne "quick" -and $profile -ne "full") {
+            throw "Invalid profile '$profile'. Expected 'quick' or 'full'."
+          }
+
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check agent definition consistency
+        run: npm run check:agents
+
+      - name: Lint TypeScript
+        run: npm run lint
+
+      - name: Typecheck TypeScript
+        run: npm run typecheck
+
+      - name: Build client
+        if: ${{ inputs.profile == 'full' }}
+        run: npm run build:client
+
+      - name: Run client stats tests
+        run: npm run test:client-stats
+
+      - name: Run Worker tests
+        run: npm run test:worker
+
+      - name: Set up Rust toolchain
+        if: ${{ inputs.profile == 'full' }}
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable-x86_64-pc-windows-msvc
+
+      - name: Cache Rust artifacts
+        if: ${{ inputs.profile == 'full' }}
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/client/src-tauri -> target
+
+      - name: Cargo check Tauri app
+        if: ${{ inputs.profile == 'full' }}
+        working-directory: apps/client/src-tauri
+        run: cargo check
+
+      - name: Bundle Worker with Wrangler dry-run
+        if: ${{ inputs.profile == 'full' }}
+        working-directory: apps/worker
+        run: npx wrangler deploy --dry-run

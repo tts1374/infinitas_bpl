@@ -6,6 +6,15 @@ on:
       - 'v*'
   pull_request:
   workflow_dispatch:
+    inputs:
+      profile:
+        description: Validation profile (`quick` or `full`)
+        type: choice
+        required: true
+        default: quick
+        options:
+          - quick
+          - full
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -13,55 +22,6 @@ concurrency:
 
 jobs:
   validate:
-    runs-on: windows-latest
-    defaults:
-      run:
-        shell: pwsh
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Set up Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: stable-x86_64-pc-windows-msvc
-
-      - name: Cache Rust artifacts
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: apps/client/src-tauri -> target
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Check agent definition consistency
-        run: npm run check:agents
-
-      - name: Lint TypeScript
-        run: npm run lint
-
-      - name: Typecheck TypeScript
-        run: npm run typecheck
-
-      - name: Build client
-        run: npm run build:client
-
-      - name: Run client stats tests
-        run: npm run test:client-stats
-
-      - name: Run Worker tests
-        run: npm run test:worker
-
-      - name: Cargo check Tauri app
-        working-directory: apps/client/src-tauri
-        run: cargo check
-
-      - name: Bundle Worker with Wrangler dry-run
-        working-directory: apps/worker
-        run: npx wrangler deploy --dry-run
+    uses: ./.github/workflows/validate-reusable.yml
+    with:
+      profile: ${{ github.event_name == 'pull_request' && 'quick' || github.event_name == 'push' && 'full' || github.event.inputs.profile }}
