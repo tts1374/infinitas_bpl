@@ -328,6 +328,20 @@ Sub-Agent を使うタスクは、以下を満たしたときに完了とする�
 - Must fix を残す場合は、スコープ見直しまたは明示的 defer がされている
 - completion / blocked / escalation の状態が明示されている
 
+### 10.3 Issue クローズ時の証跡テンプレ運用
+Issue をクローズする場合は、クローズコメントで証跡テンプレ記入を必須とする（手動運用）。
+
+必須項目:
+- `対応種別（コード/非コード）`
+- `PR URL または commit SHA`
+- `非コード完了理由（非コード時必須）`
+- `フォローアップ有無`
+
+運用ルール:
+- コード対応時は `PR URL または commit SHA` を必ず記載する。
+- 非コード対応時は `PR URL または commit SHA` を `N/A` とし、`非コード完了理由` を具体的に記載する。
+- 記載テンプレは [docs/issue_close_evidence_template.md](docs/issue_close_evidence_template.md) を参照する。
+
 ---
 
 ## 11. 初期試運転手順
