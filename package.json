@@ -8,6 +8,7 @@
   ],
   "scripts": {
     "version:bump": "node ./scripts/bump-version.mjs",
+    "release:phase-d": "node ./scripts/release/phase-d-release.mjs",
     "lint": "eslint \"apps/**/*.{ts,tsx}\" \"packages/**/*.{ts,tsx}\" --max-warnings 0",
     "check:design-contracts": "node ./scripts/check-design-contracts.mjs",
     "check:agents": "node ./scripts/check-agent-definitions.mjs",
