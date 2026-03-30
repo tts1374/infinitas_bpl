@@ -12,6 +12,25 @@ Issue をクローズする際は、以下テンプレをクローズコメン�
 - フォローアップ有無: <なし / あり（Issue/PR番号）>
 ```
 
+## Milestone運用の監査ログ（Issue↔PR対応表）
+
+Milestone 管理 Issue では、クローズ証跡に加えて以下の対応表を同一コメント内に記載する。
+
+### テンプレ
+
+```md
+## Milestone監査ログ
+| Milestone | Issue# | PR# | 状態 |
+| --- | --- | --- | --- |
+| v1.0.0 | #123 | #456 | COMPLETE |
+```
+
+### 記載ルール
+
+- `Issue#` は `#123` 形式で記載する。
+- `PR#` は `#456` 形式で記載する。PR未作成の場合は `N/A` とする。
+- `状態` は `READY / NOT_READY / WAITING_FOR_HUMAN_DECISION / COMPLETE / BLOCKED / ESCALATION` から選ぶ。
+
 ## 記載例（コード対応）
 
 ```md

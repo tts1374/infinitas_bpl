@@ -166,6 +166,7 @@ PR 本文には次を必須で含める:
 
 Issue クローズ時:
 - `docs/issue_close_evidence_template.md` の証跡を必須記載
+- Milestone 管理 Issue では同テンプレ内の「Milestone監査ログ（Issue↔PR対応表）」を併記する
 
 ---
 
