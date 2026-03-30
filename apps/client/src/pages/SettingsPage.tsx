@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   AlertTriangle,
+  ChevronDown,
   ChevronLeft,
   Database,
   FolderOpen,
@@ -106,9 +107,62 @@ interface FeedbackDraft {
 }
 
 type SaveStatus = "idle" | "saving" | "saved" | "save_error" | "validation_error";
+type SettingsSectionKey = "basic" | "advanced" | "other";
 
 const AUTOSAVE_DEBOUNCE_MS = 500;
 const AUTOSAVE_SAVED_MESSAGE_DURATION_MS = 2_000;
+
+interface CollapsibleSettingsSectionProps {
+  sectionKey: SettingsSectionKey;
+  title: string;
+  description: string;
+  icon: ReactNode;
+  isOpen: boolean;
+  onToggle: (sectionKey: SettingsSectionKey) => void;
+  children: ReactNode;
+}
+
+function CollapsibleSettingsSection({
+  sectionKey,
+  title,
+  description,
+  icon,
+  isOpen,
+  onToggle,
+  children,
+}: CollapsibleSettingsSectionProps) {
+  const contentId = `settings-section-${sectionKey}`;
+  return (
+    <section className="overflow-hidden rounded-2xl border border-white/10 bg-[#1b1b1f]">
+      <button
+        type="button"
+        onClick={() => {
+          onToggle(sectionKey);
+        }}
+        aria-expanded={isOpen}
+        aria-controls={contentId}
+        className="flex w-full items-center justify-between gap-4 px-6 py-5 text-left transition-colors hover:bg-white/[0.02]"
+      >
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="text-cyan-400">{icon}</span>
+          <div className="min-w-0">
+            <h2 className="text-sm font-black uppercase tracking-widest text-gray-200">{title}</h2>
+            <p className="mt-1 text-xs font-semibold text-gray-500">{description}</p>
+          </div>
+        </div>
+        <ChevronDown
+          size={18}
+          className={`shrink-0 text-gray-400 transition-transform ${isOpen ? "rotate-180 text-cyan-300" : ""}`}
+        />
+      </button>
+      {isOpen ? (
+        <div id={contentId} className="border-t border-white/10 px-6 py-8">
+          {children}
+        </div>
+      ) : null}
+    </section>
+  );
+}
 
 export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProps) {
   const draft = useSettingsStore((state) => state.draft);
@@ -160,6 +214,11 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
           : saveStatus === "validation_error"
             ? "border-amber-500/40 bg-amber-500/10 text-amber-300"
             : "border-white/15 bg-black/35 text-gray-400";
+  const [openSections, setOpenSections] = useState<Record<SettingsSectionKey, boolean>>({
+    basic: true,
+    advanced: false,
+    other: false,
+  });
 
   const togglePack = (packId: number) => {
     const currentOwnedPackIds = draft.ownedPackIds;
@@ -167,6 +226,13 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
       ? currentOwnedPackIds.filter((currentPackId) => currentPackId !== packId)
       : [...currentOwnedPackIds, packId].sort((left, right) => left - right);
     settingsStore.update("ownedPackIds", nextOwnedPackIds);
+  };
+
+  const toggleSection = (sectionKey: SettingsSectionKey) => {
+    setOpenSections((current) => ({
+      ...current,
+      [sectionKey]: !current[sectionKey],
+    }));
   };
   
   useEffect(() => {
@@ -505,35 +571,10 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
           <ChevronLeft size={18} className="transition-transform group-hover:-translate-x-1" />
           ロビーに戻る
         </button>
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <h1 className="flex items-center gap-3 text-4xl font-black italic uppercase tracking-tighter text-white">
-            <SettingsIcon className="h-8 w-8 text-cyan-500" />
-            System Settings
-          </h1>
-          <aside className="w-full max-w-xs rounded-2xl border border-cyan-500/20 bg-cyan-500/5 p-4">
-            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-300">Support</p>
-            <p className="mt-2 text-xs font-semibold leading-relaxed text-gray-300">
-              不具合報告・改善要望・その他の相談を送信できます。
-            </p>
-            <button
-              type="button"
-              onClick={() => {
-                setFeedbackValidationError(null);
-                setFeedbackMessage(null);
-                setIsFeedbackModalOpen(true);
-              }}
-              className="mt-4 inline-flex items-center gap-2 rounded-xl border border-cyan-400/40 bg-cyan-500/20 px-4 py-2 text-sm font-black text-cyan-200 transition-all hover:bg-cyan-500/30"
-            >
-              <MessageSquare size={16} />
-              フィードバックを送信
-            </button>
-            {feedbackMessage ? (
-              <p className={`mt-3 text-xs font-bold ${feedbackMessage.type === "success" ? "text-emerald-300" : "text-red-300"}`}>
-                {feedbackMessage.text}
-              </p>
-            ) : null}
-          </aside>
-        </div>
+        <h1 className="flex items-center gap-3 text-4xl font-black italic uppercase tracking-tighter text-white">
+          <SettingsIcon className="h-8 w-8 text-cyan-500" />
+          System Settings
+        </h1>
           {/* 自動保存ステータスインジケーター */}
           <div className="pointer-events-none fixed right-6 top-6 z-50" aria-live="polite" aria-atomic="true">
             <div
@@ -553,8 +594,17 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
           </div>
       </header>
 
-      <div className="space-y-12">
-        <section className="space-y-6">
+      <div className="space-y-6">
+        <CollapsibleSettingsSection
+          sectionKey="basic"
+          title="基本設定"
+          description="DJ NAME と DATA SOURCE を設定します。"
+          icon={<User size={18} />}
+          isOpen={openSections.basic}
+          onToggle={toggleSection}
+        >
+          <div className="space-y-12">
+            <section className="space-y-6">
           <div className="flex items-center gap-3 border-b border-white/5 pb-4">
             <User size={20} className="text-cyan-400" />
             <h2 className="text-sm font-black uppercase tracking-widest text-gray-400">User Profile</h2>
@@ -710,10 +760,21 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
             {validationMessage ? <p className="text-sm font-semibold text-red-400">{validationMessage}</p> : null}
           </div>
 
-        </section>
+            </section>
+          </div>
+        </CollapsibleSettingsSection>
 
-        {/* --- 所持パック・解禁状況設定 --- */}
-        <section className="space-y-6">
+        <CollapsibleSettingsSection
+          sectionKey="advanced"
+          title="詳細設定"
+          description="楽曲解禁、音声通知、OBS連携を設定します。"
+          icon={<Package size={18} />}
+          isOpen={openSections.advanced}
+          onToggle={toggleSection}
+        >
+          <div className="space-y-12">
+            {/* --- 所持パック・解禁状況設定 --- */}
+            <section className="space-y-6">
           <div className="flex items-center gap-3 border-b border-white/5 pb-4">
             <Package size={20} className="text-cyan-400" />
             <div className="flex flex-wrap items-center gap-3">
@@ -989,7 +1050,42 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
               </p>
             ) : null}
           </div>
-        </section>
+            </section>
+          </div>
+        </CollapsibleSettingsSection>
+
+        <CollapsibleSettingsSection
+          sectionKey="other"
+          title="その他"
+          description="Support からフィードバックを送信できます。"
+          icon={<MessageSquare size={18} />}
+          isOpen={openSections.other}
+          onToggle={toggleSection}
+        >
+          <aside className="w-full rounded-2xl border border-cyan-500/20 bg-cyan-500/5 p-4">
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-300">Support</p>
+            <p className="mt-2 text-xs font-semibold leading-relaxed text-gray-300">
+              不具合報告・改善要望・その他の相談を送信できます。
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setFeedbackValidationError(null);
+                setFeedbackMessage(null);
+                setIsFeedbackModalOpen(true);
+              }}
+              className="mt-4 inline-flex items-center gap-2 rounded-xl border border-cyan-400/40 bg-cyan-500/20 px-4 py-2 text-sm font-black text-cyan-200 transition-all hover:bg-cyan-500/30"
+            >
+              <MessageSquare size={16} />
+              フィードバックを送信
+            </button>
+            {feedbackMessage ? (
+              <p className={`mt-3 text-xs font-bold ${feedbackMessage.type === "success" ? "text-emerald-300" : "text-red-300"}`}>
+                {feedbackMessage.text}
+              </p>
+            ) : null}
+          </aside>
+        </CollapsibleSettingsSection>
 
         {statusMessage ? (
           <footer className="pt-4">
