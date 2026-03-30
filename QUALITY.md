@@ -1,73 +1,99 @@
 # QUALITY.md
 
-## 0. 完了の定義
-タスクは「動作の証明」ができるまで完了と見なさない。
-ビルド成功・テスト成功・差分妥当性確認を必須とする。
+## 0. 基本原則
 
-適用原則:
-- すべての変更で「1. 技術的検証」「2. 差分検証」は必須。
-- 「3. FSM/Protocol検証」「4. 監視ソース検証」「5. E2E」は、当該領域に変更がある場合のみ必須。
-- 局所修正では、変更箇所に対して十分な最小検証を行う。
+完了条件は「動作を証明できること」。
+
+常時必須:
+1. 技術的検証
+2. 差分検証
+
+変更領域連動で追加必須:
+- FSM/Protocol 検証
+- 監視ソース検証
+- E2E/シナリオ検証
+- Agent/Governance 整合検証
 
 ---
 
-## 1. 技術的検証
-- ビルド成功（型エラーなし）
-- Lintエラーなし
-- テスト成功
+## 1. 技術的検証 (常時必須)
+
+- build/typecheck 成功
+- lint 成功
+- 関連 test 成功
 - 不要な依存追加なし
 
-### Cloudflare（worker）
-- `wrangler` build が成功する
-- DOが起動し、WS接続が成立する
+Worker 変更時:
+- `wrangler` build 成功
+- DO/WS 系の基本起動性を確認
 
-### Client（tauri）
-- UIビルド成功
-- Rust側 watcher/parser がコンパイルできる
+Client 変更時:
+- client build/typecheck 成功
+- 必要時に Rust 側 watcher/parser コンパイル性確認
 
 ---
 
-## 2. 差分検証
-- 変更対象以外に diff が存在しない
+## 2. 差分検証 (常時必須)
+
+- 変更対象外 diff がない
 - 無関係な整形変更なし
-- 生成物更新は意図的である
-- UTF-8 (no BOM) / LF 逸脱がない
+- 生成物更新は意図的
+- UTF-8(no BOM) / LF を維持
 
 ---
 
-## 3. FSM/Protocol検証（該当変更時のみ必須）
-変更がある場合は必ず確認する:
-- RoomState 遷移（LOBBY内ready管理 -> PICKING -> PLAYING -> RESULT -> CLOSED）
-- タイマー（ready_check 20min / picking 120s / round_soft_ttl 5min / match_ttl 30min）動作
-- expected_key enforcement（accept_window=0）
-- idempotency（client_msg_id）重複排除
-- host権限（START_MATCH / RETURN_TO_LOBBY / FORCE_ADVANCE）
-- LobbyDirectory 一覧（公開・非満員・LOBBY・TTL 未超過）
+## 3. リスク連動検証マトリクス
+
+### 3.1 FSM / Protocol 変更時
+必須確認:
+- RoomState 遷移
+- timer/deadline/TTL 振る舞い
+- expected_key enforcement
+- idempotency (`client_msg_id`)
+- host 権限境界
+- LobbyDirectory 公開条件
+
+### 3.2 Source I/O 変更時
+必須確認:
+- `inf-notebook` 抽出
+- `daken_counter_v3` 抽出
+- `reflux` 抽出
+- `inf_daken_counter` (legacy有効時) 抽出
+- `observed_key == expected_key` 採用
+- 異常時 `SOURCE_UNAVAILABLE` と TECHスキップ導線
+
+### 3.3 E2E/シナリオ必須時
+最低限:
+- create -> ready -> pick -> play -> result
+- duplicate pick 差し替え
+- TIMEOUT と FORCE_ADVANCE
+- `SKIP_HOST_ASSIGN` 拒否動作
+- `ROOM_STATE_LOST` 経路
+
+### 3.4 Agent/Governance 変更時
+必須確認:
+- `npm run check:agents` 成功
+- `npm run check:design-contracts` 成功
+- 廃止 agent 名の残存参照がない
+- 状態語彙/severity 語彙の統一定義が維持される
 
 ---
 
-## 4. 監視ソース検証（該当変更時のみ必須）
-- inf-notebook: export/recent.json から SCORE/MISSCOUNT 抽出できる
-- daken_counter_v3: local WS から SCORE/MISSCOUNT 抽出できる
-- reflux: latest.json/tracker.tsv から SCORE/MISSCOUNT 抽出できる
-- inf_daken_counter（legacy有効構成のみ）: today_update.xml から SCORE/MISSCOUNT 抽出できる
-- observed_key == expected_key のみ採用される
-- 監視異常時に SOURCE_UNAVAILABLE を出し、TECHスキップ誘導できる
+## 4. Severity Convention (統一)
+
+- `Blocker`: 完了不可。修正または明示再スコープまで停止
+- `Must fix`: 現タスクで修正必須。延期時は明示的合意が必要
+- `Should fix`: 重要改善。同タスク内または明示的後続化
+- `Note`: 情報共有/軽微懸念。単独では完了阻害しない
 
 ---
 
-## 5. E2E（該当変更時のみ必須）
-- 2人で ARENA: create -> ready -> pick -> play(1ラウンド以上) -> result
-- 2人で BPL(3ラウンド): 同様
-- 2人で BPL4(4ラウンド): 同様
-- 重複ピックの差し替え
-- TIMEOUT（soft ttl）と FORCE_ADVANCE
-- `SKIP_HOST_ASSIGN` が v1 では拒否され、強制確定は `FORCE_ADVANCE` で扱われる
-- DO state loss -> ROOM_STATE_LOST -> room close
+## 5. Completion Evidence
 
----
+完了宣言には次を含める:
+- 実施検証一覧
+- リスクに対応した証跡
+- 未解決項目と扱い（修正/延期/エスカレーション）
+- `COMPLETE/BLOCKED/ESCALATION` の明示
 
-## 6. リリース前確認（Ph1）
-- バージョン整合性
-- CHANGELOG（ある場合）
-- `LobbyDirectoryDO` の一覧フィルタ / TTL 運用確認
+`Blocker` 未解決の完了宣言は禁止。
