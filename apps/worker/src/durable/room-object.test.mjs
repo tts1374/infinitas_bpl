@@ -126,7 +126,7 @@ function createJoinMessage(playerId, clientMessageId) {
     payload: {
       display_name: playerId.toUpperCase(),
       source: "inf-notebook",
-      client_version: "1.1.1",
+      client_version: "1.2.0",
     },
   };
 }
