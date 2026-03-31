@@ -3,3 +3,44 @@ model = "gpt-5.4"
 [agents]
 max_threads = 6
 max_depth = 2
+
+################################################################################
+# MCP servers (minimal set for infinitas_arena)
+################################################################################
+
+[mcp_servers]
+
+# GitHub MCP (official local server via Docker)
+# Required env on host: GITHUB_PERSONAL_ACCESS_TOKEN
+[mcp_servers.github]
+command = "docker"
+args = [
+  "run", "-i", "--rm",
+  "-e", "GITHUB_PERSONAL_ACCESS_TOKEN",
+  "-e", "GITHUB_TOOLSETS=repos,issues,pull_requests,actions",
+  "-e", "GITHUB_READ_ONLY=1",
+  "ghcr.io/github/github-mcp-server"
+]
+startup_timeout_sec = 30.0
+tool_timeout_sec = 60.0
+
+# Cloudflare Workers Bindings MCP (remote)
+[mcp_servers.cloudflareBindings]
+command = "npx"
+args = ["-y", "mcp-remote@latest", "https://bindings.mcp.cloudflare.com/mcp"]
+startup_timeout_sec = 30.0
+tool_timeout_sec = 60.0
+
+# Cloudflare Observability MCP (remote)
+[mcp_servers.cloudflareObservability]
+command = "npx"
+args = ["-y", "mcp-remote@latest", "https://observability.mcp.cloudflare.com/mcp"]
+startup_timeout_sec = 30.0
+tool_timeout_sec = 60.0
+
+# Playwright MCP (UI regression support)
+[mcp_servers.playwright]
+command = "npx"
+args = ["-y", "@playwright/mcp@latest", "--isolated"]
+startup_timeout_sec = 30.0
+tool_timeout_sec = 60.0
