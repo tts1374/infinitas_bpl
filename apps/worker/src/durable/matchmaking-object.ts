@@ -48,6 +48,7 @@ interface MatchmakingQueueTicketRecord {
 
 const TICKETS_STORAGE_KEY = "matchmaking-tickets";
 const INTERNAL_QUEUE_TICKET_PATH_PATTERN = /^\/internal\/queue\/([^/]+)$/;
+const SEARCHING_TICKET_STALE_MS = 120_000;
 
 function jsonResponse(status: number, payload: unknown): Response {
   return new Response(JSON.stringify(payload), {
@@ -288,6 +289,7 @@ export class MatchmakingDurableObject {
     }
 
     const nowMs = Date.now();
+    this.expireStaleSearchingTickets(nowMs);
     const nowIso = new Date(nowMs).toISOString();
     const existingTickets = Array.from(this.tickets.values())
       .filter((ticket) => ticket.status === "SEARCHING" && ticket.player_id === parsed.player_id)
@@ -340,17 +342,30 @@ export class MatchmakingDurableObject {
       return jsonResponse(400, { error: "ticket_id is required." });
     }
 
+    const nowMs = Date.now();
+    let changed = this.expireStaleSearchingTickets(nowMs);
     const ticket = this.tickets.get(normalizedTicketId);
     if (ticket === undefined) {
+      if (changed) {
+        await this.persistTickets();
+      }
       return jsonResponse(404, { error: "Ticket not found." });
     }
 
     if (ticket.status === "SEARCHING") {
-      await this.matchTickets(Date.now());
+      this.tickets.set(normalizedTicketId, {
+        ...ticket,
+        updated_at: new Date(nowMs).toISOString(),
+      });
+      await this.matchTickets(nowMs);
+      changed = true;
+    }
+
+    if (changed) {
       await this.persistTickets();
     }
 
-    return jsonResponse(200, this.buildQueueTicketResponse(normalizedTicketId, Date.now()));
+    return jsonResponse(200, this.buildQueueTicketResponse(normalizedTicketId, nowMs));
   }
 
   private async handleCancelTicket(ticketId: string): Promise<Response> {
@@ -359,22 +374,31 @@ export class MatchmakingDurableObject {
       return jsonResponse(400, { error: "ticket_id is required." });
     }
 
+    const nowMs = Date.now();
+    let changed = this.expireStaleSearchingTickets(nowMs);
     const ticket = this.tickets.get(normalizedTicketId);
     if (ticket === undefined) {
+      if (changed) {
+        await this.persistTickets();
+      }
       return jsonResponse(404, { error: "Ticket not found." });
     }
 
     if (ticket.status === "SEARCHING") {
-      const nowIso = new Date().toISOString();
+      const nowIso = new Date(nowMs).toISOString();
       this.tickets.set(normalizedTicketId, {
         ...ticket,
         status: "CANCELLED",
         updated_at: nowIso,
       });
+      changed = true;
+    }
+
+    if (changed) {
       await this.persistTickets();
     }
 
-    return jsonResponse(200, this.buildQueueTicketResponse(normalizedTicketId, Date.now()));
+    return jsonResponse(200, this.buildQueueTicketResponse(normalizedTicketId, nowMs));
   }
 
   private buildQueueTicketResponse(ticketId: string, nowMs: number): MatchmakingQueueTicket {
@@ -400,6 +424,7 @@ export class MatchmakingDurableObject {
   }
 
   private async matchTickets(nowMs: number): Promise<void> {
+    this.expireStaleSearchingTickets(nowMs);
     const searchingTickets = Array.from(this.tickets.values())
       .filter((ticket) => ticket.status === "SEARCHING")
       .sort(compareByQueuedAt);
@@ -661,6 +686,23 @@ export class MatchmakingDurableObject {
 
   private buildBucketKey(mode: Mode, playStyle: PlayStyle, winMetric: WinMetric): string {
     return `${mode}:${playStyle}:${winMetric}`;
+  }
+
+  private expireStaleSearchingTickets(nowMs: number): boolean {
+    let changed = false;
+    for (const [ticketId, ticket] of this.tickets.entries()) {
+      if (ticket.status !== "SEARCHING") {
+        continue;
+      }
+
+      const updatedAtMs = parseIsoTimeMs(ticket.updated_at);
+      if (updatedAtMs === null || nowMs - updatedAtMs > SEARCHING_TICKET_STALE_MS) {
+        this.tickets.delete(ticketId);
+        changed = true;
+      }
+    }
+
+    return changed;
   }
 
   private async persistTickets(): Promise<void> {

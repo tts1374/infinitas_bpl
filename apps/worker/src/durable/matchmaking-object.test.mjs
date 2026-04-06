@@ -130,6 +130,7 @@ test("enqueue reuses the active searching ticket for the same player", async () 
 });
 
 test("matcher does not pair duplicate tickets from the same player", async () => {
+  const nowIso = new Date().toISOString();
   const initialTickets = {
     ticket_a: {
       ticket_id: "ticket_a",
@@ -140,8 +141,8 @@ test("matcher does not pair duplicate tickets from the same player", async () =>
       rating: 2400,
       player_id: "player-1",
       display_name: "P1",
-      queued_at: "2026-04-06T00:00:00.000Z",
-      updated_at: "2026-04-06T00:00:00.000Z",
+      queued_at: nowIso,
+      updated_at: nowIso,
       room_id: null,
       matched_player_count: null,
     },
@@ -154,8 +155,8 @@ test("matcher does not pair duplicate tickets from the same player", async () =>
       rating: 2410,
       player_id: "player-1",
       display_name: "P1-DUP",
-      queued_at: "2026-04-06T00:00:00.000Z",
-      updated_at: "2026-04-06T00:00:00.000Z",
+      queued_at: nowIso,
+      updated_at: nowIso,
       room_id: null,
       matched_player_count: null,
     },
@@ -169,4 +170,44 @@ test("matcher does not pair duplicate tickets from the same player", async () =>
   const payload = await response.json();
   assert.equal(payload.status, "SEARCHING");
   assert.equal(payload.candidate_count, 0);
+});
+
+test("stale searching tickets are evicted before matching", async () => {
+  const initialTickets = {
+    stale_ticket: {
+      ticket_id: "stale_ticket",
+      status: "SEARCHING",
+      mode: "ARENA",
+      play_style: "SP",
+      win_metric: "SCORE",
+      rating: 2200,
+      player_id: "stale-player",
+      display_name: "STALE",
+      queued_at: "2026-04-06T00:00:00.000Z",
+      updated_at: "2026-04-06T00:00:00.000Z",
+      room_id: null,
+      matched_player_count: null,
+    },
+  };
+
+  const { matchmakingObject, state, getCreateRoomCalls } = await createMatchmakingObject(initialTickets);
+  const enqueueResponse = await enqueue(matchmakingObject, {
+    mode: "ARENA",
+    play_style: "SP",
+    win_metric: "SCORE",
+    rating: 2210,
+    player_id: "active-player",
+    display_name: "ACTIVE",
+  });
+  assert.equal(enqueueResponse.status, 201);
+
+  const payload = await enqueueResponse.json();
+  assert.equal(payload.status, "SEARCHING");
+  assert.equal(payload.candidate_count, 0);
+  assert.equal(getCreateRoomCalls(), 0);
+
+  const stored = await state.storage.get("matchmaking-tickets");
+  const tickets = Object.values(stored);
+  assert.equal(tickets.length, 1);
+  assert.equal(tickets[0]?.player_id, "active-player");
 });

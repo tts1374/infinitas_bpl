@@ -3364,7 +3364,7 @@ export class RoomDurableObject {
   }
 
   private buildLobbySummary(snapshot: RoomStateSnapshot, nowMs: number): LobbyRoomSummary | null {
-    if (snapshot.settings.visibility !== "PUBLIC") {
+    if (snapshot.settings.visibility !== "PUBLIC" || snapshot.settings.auto_match === true) {
       return null;
     }
 

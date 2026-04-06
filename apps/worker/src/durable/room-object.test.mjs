@@ -274,6 +274,14 @@ test("auto-match room auto-starts on the final join and closes after the result 
   assert.ok(hostSocket.closeCalls.some((call) => call.reason === "Auto-match result expired."));
 });
 
+test("buildLobbySummary excludes auto-match rooms from public listing", async () => {
+  const roomObject = await createRoomObject();
+  enableAutoMatchRoom(roomObject);
+
+  const summary = roomObject.buildLobbySummary(roomObject.roomState.toSnapshot(), Date.now());
+  assert.equal(summary, null);
+});
+
 test("MATCH_TTL_EXPIRED closes sockets and clears sessions", async () => {
   const roomObject = await createRoomObject();
   const hostSocket = new TestSocket();

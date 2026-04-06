@@ -162,6 +162,7 @@ type LobbyRoomSummary = {
   - `status in [PICKING, PLAYING, RESULT]`: `now - ttlStartedAt > match_ttl`
 - `GET /api/lobby` は返却前に期限切れを清掃し、以下のみ返す
   - `isPublic = true`
+  - `settings.auto_match != true`（自動マッチ専用ルームは公開一覧に載せない）
   - `isFull = false`
   - `status = LOBBY`
   - TTL 未超過
@@ -184,6 +185,7 @@ type LobbyRoomSummary = {
 
 ### 3.4.2 成立条件（Phase1）
 - キー一致条件: `mode + play_style + win_metric`
+- stale `SEARCHING` ticket は `updated_at` が120秒以上更新されない場合に除外する
 - レート許容幅:
   - 初期 `±50`
   - 30秒ごとに `+50`

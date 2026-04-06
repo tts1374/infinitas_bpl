@@ -88,6 +88,7 @@
   - `RESULT -> LOBBY` 復帰
 - 一覧表示条件（`GET /api/lobby`）
   - `isPublic = true`
+  - `settings.auto_match != true`（自動マッチ専用ルームは公開一覧に表示しない）
   - `isFull = false`
   - `status = LOBBY`
   - TTL 未超過
