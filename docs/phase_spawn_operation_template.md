@@ -91,7 +91,7 @@ Issue: #XXX
 
 ```md
 Issue #XXX を正本として、Phase C/D を実行してください。
-docs/phase_spawn_operation_template.md を運用プロトコルとして適用してください。
+WORKFLOW.md を運用プロトコルとして適用してください。
 
 前提（A/B結果）:
 - Phase A: READY
