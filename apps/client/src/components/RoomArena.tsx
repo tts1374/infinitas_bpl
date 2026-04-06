@@ -795,7 +795,7 @@ export default function RoomArena({ onNavigate, initialStatus, controlled }: Roo
                             >
                                 Return to Lobby
                             </button>
-                            {isHost ? (
+                            {isHost && (controlled?.onRemakeStage !== undefined || controlled === undefined) ? (
                                 <button
                                     onClick={() => {
                                         if (controlled?.onRemakeStage) {

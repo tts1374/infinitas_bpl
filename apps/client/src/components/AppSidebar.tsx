@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { BarChart2, Gamepad2, Home, Settings } from "lucide-react";
 
-export type AppView = "lobby" | "settings" | "room" | "stats";
+export type AppView = "lobby" | "settings" | "room" | "stats" | "automatch";
 
 interface AppSidebarProps {
   activeView: AppView;

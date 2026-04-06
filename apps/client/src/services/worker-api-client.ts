@@ -3,6 +3,8 @@ import type {
   ChartSearchEntry,
   ChartSearchQuery,
   LobbyListResponse,
+  MatchmakingQueueRequest,
+  MatchmakingQueueTicket,
   PlayStyle,
   RoomSettings,
   SongPack,
@@ -242,4 +244,39 @@ export async function sendFeedback(baseUrl: string, payload: FeedbackRequest): P
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+export async function enqueueMatchmakingQueue(
+  baseUrl: string,
+  payload: MatchmakingQueueRequest,
+): Promise<MatchmakingQueueTicket> {
+  const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
+  return requestJson<MatchmakingQueueTicket>(`${normalizedBaseUrl}/api/matchmaking/queue`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getMatchmakingQueueTicket(
+  baseUrl: string,
+  ticketId: string,
+): Promise<MatchmakingQueueTicket> {
+  const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
+  const normalizedTicketId = ticketId.trim();
+  return requestJson<MatchmakingQueueTicket>(
+    `${normalizedBaseUrl}/api/matchmaking/queue/${encodeURIComponent(normalizedTicketId)}`,
+    { method: "GET" },
+  );
+}
+
+export async function cancelMatchmakingQueueTicket(
+  baseUrl: string,
+  ticketId: string,
+): Promise<MatchmakingQueueTicket> {
+  const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
+  const normalizedTicketId = ticketId.trim();
+  return requestJson<MatchmakingQueueTicket>(
+    `${normalizedBaseUrl}/api/matchmaking/queue/${encodeURIComponent(normalizedTicketId)}`,
+    { method: "DELETE" },
+  );
 }
