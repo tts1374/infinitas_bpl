@@ -335,11 +335,15 @@ function parseRoomSettings(value: unknown): RoomSettings | null {
   if ("auto_rematch" in value && typeof value.auto_rematch !== "boolean") {
     return null;
   }
+  if ("auto_match" in value && typeof value.auto_match !== "boolean") {
+    return null;
+  }
 
   return {
     visibility,
     join_code: joinCodeRaw,
     auto_rematch: visibility === "PRIVATE" && value.auto_rematch === true,
+    ...(visibility === "PUBLIC" && value.auto_match === true ? { auto_match: true } : {}),
     mode,
     win_metric: winMetric,
     play_style: playStyle,
@@ -1749,6 +1753,7 @@ export class RoomDurableObject {
     }
 
     const now = new Date();
+    const previousState = this.roomState.getRoomState();
     const joinResult = this.roomState.joinPlayer({
       player_id: message.player_id,
       display_name: payload.display_name,
@@ -1779,6 +1784,7 @@ export class RoomDurableObject {
     this.assignSessionToPlayer(session, message.player_id, joinedAt, attachedAt);
     this.replacePlayerSocket(message.player_id, session);
     await this.persistRoomRecord();
+    await this.syncAlarm();
     await this.syncLobbyDirectory();
 
     this.send(session.socket, "ROOM_JOIN_ACCEPTED", {
@@ -1786,6 +1792,23 @@ export class RoomDurableObject {
       session_role: this.resolveJoinAcceptedSessionRole(session, message.player_id),
     });
     this.sendResultReadyIfAvailable(session.socket);
+    if (previousState === "LOBBY" && snapshot.room_state === "PICKING" && snapshot.settings.auto_match === true) {
+      this.broadcast("ROOM_NOTIFICATION", {
+        kind: "match_found",
+        event_id: this.nextEventId("match_found"),
+        scheduled_at: new Date().toISOString(),
+      });
+      this.logTransitionIfChanged(previousState, this.buildMessageLogInput(message, {
+        source: payload.source,
+        outcome: "ok",
+        detail: {
+          trigger: "auto_match_start",
+          join_type: joinResult.join_type,
+          joined_at: joinedAt,
+          attached_at: attachedAt,
+        },
+      }));
+    }
     this.logRoomEvent(this.buildMessageLogInput(message, {
       event: "room.join",
       source: payload.source,
@@ -2035,6 +2058,14 @@ export class RoomDurableObject {
             request_id: payload.request_id,
           }));
           return;
+        case "AUTO_MATCH_ROOM_LOCKED":
+          this.sendStartMatchRejected(session.socket, "AUTO_MATCH_ROOM_LOCKED", this.buildMessageLogInput(message, {
+            request_id: payload.request_id,
+            detail: {
+              reason: result.reason,
+            },
+          }));
+          return;
         case "START_REQUIRES_MIN_PLAYERS":
           this.sendStartMatchRejected(session.socket, "START_REQUIRES_MIN_PLAYERS", this.buildMessageLogInput(message, {
             request_id: payload.request_id,
@@ -2137,6 +2168,16 @@ export class RoomDurableObject {
       if (result.reason === "NOT_HOST") {
         this.sendError(session.socket, "NOT_HOST", "Only the host can return the room to LOBBY.", this.buildMessageLogInput(message, {
           request_id: payload.request_id,
+        }));
+        return;
+      }
+
+      if (result.reason === "AUTO_MATCH_ROOM_LOCKED") {
+        this.sendError(session.socket, "INVALID_STATE", "RETURN_TO_LOBBY is unavailable in auto-match rooms.", this.buildMessageLogInput(message, {
+          request_id: payload.request_id,
+          detail: {
+            reason: result.reason,
+          },
         }));
         return;
       }
@@ -3187,6 +3228,24 @@ export class RoomDurableObject {
       return false;
     }
 
+    const previousAutoMatchResultState = this.roomState.getRoomState();
+    const autoMatchResultExpired = this.roomState.expireAutoMatchResultIfNeeded(now);
+    if (autoMatchResultExpired) {
+      await this.persistRoomRecord();
+      await this.clearAlarm();
+      this.logTransitionIfChanged(previousAutoMatchResultState, {
+        level: "WARN",
+        outcome: "ok",
+        detail: {
+          trigger: "auto_match_result_due",
+        },
+      });
+      this.broadcastRoomClosed();
+      await this.removeLobbyDirectoryEntry();
+      this.disconnectAll(4000, "Auto-match result expired.");
+      return true;
+    }
+
     const previousRoundState = this.roomState.getRoomState();
     const roundTransition = this.roomState.expireCurrentRoundIfNeeded(now);
     if (roundTransition !== null) {
@@ -3305,7 +3364,7 @@ export class RoomDurableObject {
   }
 
   private buildLobbySummary(snapshot: RoomStateSnapshot, nowMs: number): LobbyRoomSummary | null {
-    if (snapshot.settings.visibility !== "PUBLIC") {
+    if (snapshot.settings.visibility !== "PUBLIC" || snapshot.settings.auto_match === true) {
       return null;
     }
 

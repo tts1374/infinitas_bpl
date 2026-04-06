@@ -327,6 +327,8 @@ function startMatchRejectMessage(reason: string): string {
       return "Previous match data is still being cleared.";
     case "BPL_REQUIRES_TWO_PLAYERS":
       return "BPL mode requires exactly two players.";
+    case "AUTO_MATCH_ROOM_LOCKED":
+      return "Auto-match rooms start automatically and cannot be started manually.";
     case "INVALID_STATE":
       return "Return to the lobby before starting a new match.";
     default:

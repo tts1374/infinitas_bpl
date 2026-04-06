@@ -9,6 +9,7 @@ import { LobbyPage } from "../pages/LobbyPage";
 import { RoomPage } from "../pages/RoomPage";
 import { SettingsPage } from "../pages/SettingsPage";
 import { StatsPage } from "../pages/StatsPage";
+import { AutoMatchPage } from "../pages/AutoMatchPage";
 import { localResultArchiveService } from "../services/result-archive";
 import { matchHistoryOverlayService } from "../services/match-history-overlay";
 import { initializeE2EObservability } from "../services/e2e-observability";
@@ -66,9 +67,11 @@ export function App() {
   const pendingDeepLinkRoomIdRef = useRef<string | null>(null);
   const [pendingDeepLinkRoomId, setPendingDeepLinkRoomId] = useState<string | null>(null);
   const [pendingRecoveryJoin, setPendingRecoveryJoin] = useState<{ roomId: string; joinCode: string } | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [mockScenario] = useState(() =>
     runtimeConfig.mockScenarioId ? getVisualScenario(runtimeConfig.mockScenarioId) : null,
   );
+  const handledAutoMatchCloseRef = useRef<string | null>(null);
   const roomEntryReady = isRoomEntryReady(savedSettings);
   const shouldShowSetupDialog = activeView === "lobby" && roomSnapshot === null && !roomEntryReady;
   const shouldSendHostHeartbeat =
@@ -81,6 +84,7 @@ export function App() {
     dialog?.code === "ROOM_EXPIRED" &&
     roomSnapshot !== null &&
     roomSnapshot.room_state === "CLOSED" &&
+    roomSnapshot.settings.auto_match !== true &&
     connectionPlayerId !== null &&
     roomSnapshot.host_player_id === connectionPlayerId;
 
@@ -110,6 +114,43 @@ export function App() {
       });
     }
   }, [activeView, roomConnectionStatus, roomSnapshot]);
+
+  useEffect(() => {
+    if (
+      roomSnapshot === null ||
+      roomSnapshot.room_state !== "CLOSED" ||
+      roomSnapshot.settings.auto_match !== true ||
+      roomSnapshot.close_reason !== "ALL_ROUNDS_COMPLETED"
+    ) {
+      return;
+    }
+
+    const closeKey = `${roomSnapshot.room_id}:${roomSnapshot.closed_at ?? ""}:${roomSnapshot.close_reason}`;
+    if (handledAutoMatchCloseRef.current === closeKey) {
+      return;
+    }
+    handledAutoMatchCloseRef.current = closeKey;
+
+    setToastMessage("部屋が解散しました。ロビーへ戻ります。");
+    roomStore.leaveRoom();
+    startTransition(() => {
+      setActiveView("lobby");
+    });
+  }, [roomSnapshot]);
+
+  useEffect(() => {
+    if (toastMessage === null) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setToastMessage(null);
+    }, 2400);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [toastMessage]);
 
   useEffect(() => {
     if (activeView !== "lobby") {
@@ -404,9 +445,9 @@ export function App() {
 
   return (
     <main className="flex h-screen w-screen overflow-hidden bg-[#1e1e1e]">
-      {activeView !== "room" ? <AppSidebar activeView={activeView} hasRoom={roomSnapshot !== null} onNavigate={navigate} /> : null}
+      {activeView !== "room" && activeView !== "automatch" ? <AppSidebar activeView={activeView} hasRoom={roomSnapshot !== null} onNavigate={navigate} /> : null}
 
-      <section className={activeView === "room" ? "relative min-w-0 flex-1 overflow-hidden" : "custom-scrollbar relative min-w-0 flex-1 overflow-y-auto p-8"}>
+      <section className={activeView === "room" || activeView === "automatch" ? "relative min-w-0 flex-1 overflow-hidden" : "custom-scrollbar relative min-w-0 flex-1 overflow-y-auto p-8"}>
         {activeView === "lobby" ? (
           <LobbyPage
             pendingJoinRoomId={pendingDeepLinkRoomId}
@@ -416,6 +457,9 @@ export function App() {
             }}
             onConsumePendingRecoveryJoin={() => {
               setPendingRecoveryJoin(null);
+            }}
+            onNavigateToAutoMatch={() => {
+              navigate("automatch");
             }}
           />
         ) : null}
@@ -428,6 +472,13 @@ export function App() {
           />
         ) : null}
         {activeView === "room" ? <RoomPage /> : null}
+        {activeView === "automatch" ? (
+          <AutoMatchPage
+            onNavigate={(view) => {
+              navigate(view);
+            }}
+          />
+        ) : null}
         {activeView === "stats" ? (
           <StatsPage
             onNavigateToLobby={() => {
@@ -473,6 +524,13 @@ export function App() {
                 OK
               </button>
             </div>
+          </div>
+        </div>
+      ) : null}
+      {toastMessage ? (
+        <div className="pointer-events-none fixed bottom-6 left-1/2 z-[2900] w-full max-w-[min(560px,calc(100%-2rem))] -translate-x-1/2 px-4">
+          <div className="rounded-2xl border border-cyan-500/30 bg-[#0f1820]/95 px-5 py-3 text-sm font-bold text-cyan-100 shadow-[0_18px_44px_rgba(0,0,0,0.45)] backdrop-blur">
+            {toastMessage}
           </div>
         </div>
       ) : null}

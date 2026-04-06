@@ -151,6 +151,28 @@ function createState(settingsOverride = {}, playerUnlocks = {}) {
   return state;
 }
 
+function createAutoMatchState(settingsOverride = {}) {
+  const state = new RoomLobbyState(createChartMaster());
+  state.initialize({
+    room_id: "room-auto",
+    created_at: "2026-03-08T00:00:00.000Z",
+    settings: {
+      visibility: "PUBLIC",
+      join_code: null,
+      auto_match: true,
+      mode: "ARENA",
+      win_metric: "SCORE",
+      play_style: "SP",
+      level_filter: "ANY",
+      room_comment: "Auto Match Room",
+      max_players: 2,
+      ...settingsOverride,
+    },
+  });
+
+  return state;
+}
+
 function prepareMatch(state, input = {}) {
   const startAt = input.startAt ?? "2026-03-08T00:01:00.000Z";
   const hostPick = input.hostPick ?? "chart-1";
@@ -397,6 +419,87 @@ test("RESULT -> LOBBY clears ready and match transient state without auto-start"
   assert.equal(typeof secondStartSnapshot.current_match_id, "string");
   assert.notEqual(secondStartSnapshot.current_match_id, "room-1");
   assert.notEqual(secondStartSnapshot.current_match_id, firstMatchId);
+});
+
+test("auto-match room starts automatically when the final player joins", () => {
+  const state = createAutoMatchState();
+
+  const hostJoin = state.joinPlayer({
+    player_id: "host",
+    display_name: "Host",
+    source: "inf-notebook",
+    now: new Date("2026-03-08T00:00:01.000Z"),
+  });
+  assert.deepEqual(hostJoin, { ok: true, join_type: "NEW" });
+  assert.equal(state.getRoomState(), "LOBBY");
+
+  assert.deepEqual(state.startMatch("host", new Date("2026-03-08T00:00:02.000Z")), {
+    ok: false,
+    reason: "AUTO_MATCH_ROOM_LOCKED",
+  });
+
+  const guestJoin = state.joinPlayer({
+    player_id: "guest",
+    display_name: "Guest",
+    source: "inf_daken_counter",
+    now: new Date("2026-03-08T00:00:03.000Z"),
+  });
+  assert.deepEqual(guestJoin, { ok: true, join_type: "NEW" });
+  assert.equal(state.getRoomState(), "PICKING");
+
+  const snapshot = state.toSnapshot();
+  assert.equal(snapshot.settings.auto_match, true);
+  assert.equal(snapshot.players.length, 2);
+  assert.equal(snapshot.players.every((player) => player.ready === false), true);
+  assert.equal(snapshot.timers.result_deadline, null);
+});
+
+test("auto-match room closes after result deadline and blocks rematch/recreate", () => {
+  const state = createAutoMatchState();
+
+  assert.equal(
+    state.joinPlayer({
+      player_id: "host",
+      display_name: "Host",
+      source: "inf-notebook",
+      now: new Date("2026-03-08T00:00:01.000Z"),
+    }).ok,
+    true,
+  );
+  assert.equal(
+    state.joinPlayer({
+      player_id: "guest",
+      display_name: "Guest",
+      source: "inf_daken_counter",
+      now: new Date("2026-03-08T00:00:02.000Z"),
+    }).ok,
+    true,
+  );
+  assert.equal(state.getRoomState(), "PICKING");
+
+  assert.equal(state.submitPick("host", "chart-1", new Date("2026-03-08T00:01:10.000Z")).ok, true);
+  assert.equal(state.submitPick("guest", "chart-2", new Date("2026-03-08T00:01:11.000Z")).ok, true);
+  assert.equal(state.getRoomState(), "PLAYING");
+
+  playCurrentRound(state, 0, 2000, 1500, "2026-03-08T00:02");
+  playCurrentRound(state, 1, 2400, 1500, "2026-03-08T00:03");
+  assert.equal(state.getRoomState(), "RESULT");
+
+  const resultSnapshot = state.toSnapshot();
+  assert.equal(resultSnapshot.timers.result_deadline, "2026-03-08T00:03:21.000Z");
+  assert.deepEqual(state.returnToLobby("host", new Date("2026-03-08T00:03:05.000Z")), {
+    ok: false,
+    reason: "AUTO_MATCH_ROOM_LOCKED",
+  });
+
+  assert.equal(state.expireAutoMatchResultIfNeeded(new Date("2026-03-08T00:03:21.000Z")), true);
+  assert.equal(state.getRoomState(), "CLOSED");
+  assert.equal(state.toSnapshot().close_reason, "ALL_ROUNDS_COMPLETED");
+
+  assert.deepEqual(
+    state.recreateAsLastHost("host", new Date("2026-03-08T00:03:25.000Z"), 30 * 60_000),
+    { ok: false, reason: "AUTO_MATCH_ROOM_LOCKED" },
+  );
 });
 
 test("BPL(3) keeps PICKING TTL at 120 seconds", () => {

@@ -22,6 +22,7 @@
 - Match Result（最終結果 / RESULT）: マッチ全体の最終集計表示（`room_state=RESULT`）
 - 自動再戦: `visibility=PRIVATE` かつ `settings.auto_rematch=true` のとき、同一 `room_id` を維持したまま次戦へ自動進行する機能（ルーム再作成はしない）
 - 自動再戦の見た目上の遷移: UIでは `RESULT -> PICKING` に見えてよいが、FSM内部は必ず `RESULT -> LOBBY -> PICKING` を通す（`RESULT` から `PICKING` へ直接遷移しない）
+- 自動マッチ部屋: `visibility=PUBLIC` かつ `settings.auto_match=true` の部屋。参加者充足で自動開始し、`RESULT` から20秒で自動解散する
 
 ## 3. ルーム状態（RoomState）
 - `LOBBY`
@@ -33,11 +34,13 @@
 ### 状態遷移（概要）
 - ルーム作成完了時は `LOBBY` に入る
 - `LOBBY` -> `PICKING`（ホスト `START_MATCH`。条件: players>=2 かつ全員READY）
+- `LOBBY` -> `PICKING`（`settings.auto_match=true` かつ接続参加者が `max_players` 充足時、内部イベントで自動開始）
 - `PICKING` -> `PLAYING`（DOが確定譜面リストを凍結して遷移）
 - `PLAYING` -> `PLAYING`（全員確定で次ラウンドへ）
 - `PLAYING` -> `RESULT`（全ラウンド消化時。`RESULT_READY` を保持）
 - `RESULT` -> `LOBBY`（ホスト操作。再戦準備のため ready / 揮発状態をリセット）
 - `RESULT` -> `LOBBY` -> `PICKING`（`visibility=PRIVATE` かつ `settings.auto_rematch=true` の場合、20秒カウント満了で内部イベントにより次戦開始）
+- `RESULT` -> `CLOSED`（`settings.auto_match=true` の場合、20秒経過で内部イベントにより解散）
 - `CLOSED` -> `LOBBY`（最後のHOSTのみ、同一 `room_id` で再作成。内部的には `generation+1` の新世代）
 - 任意状態 -> `CLOSED`（ホスト切断/終了、lobby ready ttl超過、異常終了）
 - `current_match_id` は `START_MATCH` / 自動再戦開始時に新規発行し、`RESULT`/`CLOSED` まで固定する。`RESULT -> LOBBY` 復帰時は `room_id` に戻す
@@ -68,6 +71,7 @@
 - `visibility`: `PUBLIC | PRIVATE`
 - `join_code`: string|null
 - `auto_rematch`: boolean（`PRIVATE` のみ有効）
+- `auto_match`: boolean（`PUBLIC` のみ有効。自動マッチ成立部屋）
 - `mode`: `ARENA | BPL | BPL4`
 - `win_metric`: `SCORE | MISSCOUNT`
 - `play_style`: `SP | DP`
@@ -84,6 +88,7 @@
   - `RESULT -> LOBBY` 復帰
 - 一覧表示条件（`GET /api/lobby`）
   - `isPublic = true`
+  - `settings.auto_match != true`（自動マッチ専用ルームは公開一覧に表示しない）
   - `isFull = false`
   - `status = LOBBY`
   - TTL 未超過
@@ -100,6 +105,7 @@
 - 全員が `ready=true` になって初めて `START_MATCH` 条件を満たせる
 - ホスト自身も `ready=true` 必須
 - ホストのみ `START_MATCH` を実行できる。UI の `START` ボタンは常時表示し、条件未達時は遷移させず不足理由を表示する
+- `settings.auto_match=true` の部屋では `START_MATCH` / `RETURN_TO_LOBBY` / 再作成による rematch を受理せず、ROOM FSM が自動開始・自動解散を担う
 - `visibility=PRIVATE` の場合は join_code必須（入口のWorkerで弾くか、DOで弾くかを統一）
 - `RESULT -> LOBBY` 復帰時には以下をクリアする
   - 全員の ready 状態
@@ -118,6 +124,9 @@
 - `START_MATCH` 成功時に参加者全員の `song_unlocks` から `match_song_unlock_filter` を確定し、そのマッチ中の選曲候補・ランダム抽選に固定適用する
 - `START_MATCH` 実行で以後参加不可（席ロック）。退出は可能（退出者は以後TIMEOUT扱い）
 - 前マッチ揮発状態が未クリアなら `START_MATCH` を拒否する
+- `settings.auto_match=true` の部屋では手動 `START_MATCH` を拒否し、内部開始のみ許可する
+- 自動マッチ部屋は最終参加者の join で `START_MATCH` 相当の `PICKING` へ自動遷移する
+- 自動マッチ部屋は `RESULT` 開始から20秒後に `CLOSED` へ自動遷移する
 
 ## 8. PICKING（指名・凍結）
 ### 8.1 指名ルール
@@ -232,6 +241,7 @@
   - 参加対象プレイヤーが2人未満
   - 参加対象の source 異常
   - ホストによる停止操作
+- `settings.auto_match=true` の部屋は `RESULT` 開始時に20秒解散カウントを開始し、満了で `CLOSED` へ遷移する（`RETURN_TO_LOBBY` は不可）
 
 ### 10.5 rated / unrated 判定（v1）
 - rated 判定は DO が一元管理し、`RESULT_READY.summary.is_rated` を権威情報とする
@@ -255,3 +265,4 @@
 - `CLOSED` 遷移時に `LobbyDirectoryDO` のロビー情報を削除する
 - `cancel` SE は `close_reason != ALL_ROUNDS_COMPLETED` のときのみ1回だけ鳴らす
 - `close_reason = ROOM_STATE_LOST` の場合、クライアントはブロッキングエラーを表示する
+- `settings.auto_match=true` の部屋は `REMAKE ROOM`（再作成）不可

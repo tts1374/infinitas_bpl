@@ -13,7 +13,7 @@ import {
   type LobbyRoomSummary,
   type RoomSettings,
 } from "@infinitas/shared";
-import { AlertCircle, Eye, EyeOff, Key, Lock, MessageSquare, Plus, RefreshCcw, Search, Trophy, Users, X } from "lucide-react";
+import { AlertCircle, Eye, EyeOff, Key, Lock, MessageSquare, Plus, RefreshCcw, Search, Trophy, Users, X, Zap } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { createRoom } from "../services/worker-api-client";
@@ -44,7 +44,7 @@ const levelLabels: Record<RoomSettings["level_filter"], string> = {
 const modeLabels: Record<RoomSettings["mode"], string> = {
   ARENA: "ARENA",
   BPL: `BPL (${BPL_ROUNDS} STAGE)`,
-  BPL4: `BPL (${BPL4_ROUNDS} STAGE)`,
+  BPL4: `BPL(${BPL4_ROUNDS} STAGE)`,
 };
 
 function isBplMode(mode: RoomSettings["mode"]): boolean {
@@ -109,6 +109,7 @@ interface LobbyPageProps {
   pendingRecoveryJoin?: { roomId: string; joinCode: string } | null;
   onConsumePendingJoinRoomId?: () => void;
   onConsumePendingRecoveryJoin?: () => void;
+  onNavigateToAutoMatch?: () => void;
 }
 
 export function LobbyPage({
@@ -116,6 +117,7 @@ export function LobbyPage({
   pendingRecoveryJoin = null,
   onConsumePendingJoinRoomId,
   onConsumePendingRecoveryJoin,
+  onNavigateToAutoMatch,
 }: LobbyPageProps) {
   const savedSettings = useSettingsStore((state) => state.saved);
   const rooms = useLobbyStore((state) => state.rooms);
@@ -317,6 +319,15 @@ export function LobbyPage({
           <button
             type="button"
             disabled={!roomEntryReady}
+            className="px-6 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-black rounded-lg flex items-center gap-2 transition-all active:scale-95 border border-indigo-400/30 shadow-[0_0_20px_rgba(99,102,241,0.4)]"
+            onClick={onNavigateToAutoMatch}
+          >
+            <Zap className="text-yellow-400" size={20} />
+            <span>自動・Auto Match</span>
+          </button>
+          <button
+            type="button"
+            disabled={!roomEntryReady}
             onClick={() => {
               setShowManualJoinCode(false);
               setShowManualJoin(true);
@@ -442,7 +453,7 @@ export function LobbyPage({
                   <div className="flex items-center gap-3">
                     <h3 className="text-lg font-bold transition-colors group-hover:text-cyan-400">{roomTitle(room)}</h3>
                     <span className="rounded border border-cyan-500/20 bg-cyan-500/10 px-2 py-0.5 text-[10px] font-black text-cyan-400">
-                      {room.mode === "ARENA" ? "ARENA" : room.mode === "BPL4" ? "BPL(4)" : "BPL(3)"}
+                      {room.mode === "ARENA" ? "ARENA" : room.mode === "BPL4" ? "BPL(4 STAGE)" : "BPL(3)"}
                     </span>
                     {room.hasJoinCode ? <Lock size={14} className="text-amber-500/70" /> : null}
                   </div>

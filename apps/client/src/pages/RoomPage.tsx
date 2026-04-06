@@ -2550,6 +2550,9 @@ export function RoomPage() {
 
   const roomSurface = (() => {
     if (snapshot.room_state === "CLOSED") {
+      if (snapshot.settings.auto_match === true) {
+        return null;
+      }
       return (
         <section className="relative flex min-h-full items-center justify-center overflow-hidden bg-[#0b0b0c] px-6">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(239,68,68,0.14),transparent_40%)]" />
@@ -2599,6 +2602,9 @@ export function RoomPage() {
       if (snapshot.room_state !== "LOBBY") {
         return;
       }
+      if (snapshot.settings.auto_match === true) {
+        return;
+      }
 
       if (isHost) {
         roomStore.startMatch();
@@ -2608,6 +2614,9 @@ export function RoomPage() {
     };
     const onReturnToLobby = () => {
       if (!isHost) {
+        return;
+      }
+      if (snapshot.settings.auto_match === true) {
         return;
       }
 
@@ -2682,7 +2691,10 @@ export function RoomPage() {
         players: bplPlayers,
         roundPickerNames: bplRoundPickerNames,
         selfPlayerId: selfMockPlayerId ?? (isHost ? "1" : "2"),
-        disablePrimaryAction: snapshot.room_state !== "LOBBY" || (isHost && lobbyStartIssues.length > 0),
+        disablePrimaryAction:
+          snapshot.room_state !== "LOBBY" ||
+          snapshot.settings.auto_match === true ||
+          (isHost && lobbyStartIssues.length > 0),
         disableLeave: leaveRoomDisabled,
         searchModal: pickerModal,
         onCopyRoomId: () => handleCopy(roomIdLabel, setCopiedRoomId),
@@ -2695,7 +2707,7 @@ export function RoomPage() {
           }
         },
         onLeaveRoom: requestLeaveRoom,
-        onRemakeStage: onReturnToLobby,
+        ...(snapshot.settings.auto_match === true ? {} : { onRemakeStage: onReturnToLobby }),
       };
 
       return <RoomBPLPresentational {...controlledProps} />;
@@ -2770,7 +2782,10 @@ export function RoomPage() {
       selectedByName: arenaCurrentRoundPickerName,
       selfPlayerId: selfMockPlayerId ?? (isHost ? "1" : "2"),
       searchModal: pickerModal,
-      disablePrimaryAction: snapshot.room_state !== "LOBBY" || (isHost && lobbyStartIssues.length > 0),
+      disablePrimaryAction:
+        snapshot.room_state !== "LOBBY" ||
+        snapshot.settings.auto_match === true ||
+        (isHost && lobbyStartIssues.length > 0),
       disableLeave: leaveRoomDisabled,
       onCopyRoomId: () => handleCopy(roomIdLabel, setCopiedRoomId),
       onCopyJoinCode: () => handleCopy(joinCodeLabel, setCopiedJoinCode),
@@ -2783,7 +2798,7 @@ export function RoomPage() {
         }
       },
       onLeaveRoom: requestLeaveRoom,
-      onRemakeStage: onReturnToLobby,
+      ...(snapshot.settings.auto_match === true ? {} : { onRemakeStage: onReturnToLobby }),
     };
 
     return <RoomArenaPresentational {...controlledProps} />;

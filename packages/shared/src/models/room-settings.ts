@@ -5,6 +5,7 @@ export interface RoomSettings {
   visibility: Visibility;
   join_code: string | null;
   auto_rematch?: boolean;
+  auto_match?: boolean;
   mode: Mode;
   win_metric: WinMetric;
   play_style: PlayStyle;

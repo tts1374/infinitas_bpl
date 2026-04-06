@@ -4,6 +4,7 @@ export * from "./expected-key";
 export * from "./frozen-round";
 export * from "./player";
 export * from "./lobby-room-summary";
+export * from "./matchmaking";
 export * from "./room-listing";
 export * from "./room-pick";
 export * from "./room-settings";

@@ -1025,7 +1025,7 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
                                 >
                                     Leave Arena
                                 </button>
-                                {isHost && (
+                                {isHost && (controlled?.onRemakeStage !== undefined || controlled === undefined) && (
                                     <button
                                         onClick={() => {
                                             if (controlled?.onRemakeStage) {

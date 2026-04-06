@@ -43,6 +43,7 @@ Ph1で固定するタイマー値、制約値、表示/運用上の定数を整�
   - `CLOSED` 後、最後のHOSTが同一 `room_id` を再作成できる猶予
 - `AUTO_REMATCH_RESULT_SECONDS = 20`
   - `PRIVATE` + `auto_rematch=true` の `RESULT` で次戦開始まで待機する秒数
+  - 自動マッチ部屋の `RESULT` 解散にも同値を再利用する
 
 ## 1.4 再入室
 - `REJOIN_COOLDOWN_SECONDS = 40`
@@ -146,6 +147,15 @@ Ph1で固定するタイマー値、制約値、表示/運用上の定数を整�
 - `LOBBY_MATCH_TTL_MS = 30 * 60 * 1000`
 - `LOBBY_STATUS_VISIBLE = ["LOBBY"]`
 - TTL 判定は `ttlStartedAt` のみを使う
+
+## 6.3 自動マッチング関連
+- `MATCHMAKING_INITIAL_RATING_RANGE = 50`
+- `MATCHMAKING_RATING_RANGE_STEP = 50`
+- `MATCHMAKING_RATING_RANGE_STEP_SECONDS = 30`
+- `MATCHMAKING_RATING_RANGE_MAX = 300`
+- `MATCHMAKING_ARENA_MIN_PLAYERS = 2`
+- `MATCHMAKING_ARENA_MAX_PLAYERS = 4`
+- `MATCHMAKING_ARENA_PARTIAL_START_SECONDS = 90`
 
 ---
 
