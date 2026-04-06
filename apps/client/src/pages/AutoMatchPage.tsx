@@ -18,7 +18,7 @@ import {
   enqueueMatchmakingQueue,
   getMatchmakingQueueTicket,
 } from "../services/worker-api-client";
-import { roomStore } from "../stores/room-store";
+import { roomStore, useRoomStore } from "../stores/room-store";
 import { useStatsArchiveStore } from "../services/stats-archive";
 import { isRoomEntryReady, useSettingsStore } from "../stores/settings-store";
 
@@ -65,6 +65,8 @@ function formatQueueSeconds(elapsedSeconds: number): string {
 export function AutoMatchPage({ onNavigate }: AutoMatchProps) {
   const savedSettings = useSettingsStore((state) => state.saved);
   const statsArchive = useStatsArchiveStore((state) => state.archive);
+  const roomConnectionStatus = useRoomStore((state) => state.connectionStatus);
+  const roomSnapshot = useRoomStore((state) => state.snapshot);
   const roomEntryReady = isRoomEntryReady(savedSettings);
   const roomEntryRequiredMessage = "DJ NAME と DATA SOURCE を設定してから自動マッチを開始してください。";
 
@@ -116,8 +118,29 @@ export function AutoMatchPage({ onNavigate }: AutoMatchProps) {
     };
   }, [foundPlayers, matchState]);
 
-  function connectToMatchedRoom(roomId: string): void {
-    roomStore.connect(
+  useEffect(() => {
+    if (matchState !== "MATCH_FOUND") {
+      return;
+    }
+
+    if (roomSnapshot !== null || roomConnectionStatus === "CONNECTING" || roomConnectionStatus === "JOINING") {
+      return;
+    }
+
+    if (roomConnectionStatus !== "ERROR" && roomConnectionStatus !== "CLOSED") {
+      return;
+    }
+
+    if (ticket?.status !== "MATCHED" || ticket.room_id === null) {
+      return;
+    }
+
+    setMatchState("IN_QUEUE");
+    setStatusMessage("ルームへの接続に失敗しました。再試行します。");
+  }, [matchState, roomConnectionStatus, roomSnapshot, ticket]);
+
+  function connectToMatchedRoom(roomId: string): boolean {
+    return roomStore.connect(
       { roomId },
       {
         apiBaseUrl: savedSettings.apiBaseUrl,
@@ -164,7 +187,11 @@ export function AutoMatchPage({ onNavigate }: AutoMatchProps) {
         if (nextTicket.status === "MATCHED" && nextTicket.room_id !== null) {
           setMatchState("MATCH_FOUND");
           setStatusMessage(`マッチ成立: ルーム ${nextTicket.room_id} に接続しています。`);
-          connectToMatchedRoom(nextTicket.room_id);
+          const connected = connectToMatchedRoom(nextTicket.room_id);
+          if (!connected) {
+            setMatchState("IN_QUEUE");
+            setStatusMessage("ルームへの接続に失敗しました。再試行します。");
+          }
           return;
         }
         if (nextTicket.status === "CANCELLED") {
@@ -222,7 +249,11 @@ export function AutoMatchPage({ onNavigate }: AutoMatchProps) {
       if (nextTicket.status === "MATCHED" && nextTicket.room_id !== null) {
         setMatchState("MATCH_FOUND");
         setStatusMessage(`マッチ成立: ルーム ${nextTicket.room_id} に接続しています。`);
-        connectToMatchedRoom(nextTicket.room_id);
+        const connected = connectToMatchedRoom(nextTicket.room_id);
+        if (!connected) {
+          setMatchState("IN_QUEUE");
+          setStatusMessage("ルームへの接続に失敗しました。再試行します。");
+        }
       } else {
         setMatchState("IN_QUEUE");
       }
@@ -237,10 +268,6 @@ export function AutoMatchPage({ onNavigate }: AutoMatchProps) {
   async function handleCancelQueue(): Promise<void> {
     const currentTicketId = ticket?.ticket_id;
 
-    setMatchState("CONFIG");
-    setQueueTimeSeconds(0);
-    setTicket(null);
-
     if (!currentTicketId || busy) {
       return;
     }
@@ -248,6 +275,9 @@ export function AutoMatchPage({ onNavigate }: AutoMatchProps) {
     setBusy(true);
     try {
       await cancelMatchmakingQueueTicket(savedSettings.apiBaseUrl, currentTicketId);
+      setMatchState("CONFIG");
+      setQueueTimeSeconds(0);
+      setTicket(null);
       setStatusMessage("マッチングキューをキャンセルしました。");
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "マッチングキューのキャンセルに失敗しました。");

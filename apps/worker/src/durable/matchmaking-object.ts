@@ -219,6 +219,18 @@ function clampArenaMaxPlayers(value: number): RoomSettings["max_players"] {
   return 4;
 }
 
+function hasDuplicatePlayerId(group: MatchmakingQueueTicketRecord[]): boolean {
+  const seenPlayerIds = new Set<string>();
+  for (const ticket of group) {
+    if (seenPlayerIds.has(ticket.player_id)) {
+      return true;
+    }
+    seenPlayerIds.add(ticket.player_id);
+  }
+
+  return false;
+}
+
 export class MatchmakingDurableObject {
   private readonly tickets = new Map<string, MatchmakingQueueTicketRecord>();
   private readonly readyPromise: Promise<void>;
@@ -277,8 +289,32 @@ export class MatchmakingDurableObject {
 
     const nowMs = Date.now();
     const nowIso = new Date(nowMs).toISOString();
+    const existingTickets = Array.from(this.tickets.values())
+      .filter((ticket) => ticket.status === "SEARCHING" && ticket.player_id === parsed.player_id)
+      .sort(compareByQueuedAt);
+    const existingTicket = existingTickets[0];
+    if (existingTicket !== undefined) {
+      for (const duplicateTicket of existingTickets.slice(1)) {
+        this.tickets.delete(duplicateTicket.ticket_id);
+      }
+
+      this.tickets.set(existingTicket.ticket_id, {
+        ...existingTicket,
+        mode: parsed.mode,
+        play_style: parsed.play_style,
+        win_metric: parsed.win_metric,
+        rating: parsed.rating,
+        display_name: parsed.display_name,
+        queued_at: nowIso,
+        updated_at: nowIso,
+      });
+      await this.matchTickets(nowMs);
+      await this.persistTickets();
+      return jsonResponse(200, this.buildQueueTicketResponse(existingTicket.ticket_id, Date.now()));
+    }
+
     const ticketId = crypto.randomUUID();
-    const ticket: MatchmakingQueueTicketRecord = {
+    this.tickets.set(ticketId, {
       ticket_id: ticketId,
       status: "SEARCHING",
       mode: parsed.mode,
@@ -291,9 +327,7 @@ export class MatchmakingDurableObject {
       updated_at: nowIso,
       room_id: null,
       matched_player_count: null,
-    };
-
-    this.tickets.set(ticketId, ticket);
+    });
     await this.matchTickets(nowMs);
     await this.persistTickets();
 
@@ -413,6 +447,7 @@ export class MatchmakingDurableObject {
         (candidate) =>
           !consumedTicketIds.has(candidate.ticket_id) &&
           candidate.ticket_id !== anchor.ticket_id &&
+          candidate.player_id !== anchor.player_id &&
           candidate.status === "SEARCHING",
       );
       if (candidates.length === 0) {
@@ -470,6 +505,7 @@ export class MatchmakingDurableObject {
       const partner = tickets.find(
         (candidate) =>
           candidate.ticket_id !== anchor.ticket_id &&
+          candidate.player_id !== anchor.player_id &&
           !consumedTicketIds.has(candidate.ticket_id) &&
           candidate.status === "SEARCHING" &&
           this.isCompatible(anchor, candidate, nowMs),
@@ -499,6 +535,10 @@ export class MatchmakingDurableObject {
         break;
       }
 
+      if (group.some((member) => member.player_id === candidate.player_id)) {
+        continue;
+      }
+
       const compatibleWithAll = group.every((member) => this.isCompatible(member, candidate, nowMs));
       if (!compatibleWithAll) {
         continue;
@@ -512,6 +552,9 @@ export class MatchmakingDurableObject {
 
   private async completeMatch(group: MatchmakingQueueTicketRecord[]): Promise<boolean> {
     if (group.length < 2) {
+      return false;
+    }
+    if (hasDuplicatePlayerId(group)) {
       return false;
     }
 
@@ -567,6 +610,7 @@ export class MatchmakingDurableObject {
     for (const ticket of this.tickets.values()) {
       if (
         ticket.ticket_id === anchor.ticket_id ||
+        ticket.player_id === anchor.player_id ||
         ticket.status !== "SEARCHING" ||
         ticket.mode !== anchor.mode ||
         ticket.play_style !== anchor.play_style ||
