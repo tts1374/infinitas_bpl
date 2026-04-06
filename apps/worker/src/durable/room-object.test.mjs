@@ -117,6 +117,12 @@ async function createRoomObject() {
   return roomObject;
 }
 
+function enableAutoMatchRoom(roomObject) {
+  roomObject.roomState.settings.auto_match = true;
+  roomObject.roomState.settings.max_players = 2;
+  roomObject.roomState.readyCheckDeadline = new Date("2099-01-01T00:00:00.000Z");
+}
+
 function createJoinMessage(playerId, clientMessageId, payloadOverrides = {}) {
   return {
     type: "ROOM_JOIN",
@@ -214,6 +220,58 @@ test("PING receives PONG response", async () => {
   assert.ok(lastMessage);
   assert.equal(lastMessage.type, "PONG");
   assert.deepEqual(lastMessage.payload, {});
+});
+
+test("auto-match room rejects manual START_MATCH", async () => {
+  const roomObject = await createRoomObject();
+  enableAutoMatchRoom(roomObject);
+  roomObject.roomState.readyCheckDeadline = new Date("2099-01-01T00:00:00.000Z");
+  const hostSocket = new TestSocket();
+  await joinPlayer(roomObject, hostSocket, "host", "msg-1");
+
+  await roomObject.webSocketMessage(
+    hostSocket,
+    JSON.stringify({
+      type: "START_MATCH",
+      client_msg_id: "msg-2",
+      room_id: "room-1",
+      player_id: "host",
+      payload: {
+        request_id: "start-1",
+        generation: 1,
+      },
+    }),
+  );
+
+  const lastMessage = hostSocket.sent.at(-1);
+  assert.ok(lastMessage);
+  assert.equal(lastMessage.type, "START_MATCH_REJECTED");
+  assert.equal(lastMessage.payload.reason, "AUTO_MATCH_ROOM_LOCKED");
+});
+
+test("auto-match room auto-starts on the final join and closes after the result deadline", async () => {
+  const roomObject = await createRoomObject();
+  enableAutoMatchRoom(roomObject);
+  roomObject.roomState.readyCheckDeadline = new Date("2099-01-01T00:00:00.000Z");
+  const hostSocket = new TestSocket();
+  const guestSocket = new TestSocket();
+
+  await joinPlayer(roomObject, hostSocket, "host", "msg-1");
+  await joinPlayer(roomObject, guestSocket, "guest", "msg-2");
+
+  assert.equal(roomObject.roomState.getRoomState(), "PICKING");
+  const notifications = [...hostSocket.sent, ...guestSocket.sent].filter((message) => message.type === "ROOM_NOTIFICATION");
+  assert.ok(notifications.some((message) => message.payload.kind === "match_found"));
+
+  roomObject.roomState["enterResult"](new Date("2026-03-08T00:03:00.000Z"));
+  assert.equal(roomObject.roomState.getRoomState(), "RESULT");
+  roomObject.roomState.resultDeadline = new Date(Date.now() - 1);
+
+  await roomObject.alarm();
+
+  assert.equal(roomObject.roomState.getRoomState(), "CLOSED");
+  assert.equal(roomObject.roomState.toSnapshot().close_reason, "ALL_ROUNDS_COMPLETED");
+  assert.ok(hostSocket.closeCalls.some((call) => call.reason === "Auto-match result expired."));
 });
 
 test("MATCH_TTL_EXPIRED closes sockets and clears sessions", async () => {

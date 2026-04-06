@@ -3,9 +3,16 @@ import { handleGetChartAliasResolve } from "./routes/chart-aliases";
 import { handlePostFeedback } from "./routes/feedback";
 import { handleGetJoin } from "./routes/join";
 import { handleGetLobby } from "./routes/lobby";
+import {
+  handleDeleteMatchmakingQueueTicket,
+  handleGetMatchmakingQueueTicket,
+  handlePostMatchmakingQueue,
+  matchMatchmakingQueueTicketPath,
+} from "./routes/matchmaking";
 import { handleGetRoomCharts, handlePostRooms, handleRoomWebSocket, matchRoomChartsPath, matchRoomWebSocketPath } from "./routes/rooms";
 import { handleGetSongPacks } from "./routes/song-packs";
 import { LobbyDirectoryDO } from "./durable/lobby-directory-object";
+import { MatchmakingDurableObject } from "./durable/matchmaking-object";
 import { RoomDurableObject } from "./durable/room-object";
 import type { WorkerEnv } from "./types/env";
 import { methodNotAllowed, noContent, notFound, withCors } from "./utils/http";
@@ -18,14 +25,17 @@ const LOBBY_ALLOWED_METHODS = ["GET"];
 const FEEDBACK_ALLOWED_METHODS = ["POST"];
 const SONG_PACKS_ALLOWED_METHODS = ["GET"];
 const ROOM_CHARTS_ALLOWED_METHODS = ["GET"];
+const MATCHMAKING_QUEUE_ALLOWED_METHODS = ["POST"];
+const MATCHMAKING_QUEUE_TICKET_ALLOWED_METHODS = ["GET", "DELETE"];
 
-export { RoomDurableObject, LobbyDirectoryDO };
+export { RoomDurableObject, LobbyDirectoryDO, MatchmakingDurableObject };
 
 export default {
   async fetch(request: Request, env: WorkerEnv): Promise<Response> {
     const url = new URL(request.url);
     const webSocketRoomId = matchRoomWebSocketPath(url.pathname);
     const chartRoomId = matchRoomChartsPath(url.pathname);
+    const matchmakingQueueTicketId = matchMatchmakingQueueTicketPath(url.pathname);
 
     if (webSocketRoomId !== null) {
       return handleRoomWebSocket(request, env, webSocketRoomId);
@@ -40,6 +50,47 @@ export default {
       }
 
       return withCors(methodNotAllowed([...ROOM_CHARTS_ALLOWED_METHODS, "OPTIONS"]), request, ROOM_CHARTS_ALLOWED_METHODS);
+    }
+
+    if (url.pathname === "/api/matchmaking/queue") {
+      if (request.method === "OPTIONS") {
+        return withCors(noContent(), request, MATCHMAKING_QUEUE_ALLOWED_METHODS);
+      }
+      if (request.method === "POST") {
+        return withCors(await handlePostMatchmakingQueue(request, env), request, MATCHMAKING_QUEUE_ALLOWED_METHODS);
+      }
+
+      return withCors(
+        methodNotAllowed([...MATCHMAKING_QUEUE_ALLOWED_METHODS, "OPTIONS"]),
+        request,
+        MATCHMAKING_QUEUE_ALLOWED_METHODS,
+      );
+    }
+
+    if (matchmakingQueueTicketId !== null) {
+      if (request.method === "OPTIONS") {
+        return withCors(noContent(), request, MATCHMAKING_QUEUE_TICKET_ALLOWED_METHODS);
+      }
+      if (request.method === "GET") {
+        return withCors(
+          await handleGetMatchmakingQueueTicket(request, env, matchmakingQueueTicketId),
+          request,
+          MATCHMAKING_QUEUE_TICKET_ALLOWED_METHODS,
+        );
+      }
+      if (request.method === "DELETE") {
+        return withCors(
+          await handleDeleteMatchmakingQueueTicket(request, env, matchmakingQueueTicketId),
+          request,
+          MATCHMAKING_QUEUE_TICKET_ALLOWED_METHODS,
+        );
+      }
+
+      return withCors(
+        methodNotAllowed([...MATCHMAKING_QUEUE_TICKET_ALLOWED_METHODS, "OPTIONS"]),
+        request,
+        MATCHMAKING_QUEUE_TICKET_ALLOWED_METHODS,
+      );
     }
 
     if (url.pathname === "/api/rooms") {

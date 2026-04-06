@@ -24,6 +24,10 @@ class_name = "RoomDurableObject"
 name = "LOBBY_DIRECTORY_DO"
 class_name = "LobbyDirectoryDO"
 
+[[durable_objects.bindings]]
+name = "MATCHMAKING_DO"
+class_name = "MatchmakingDurableObject"
+
 [[migrations]]
 tag = "v1-room-do-lobby"
 new_sqlite_classes = ["RoomDurableObject"]
@@ -31,3 +35,7 @@ new_sqlite_classes = ["RoomDurableObject"]
 [[migrations]]
 tag = "v1-lobby-directory-do"
 new_sqlite_classes = ["LobbyDirectoryDO"]
+
+[[migrations]]
+tag = "v1-matchmaking-do"
+new_sqlite_classes = ["MatchmakingDurableObject"]

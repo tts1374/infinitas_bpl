@@ -111,11 +111,15 @@ function parseCreateRoomPayload(payload: unknown): CreateRoomInput {
   if ("auto_rematch" in payload && typeof payload.auto_rematch !== "boolean") {
     throw new Error("auto_rematch must be boolean.");
   }
+  if ("auto_match" in payload && typeof payload.auto_match !== "boolean") {
+    throw new Error("auto_match must be boolean.");
+  }
 
   const joinCode = ensureJoinCode(payload.join_code, visibility);
   const roomComment = ensureRoomComment(payload.room_comment);
   const autoRematch =
     visibility === "PRIVATE" && payload.auto_rematch === true;
+  const autoMatch = visibility === "PUBLIC" && payload.auto_match === true;
   const createdAt = new Date();
   const expiresAt = computeRoomExpiry(createdAt);
 
@@ -124,6 +128,7 @@ function parseCreateRoomPayload(payload: unknown): CreateRoomInput {
       visibility,
       join_code: joinCode,
       auto_rematch: autoRematch,
+      ...(autoMatch ? { auto_match: true } : {}),
       mode,
       win_metric: winMetric,
       play_style: playStyle,

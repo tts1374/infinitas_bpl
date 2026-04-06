@@ -110,6 +110,7 @@ export interface StartMatchResult {
   reason?:
     | "INVALID_STATE"
     | "NOT_HOST"
+    | "AUTO_MATCH_ROOM_LOCKED"
     | "START_REQUIRES_MIN_PLAYERS"
     | "NOT_ALL_PLAYERS_READY"
     | "PREVIOUS_MATCH_NOT_CLEARED"
@@ -118,7 +119,7 @@ export interface StartMatchResult {
 
 export interface ReturnToLobbyResult {
   ok: boolean;
-  reason?: "INVALID_STATE" | "NOT_HOST";
+  reason?: "INVALID_STATE" | "NOT_HOST" | "AUTO_MATCH_ROOM_LOCKED";
 }
 
 export interface RecreateRoomResult {
@@ -127,6 +128,7 @@ export interface RecreateRoomResult {
     | "ROOM_NOT_INITIALIZED"
     | "ACTIVE_GENERATION_EXISTS"
     | "NOT_LAST_HOST"
+    | "AUTO_MATCH_ROOM_LOCKED"
     | "STALE_STATE"
     | "RECREATE_WINDOW_EXPIRED";
   generation?: number;
@@ -320,6 +322,7 @@ function normalizeSettingsVisibility(settings: RoomSettings): RoomSettings {
     ...settings,
     visibility: visibility === "UNLISTED" ? "PRIVATE" : visibility,
     auto_rematch: autoRematch,
+    ...(visibility === "PUBLIC" && settings.auto_match === true ? { auto_match: true } : {}),
   };
 }
 
@@ -717,6 +720,7 @@ export class RoomLobbyState {
       existing.left_at = null;
       existing.rejoin_until = null;
       this.sourceUnavailablePlayerIds.delete(input.player_id);
+      this.maybeStartAutoMatch(input.now);
       return { ok: true, join_type: "RECONNECT" };
     }
 
@@ -740,6 +744,7 @@ export class RoomLobbyState {
     });
     this.sourceUnavailablePlayerIds.delete(input.player_id);
 
+    this.maybeStartAutoMatch(input.now);
     return { ok: true, join_type: "NEW" };
   }
 
@@ -823,6 +828,10 @@ export class RoomLobbyState {
       return { ok: false, reason: "NOT_HOST" };
     }
 
+    if (this.isAutoMatchRoom()) {
+      return { ok: false, reason: "AUTO_MATCH_ROOM_LOCKED" };
+    }
+
     if (this.roomState !== "LOBBY") {
       return { ok: false, reason: "INVALID_STATE" };
     }
@@ -852,6 +861,10 @@ export class RoomLobbyState {
       return { ok: false, reason: "NOT_HOST" };
     }
 
+    if (this.isAutoMatchRoom()) {
+      return { ok: false, reason: "AUTO_MATCH_ROOM_LOCKED" };
+    }
+
     if (this.roomState !== "RESULT") {
       return { ok: false, reason: "INVALID_STATE" };
     }
@@ -871,6 +884,10 @@ export class RoomLobbyState {
 
     if (this.hostPlayerId === null || playerId !== this.hostPlayerId) {
       return { ok: false, reason: "NOT_LAST_HOST" };
+    }
+
+    if (this.isAutoMatchRoom()) {
+      return { ok: false, reason: "AUTO_MATCH_ROOM_LOCKED" };
     }
 
     if (this.closedAt === null) {
@@ -1072,15 +1089,27 @@ export class RoomLobbyState {
     }
 
     if (this.roomState === "RESULT") {
+      const autoMatchResultDeadline = this.isAutoMatchRoom() ? this.resultDeadline : null;
       if (this.matchDeadline === null) {
-        baseAlarm = this.autoRematchDueAt;
+        baseAlarm = this.autoRematchDueAt ?? autoMatchResultDeadline;
       } else if (this.autoRematchDueAt === null) {
-        baseAlarm = this.matchDeadline;
-      } else {
+        baseAlarm =
+          autoMatchResultDeadline === null
+            ? this.matchDeadline
+            : autoMatchResultDeadline.getTime() <= this.matchDeadline.getTime()
+              ? autoMatchResultDeadline
+              : this.matchDeadline;
+      } else if (autoMatchResultDeadline === null) {
         baseAlarm =
           this.autoRematchDueAt.getTime() <= this.matchDeadline.getTime()
             ? this.autoRematchDueAt
             : this.matchDeadline;
+      } else {
+        const earlierDeadline =
+          this.autoRematchDueAt.getTime() <= autoMatchResultDeadline.getTime()
+            ? this.autoRematchDueAt
+            : autoMatchResultDeadline;
+        baseAlarm = earlierDeadline.getTime() <= this.matchDeadline.getTime() ? earlierDeadline : this.matchDeadline;
       }
     }
 
@@ -1482,6 +1511,20 @@ export class RoomLobbyState {
       generation: this.autoRematchGeneration,
       participant_player_ids: participantIds,
     };
+  }
+
+  expireAutoMatchResultIfNeeded(now: Date): boolean {
+    if (
+      this.roomState !== "RESULT" ||
+      !this.isAutoMatchRoom() ||
+      this.resultDeadline === null ||
+      now.getTime() < this.resultDeadline.getTime()
+    ) {
+      return false;
+    }
+
+    this.close("ALL_ROUNDS_COMPLETED", now);
+    return true;
   }
 
   expireCurrentRoundIfNeeded(now: Date): RoundTransitionResult | null {
@@ -1964,7 +2007,9 @@ export class RoomLobbyState {
     this.roomState = "RESULT";
     this.readyCheckDeadline = null;
     this.pickingDeadline = null;
-    this.resultDeadline = null;
+    this.resultDeadline = this.isAutoMatchRoom()
+      ? new Date(now.getTime() + AUTO_REMATCH_RESULT_SECONDS * 1_000)
+      : null;
     this.closeReason = null;
     this.closedAt = null;
     this.lastMatchEndReason = this.isLastMatchNormalForAutoRematch() ? "RESULT_READY_NORMAL" : "RESULT_READY_WITH_ISSUES";
@@ -2077,6 +2122,30 @@ export class RoomLobbyState {
     return { ok: true };
   }
 
+  private maybeStartAutoMatch(now: Date): boolean {
+    if (!this.isAutoMatchRoom() || this.roomState !== "LOBBY") {
+      return false;
+    }
+
+    if (this.hasMatchTransientState()) {
+      return false;
+    }
+
+    const participantIds = this.getPlayersInJoinOrder()
+      .filter((player) => player.connected)
+      .map((player) => player.player_id);
+    if (participantIds.length !== this.settings.max_players || participantIds.length < START_MIN_PLAYERS) {
+      return false;
+    }
+
+    if (this.isBplMode() && participantIds.length !== 2) {
+      return false;
+    }
+
+    const startResult = this.beginMatch(participantIds, now);
+    return startResult.ok;
+  }
+
   private clearAutoRematchState(incrementGeneration: boolean): void {
     if (incrementGeneration) {
       this.autoRematchGeneration += 1;
@@ -2120,6 +2189,10 @@ export class RoomLobbyState {
     this.autoRematchCountdownStartedAt = now;
     this.autoRematchDueAt = new Date(now.getTime() + AUTO_REMATCH_RESULT_SECONDS * 1_000);
     this.autoRematchScheduledGeneration = this.autoRematchGeneration;
+  }
+
+  private isAutoMatchRoom(): boolean {
+    return this.settings.auto_match === true;
   }
 
   private checkAutoRematchEligibility():

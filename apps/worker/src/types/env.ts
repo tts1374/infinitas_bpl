@@ -25,9 +25,15 @@ export interface LobbyDirectoryDurableObjectNamespace {
   get(id: DurableObjectIdLike): DurableObjectStubLike;
 }
 
+export interface MatchmakingDurableObjectNamespace {
+  idFromName(name: string): DurableObjectIdLike;
+  get(id: DurableObjectIdLike): DurableObjectStubLike;
+}
+
 export interface WorkerEnv {
   ROOM_DO: RoomDurableObjectNamespace;
   LOBBY_DIRECTORY_DO: LobbyDirectoryDurableObjectNamespace;
+  MATCHMAKING_DO: MatchmakingDurableObjectNamespace;
   FEEDBACK_KV: WorkerKVNamespace;
   APP_DOWNLOAD_URL?: string;
   REPO_OWNER_GITHUB: string;
