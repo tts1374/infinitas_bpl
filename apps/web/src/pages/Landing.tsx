@@ -5,7 +5,7 @@ import { HeroSection } from "../components/sections/HeroSection";
 import { HowToSection } from "../components/sections/HowToSection";
 import { IntegrationSection } from "../components/sections/IntegrationSection";
 import { NotesSection } from "../components/sections/NotesSection";
-import { WEB_LINKS } from "../lib/config";
+import { WEB_LINKS, WEB_RUNTIME } from "../lib/config";
 
 export const LandingPage: FC = () => {
   const scrollToHowTo = (): void => {
@@ -33,6 +33,9 @@ export const LandingPage: FC = () => {
           </a>
           <a href={WEB_LINKS.knownIssues} target="_blank" rel="noreferrer" className="hover:text-cyan-300">
             既知の制約
+          </a>
+          <a href={`${WEB_RUNTIME.basePath}spectate/`} className="hover:text-cyan-300">
+            観戦ページ
           </a>
         </div>
       </footer>

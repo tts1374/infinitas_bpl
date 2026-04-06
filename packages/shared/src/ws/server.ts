@@ -10,8 +10,11 @@ import type { WsEmptyPayload } from "./common";
 import type { ServerEnvelope } from "./envelope";
 import type { ServerMessageType } from "./message-types";
 
+export type RoomJoinAcceptedSessionRole = "HOST" | "PLAYER" | "SPECTATOR";
+
 export interface RoomJoinAcceptedPayload {
   room_state_snapshot: RoomStateSnapshot;
+  session_role?: RoomJoinAcceptedSessionRole;
 }
 
 export interface RoomRejectedPayload {

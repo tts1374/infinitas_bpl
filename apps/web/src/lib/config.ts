@@ -7,6 +7,21 @@ const withTrailingSlash = (path: string): string => (path.endsWith("/") ? path :
 
 const basePath = withTrailingSlash(import.meta.env.BASE_URL || "/");
 
+const resolveJoinApiEndpointFallback = (): string => {
+  if (typeof window === "undefined") {
+    return "/api/join";
+  }
+
+  const hostname = window.location.hostname.trim().toLowerCase();
+  const isLocalhost = hostname === "localhost" || hostname === "127.0.0.1";
+  if (!isLocalhost) {
+    return "/api/join";
+  }
+
+  // In local web-dev (`localhost:1430`), worker APIs are usually served by `wrangler dev` on 8787.
+  return "http://127.0.0.1:8787/api/join";
+};
+
 export const WEB_LINKS = Object.freeze({
   download: envOrDefault(
     import.meta.env.VITE_DOWNLOAD_URL,
@@ -30,7 +45,7 @@ export const WEB_LINKS = Object.freeze({
 export const WEB_RUNTIME = Object.freeze({
   basePath,
   deepLinkScheme: envOrDefault(import.meta.env.VITE_DEEP_LINK_SCHEME, "infinitas-arena://join"),
-  joinApiEndpoint: envOrDefault(import.meta.env.VITE_JOIN_API_ENDPOINT, "/api/join"),
+  joinApiEndpoint: envOrDefault(import.meta.env.VITE_JOIN_API_ENDPOINT, resolveJoinApiEndpointFallback()),
 });
 
 export const JOIN_DEMO_QUERY = "demo-open";

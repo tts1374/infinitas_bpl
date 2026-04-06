@@ -16,6 +16,7 @@
 - ルーム: 対戦セッション単位（DOインスタンス）
 - ホスト: ルーム作成者（固定。非明示切断時は `rejoin_cooldown` 以内の再接続を許容し、超過で解散）
 - プレイヤー: 参加者（最大4）
+- 観戦者（spectator）: read-only 接続者。`max_players` を消費せず、FSM進行・集計・勝敗判定へ参与しない
 - ラウンド: PLAYING中の1譜面単位（譜面リストのindex）
 - Round Result（曲別リザルト）: 1ラウンド単位の結果表示（UIフェーズ）
 - Match Result（最終結果 / RESULT）: マッチ全体の最終集計表示（`room_state=RESULT`）
@@ -94,6 +95,7 @@
 
 ## 6. LOBBY（参加・設定閲覧）
 - 参加/退出は自由（最大 `max_players`）
+- spectator は `LOBBY/PICKING/PLAYING/RESULT` の全状態で接続可能だが、操作系メッセージは送信不可（read-only）
 - ready 管理は `LOBBY` の内部状態として扱う
 - 全員が `ready=true` になって初めて `START_MATCH` 条件を満たせる
 - ホスト自身も `ready=true` 必須

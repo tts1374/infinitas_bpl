@@ -4,6 +4,7 @@ import react from "@vitejs/plugin-react";
 const repoRoot = new URL("../..", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
 const landingEntry = new URL("./index.html", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
 const joinEntry = new URL("./join/index.html", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
+const spectateEntry = new URL("./spectate/index.html", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
 
 export default defineConfig({
   base: process.env.VITE_WEB_BASE ?? "/",
@@ -21,6 +22,7 @@ export default defineConfig({
       input: {
         landing: landingEntry,
         join: joinEntry,
+        spectate: spectateEntry,
       },
     },
   },

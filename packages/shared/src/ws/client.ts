@@ -15,13 +15,25 @@ export interface GenerationPayload {
 
 export interface RequestIdWithGenerationPayload extends RequestIdPayload, GenerationPayload {}
 
-export interface RoomJoinPayload {
+export type RoomJoinSessionKind = "PLAYER" | "SPECTATOR";
+
+interface BaseRoomJoinPayload {
   join_code?: string;
-  display_name: string;
-  source: SourceType;
   client_version?: string;
   client_capabilities?: JsonObject;
 }
+
+export interface PlayerRoomJoinPayload extends BaseRoomJoinPayload {
+  session_kind?: "PLAYER";
+  display_name: string;
+  source: SourceType;
+}
+
+export interface SpectatorRoomJoinPayload extends BaseRoomJoinPayload {
+  session_kind: "SPECTATOR";
+}
+
+export type RoomJoinPayload = PlayerRoomJoinPayload | SpectatorRoomJoinPayload;
 
 export interface ReadySetPayload extends GenerationPayload {
   ready: boolean;

@@ -63,6 +63,14 @@
 - `rejoin_until: datetime|null`（退出後の再入室クールダウン終端）
 - `role: HOST|GUEST`（ホスト判定補助）
 
+### 2.3.1 Spectator Session（read-only）
+- spectator は `Player` エンティティとして永続化しない（`players[]` 非包含）
+- spectator は WS セッション属性としてのみ保持する
+  - `session_role = SPECTATOR`
+  - `player_id` は接続識別子として利用可
+- spectator 接続は `max_players` / `currentPlayers` / 勝敗集計へ影響しない
+- spectator 向け `RoomStateSnapshot` は redacted 形で返す（少なくとも `settings.join_code=null`）
+
 ### 2.4 Pick（指名）
 - `player_id: string`
 - `pick_chart_key: string`

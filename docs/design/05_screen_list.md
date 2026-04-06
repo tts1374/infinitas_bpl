@@ -29,6 +29,7 @@ Ph1 の画面は以下とする。
    - RESULT
 4. 統計画面
 5. エラーダイアログ / 通知
+6. Web観戦ページ（read-only）
 
 ---
 
@@ -388,6 +389,34 @@ Ph1 の画面は以下とする。
 ## 10.4 主な操作
 - ルール切替
 - モード切替
+
+---
+
+## 11. Web観戦ページ（read-only）
+
+## 11.1 目的
+- ブラウザから read-only で対戦進行を監視する
+- スコア進行・状態遷移を閲覧し、ルーム操作権限は持たない
+
+## 11.2 主な表示項目
+- room_id（URLクエリ `r`）
+- join_code 入力欄（PRIVATE 観戦時）
+- 接続状態（connecting / joined / closed / error）
+- 現在状態（room_state, mode, win_metric）
+- 現在ラウンド（round_index, expected_key, confirmed status）
+- プレイヤー別進行（status / metric_value）
+- 観戦開始後イベントログ（接続後に受信したWSイベントのみ）
+
+## 11.3 主な操作
+- 観戦接続（`ROOM_JOIN(session_kind=SPECTATOR)`）
+- 切断
+- 状態再取得（`STATE_GET`）
+
+## 11.4 制約
+- spectator は read-only。操作系メッセージは server-authoritative で拒否される
+- spectator は `max_players` を消費しない
+- PRIVATE 観戦は join_code 認可を必須とする
+- 表示履歴は観戦開始後のイベントのみを扱う
 
 ---
 
