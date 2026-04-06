@@ -78,3 +78,11 @@
 - `CloseReason` 変更: `01/02/07` + client 表示仕様
 - `RESULT_READY` 変更: `02/03` + shared 型 + worker/client 利用箇所
 
+## 6. Spectator 契約（固定）
+
+- `ROOM_JOIN.payload.session_kind` は additive で導入する（`PLAYER` 既定、`SPECTATOR` 追加）。
+- `session_kind=SPECTATOR` は read-only セッションを意味し、player slot を消費しない。
+- `PRIVATE` ルームの spectator 参加は join_code 認可を必須とする。
+- spectator 向け `RoomStateSnapshot` は redacted 形で返す（最低限 `settings.join_code=null`）。
+- spectator からの操作系メッセージは `INVALID_STATE` で拒否する。
+

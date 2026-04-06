@@ -1,6 +1,6 @@
 import { WEB_LINKS, WEB_RUNTIME } from "./config";
 
-export type RecruitmentStatus = "recruiting" | "full" | "closed" | "expired";
+export type RecruitmentStatus = "recruiting" | "full" | "closed" | "expired" | "unavailable";
 
 export interface JoinRoomSummary {
   roomName: string;
@@ -43,6 +43,13 @@ const toStatus = (value: string | undefined): RecruitmentStatus => {
 const buildExpiredSummary = (): JoinRoomSummary => ({
   roomName: "期限切れまたは無効な招待URL",
   status: "expired",
+  isShareable: false,
+  downloadUrl: WEB_LINKS.download,
+});
+
+const buildUnavailableSummary = (): JoinRoomSummary => ({
+  roomName: "ルーム情報を取得できませんでした",
+  status: "unavailable",
   isShareable: false,
   downloadUrl: WEB_LINKS.download,
 });
@@ -111,6 +118,6 @@ export const fetchJoinRoomSummary = async (
     const payload = (await response.json()) as JoinRoomApiResponse;
     return parseApiSummary(payload);
   } catch {
-    return buildExpiredSummary();
+    return buildUnavailableSummary();
   }
 };

@@ -117,7 +117,7 @@ async function createRoomObject() {
   return roomObject;
 }
 
-function createJoinMessage(playerId, clientMessageId) {
+function createJoinMessage(playerId, clientMessageId, payloadOverrides = {}) {
   return {
     type: "ROOM_JOIN",
     client_msg_id: clientMessageId,
@@ -127,13 +127,26 @@ function createJoinMessage(playerId, clientMessageId) {
       display_name: playerId.toUpperCase(),
       source: "inf-notebook",
       client_version: "1.2.0",
+      ...payloadOverrides,
     },
   };
 }
 
-async function joinPlayer(roomObject, socket, playerId, clientMessageId) {
+async function joinPlayer(roomObject, socket, playerId, clientMessageId, payloadOverrides = {}) {
   const session = roomObject.registerSocketSession(socket);
-  await roomObject.handleRoomJoin(session, createJoinMessage(playerId, clientMessageId));
+  await roomObject.handleRoomJoin(session, createJoinMessage(playerId, clientMessageId, payloadOverrides));
+  return session;
+}
+
+async function joinSpectator(roomObject, socket, spectatorId, clientMessageId, payloadOverrides = {}) {
+  const session = roomObject.registerSocketSession(socket);
+  await roomObject.handleRoomJoin(
+    session,
+    createJoinMessage(spectatorId, clientMessageId, {
+      session_kind: "SPECTATOR",
+      ...payloadOverrides,
+    }),
+  );
   return session;
 }
 
@@ -456,4 +469,113 @@ test("internal recreate rejects when active generation exists", async () => {
   assert.equal(response.status, 409);
   const payload = await response.json();
   assert.equal(payload.error, "ACTIVE_GENERATION_EXISTS");
+});
+
+test("spectator join keeps player slots unchanged and receives redacted snapshot", async () => {
+  const roomObject = await createRoomObject();
+  roomObject.roomState.settings.visibility = "PRIVATE";
+  roomObject.roomState.settings.join_code = "ABCDEFGH";
+
+  const hostSocket = new TestSocket();
+  await joinPlayer(roomObject, hostSocket, "host", "msg-1", { join_code: "ABCDEFGH" });
+  const beforeSpectatorJoinCount = roomObject.roomState.toSnapshot().players.length;
+
+  const spectatorSocket = new TestSocket();
+  const spectatorSession = await joinSpectator(roomObject, spectatorSocket, "viewer-1", "msg-2", { join_code: "ABCDEFGH" });
+
+  assert.equal(spectatorSession.role, "SPECTATOR");
+  assert.equal(roomObject.roomState.toSnapshot().players.length, beforeSpectatorJoinCount);
+
+  const joinAccepted = spectatorSocket.sent.find((message) => message.type === "ROOM_JOIN_ACCEPTED");
+  assert.ok(joinAccepted);
+  assert.equal(joinAccepted.payload.session_role, "SPECTATOR");
+  assert.equal(joinAccepted.payload.room_state_snapshot.settings.join_code, null);
+});
+
+test("spectator join rejects invalid join_code in PRIVATE room", async () => {
+  const roomObject = await createRoomObject();
+  roomObject.roomState.settings.visibility = "PRIVATE";
+  roomObject.roomState.settings.join_code = "ABCDEFGH";
+
+  const spectatorSocket = new TestSocket();
+  await joinSpectator(roomObject, spectatorSocket, "viewer-2", "msg-1", { join_code: "WRONG999" });
+
+  const rejected = spectatorSocket.sent.find((message) => message.type === "ROOM_JOIN_REJECTED");
+  assert.ok(rejected);
+  assert.equal(rejected.payload.reason, "JOIN_CODE_INVALID");
+});
+
+test("spectator mutation messages are rejected as read-only", async () => {
+  const roomObject = await createRoomObject();
+  const spectatorSocket = new TestSocket();
+  await joinSpectator(roomObject, spectatorSocket, "viewer-3", "msg-1");
+  roomObject.roomState.readyCheckDeadline = new Date("2099-01-01T00:00:00.000Z");
+
+  const rejectedTypes = [
+    "READY_SET",
+    "START_MATCH",
+    "SOURCE_STATUS_SET",
+    "PICK_SUBMIT",
+    "RESULT_SUBMIT",
+    "FORCE_ADVANCE",
+  ];
+
+  let clientMessageIndex = 1;
+  for (const type of rejectedTypes) {
+    clientMessageIndex += 1;
+    await roomObject.webSocketMessage(
+      spectatorSocket,
+      JSON.stringify({
+        type,
+        client_msg_id: `msg-${clientMessageIndex}`,
+        room_id: "room-1",
+        player_id: "viewer-3",
+        payload: {},
+      }),
+    );
+  }
+
+  const errors = spectatorSocket.sent.filter((message) => message.type === "ERROR");
+  assert.equal(errors.length, rejectedTypes.length);
+  for (const errorMessage of errors) {
+    assert.equal(errorMessage.payload.code, "INVALID_STATE");
+    assert.equal(errorMessage.payload.message, "Spectator sessions are read-only.");
+  }
+});
+
+test("ROOM_UPDATED is redacted for spectator and full for player", async () => {
+  const roomObject = await createRoomObject();
+  roomObject.roomState.settings.visibility = "PRIVATE";
+  roomObject.roomState.settings.join_code = "ABCDEFGH";
+  roomObject.roomState.readyCheckDeadline = new Date("2099-01-01T00:00:00.000Z");
+
+  const hostSocket = new TestSocket();
+  await joinPlayer(roomObject, hostSocket, "host", "msg-1", { join_code: "ABCDEFGH" });
+  hostSocket.sent = [];
+
+  const spectatorSocket = new TestSocket();
+  await joinSpectator(roomObject, spectatorSocket, "viewer-4", "msg-2", { join_code: "ABCDEFGH" });
+  spectatorSocket.sent = [];
+
+  await roomObject.webSocketMessage(
+    hostSocket,
+    JSON.stringify({
+      type: "READY_SET",
+      client_msg_id: "msg-3",
+      room_id: "room-1",
+      player_id: "host",
+      payload: {
+        ready: true,
+        generation: 1,
+      },
+    }),
+  );
+
+  const hostUpdated = hostSocket.sent.find((message) => message.type === "ROOM_UPDATED");
+  const spectatorUpdated = spectatorSocket.sent.find((message) => message.type === "ROOM_UPDATED");
+
+  assert.ok(hostUpdated);
+  assert.ok(spectatorUpdated);
+  assert.equal(hostUpdated.payload.room_state_snapshot.settings.join_code, "ABCDEFGH");
+  assert.equal(spectatorUpdated.payload.room_state_snapshot.settings.join_code, null);
 });

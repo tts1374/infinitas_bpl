@@ -17,7 +17,6 @@ import {
   type JsonObject,
   type LobbyRoomSummary,
   type RequestIdPayload,
-  type RoomJoinPayload,
   type RoomSettings,
   type RoomStateSnapshot,
   type SongUnlockSettings,
@@ -40,6 +39,7 @@ import {
 import { workerChartMaster } from "../master/chart-master";
 
 type RoomSocketRole = "HOST" | "PLAYER" | "SPECTATOR";
+type JoinAcceptedSessionRole = "HOST" | "PLAYER" | "SPECTATOR";
 
 type RoomSocketAttachment = {
   playerId: string | null;
@@ -94,6 +94,8 @@ const CLIENT_VERSION_UNSUPPORTED_REASON = "CLIENT_VERSION_UNSUPPORTED";
 const CLIENT_VERSION_PATTERN = /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const ROOM_RECREATE_WINDOW_MS = ROOM_RECREATE_WINDOW_MINUTES * 60_000;
 const ROOM_STATE_CHANGED_ERROR_MESSAGE = "部屋の状態が変わりました。一覧に戻ってください。";
+const SPECTATOR_READ_ONLY_ERROR_MESSAGE = "Spectator sessions are read-only.";
+const ROOM_JOIN_SESSION_KINDS = ["PLAYER", "SPECTATOR"] as const;
 
 interface ParsedClientVersion {
   major: number;
@@ -389,10 +391,22 @@ function parseRecreateInput(payload: unknown): ParsedRecreateInput | null {
   };
 }
 
-interface ParsedRoomJoinPayload extends RoomJoinPayload {
+interface ParsedPlayerJoinPayload {
+  session_kind: "PLAYER";
+  display_name: string;
+  source: RoomStateSnapshot["players"][number]["source"];
+  join_code?: string;
+  client_version?: string;
   song_unlocks: SongUnlockSettings;
+}
+
+interface ParsedSpectatorJoinPayload {
+  session_kind: "SPECTATOR";
+  join_code?: string;
   client_version?: string;
 }
+
+type ParsedRoomJoinPayload = ParsedPlayerJoinPayload | ParsedSpectatorJoinPayload;
 
 function parseClientVersion(rawValue: string): ParsedClientVersion | null {
   const match = CLIENT_VERSION_PATTERN.exec(rawValue.trim());
@@ -501,18 +515,28 @@ function parseRoomJoinPayload(payload: unknown): ParsedRoomJoinPayload | null {
     return null;
   }
 
-  const displayNameRaw = asOptionalString(payload.display_name);
-  const source = asEnumValue(payload.source, SOURCE_TYPES);
+  const sessionKind = asEnumValue(payload.session_kind, ROOM_JOIN_SESSION_KINDS) ?? "PLAYER";
   const joinCode = asOptionalString(payload.join_code);
   const clientVersionRaw = asOptionalString(payload.client_version);
   const clientVersion = clientVersionRaw?.trim() ?? "";
 
+  if (sessionKind === "SPECTATOR") {
+    return {
+      session_kind: "SPECTATOR",
+      ...(clientVersion.length === 0 ? {} : { client_version: clientVersion }),
+      ...(joinCode === undefined ? {} : { join_code: joinCode }),
+    };
+  }
+
+  const displayNameRaw = asOptionalString(payload.display_name);
+  const source = asEnumValue(payload.source, SOURCE_TYPES);
   const displayName = displayNameRaw?.trim() ?? "";
   if (displayName.length === 0 || source === undefined) {
     return null;
   }
 
   return {
+    session_kind: "PLAYER",
     display_name: displayName,
     source,
     ...(clientVersion.length === 0 ? {} : { client_version: clientVersion }),
@@ -1259,6 +1283,42 @@ export class RoomDurableObject {
     return this.roomState.getHostPlayerId() === playerId ? "HOST" : "PLAYER";
   }
 
+  private isSpectatorAllowedMessage(type: string): boolean {
+    return type === "ROOM_JOIN" || type === "ROOM_LEAVE" || type === "STATE_GET" || type === "PING";
+  }
+
+  private redactSnapshotForSpectator(snapshot: RoomStateSnapshot): RoomStateSnapshot {
+    if (snapshot.settings.join_code === null) {
+      return snapshot;
+    }
+
+    return {
+      ...snapshot,
+      settings: {
+        ...snapshot.settings,
+        join_code: null,
+      },
+    };
+  }
+
+  private buildSnapshotForSession(
+    session: RoomSocketSession | undefined,
+    baseSnapshot: RoomStateSnapshot,
+  ): RoomStateSnapshot {
+    return session?.role === "SPECTATOR" ? this.redactSnapshotForSpectator(baseSnapshot) : baseSnapshot;
+  }
+
+  private resolveJoinAcceptedSessionRole(
+    session: RoomSocketSession,
+    fallbackPlayerId: string,
+  ): JoinAcceptedSessionRole {
+    if (session.role === "HOST" || session.role === "PLAYER" || session.role === "SPECTATOR") {
+      return session.role;
+    }
+
+    return this.resolveSocketRole(fallbackPlayerId);
+  }
+
   private parseAttachmentTimestamp(value: string | null): number {
     if (typeof value !== "string") {
       return Number.NEGATIVE_INFINITY;
@@ -1273,7 +1333,7 @@ export class RoomDurableObject {
     const newestAttachedAtByPlayerId = new Map<string, number>();
 
     for (const session of this.sessionsBySocket.values()) {
-      if (session.playerId === null) {
+      if (session.playerId === null || session.role === "SPECTATOR") {
         continue;
       }
 
@@ -1317,6 +1377,19 @@ export class RoomDurableObject {
     session.attachedAt = attachedAt;
     this.syncSocketAttachment(session);
     this.activeSocketByPlayerId.set(playerId, session.socket);
+  }
+
+  private assignSessionToSpectator(
+    session: RoomSocketSession,
+    spectatorId: string,
+    attachedAt: string,
+  ): void {
+    session.playerId = spectatorId;
+    session.joinedAt = attachedAt;
+    session.role = "SPECTATOR";
+    session.connectionId = crypto.randomUUID();
+    session.attachedAt = attachedAt;
+    this.syncSocketAttachment(session);
   }
 
   private replacePlayerSocket(playerId: string, currentSession: RoomSocketSession): void {
@@ -1413,6 +1486,16 @@ export class RoomDurableObject {
 
       if (message.type !== "ROOM_JOIN" && session.playerId === null) {
         this.sendError(socket, "INVALID_STATE", "Send ROOM_JOIN before this message.", this.buildMessageLogInput(message));
+        return;
+      }
+
+      if (session.role === "SPECTATOR" && !this.isSpectatorAllowedMessage(message.type)) {
+        this.sendError(socket, "INVALID_STATE", SPECTATOR_READ_ONLY_ERROR_MESSAGE, this.buildMessageLogInput(message, {
+          detail: {
+            validation: "spectator_read_only",
+            rejected_type: message.type,
+          },
+        }));
         return;
       }
 
@@ -1521,6 +1604,10 @@ export class RoomDurableObject {
     });
 
     this.sessionsBySocket.delete(socket);
+    if (session.role === "SPECTATOR") {
+      return;
+    }
+
     if (playerId === null || !isCurrentSocket) {
       return;
     }
@@ -1555,13 +1642,18 @@ export class RoomDurableObject {
       return;
     }
 
-    if (
+    const isCurrentPlayerSession =
       session.playerId === message.player_id &&
+      session.role !== "SPECTATOR" &&
       this.roomState.isPlayerConnected(message.player_id) &&
-      this.isCurrentSocketForPlayer(message.player_id, session.socket)
-    ) {
+      this.isCurrentSocketForPlayer(message.player_id, session.socket);
+    const isCurrentSpectatorSession = session.playerId === message.player_id && session.role === "SPECTATOR";
+
+    if (isCurrentPlayerSession || isCurrentSpectatorSession) {
+      const snapshot = this.roomState.toSnapshot();
       this.send(session.socket, "ROOM_JOIN_ACCEPTED", {
-        room_state_snapshot: this.roomState.toSnapshot(),
+        room_state_snapshot: this.buildSnapshotForSession(session, snapshot),
+        session_role: session.role ?? this.resolveSocketRole(message.player_id),
       });
       this.sendResultReadyIfAvailable(session.socket);
       this.logRoomEvent(this.buildMessageLogInput(message, {
@@ -1584,18 +1676,20 @@ export class RoomDurableObject {
       return;
     }
 
-    if (payload.source === "inf_daken_counter") {
-      this.sendJoinRejected(
-        session.socket,
-        "SOURCE_DEPRECATED",
-        this.buildMessageLogInput(message, {
-          source: payload.source,
-          detail: {
-            validation: "source_deprecated",
-          },
-        }),
-      );
-      return;
+    if (payload.session_kind === "PLAYER") {
+      if (payload.source === "inf_daken_counter") {
+        this.sendJoinRejected(
+          session.socket,
+          "SOURCE_DEPRECATED",
+          this.buildMessageLogInput(message, {
+            source: payload.source,
+            detail: {
+              validation: "source_deprecated",
+            },
+          }),
+        );
+        return;
+      }
     }
 
     const parsedClientVersion =
@@ -1608,7 +1702,7 @@ export class RoomDurableObject {
         session.socket,
         buildUnsupportedClientVersionReason(this.minSupportedClientVersion),
         this.buildMessageLogInput(message, {
-          source: payload.source,
+          ...(payload.session_kind === "PLAYER" ? { source: payload.source } : {}),
           detail: {
             validation: "client_version_unsupported",
             client_version: payload.client_version ?? null,
@@ -1625,13 +1719,33 @@ export class RoomDurableObject {
       const observedJoinCode = normalizeJoinCode(payload.join_code);
       if (expectedJoinCode === null || observedJoinCode !== expectedJoinCode) {
         this.sendJoinRejected(session.socket, "JOIN_CODE_INVALID", this.buildMessageLogInput(message, {
-          source: payload.source,
+          ...(payload.session_kind === "PLAYER" ? { source: payload.source } : {}),
           detail: {
             validation: "join_code_invalid",
           },
         }));
         return;
       }
+    }
+
+    if (payload.session_kind === "SPECTATOR") {
+      const attachedAt = new Date().toISOString();
+      this.assignSessionToSpectator(session, message.player_id, attachedAt);
+      const snapshot = this.roomState.toSnapshot();
+      this.send(session.socket, "ROOM_JOIN_ACCEPTED", {
+        room_state_snapshot: this.buildSnapshotForSession(session, snapshot),
+        session_role: this.resolveJoinAcceptedSessionRole(session, message.player_id),
+      });
+      this.sendResultReadyIfAvailable(session.socket);
+      this.logRoomEvent(this.buildMessageLogInput(message, {
+        event: "room.join",
+        outcome: "ok",
+        detail: {
+          join_type: "SPECTATOR",
+          attached_at: attachedAt,
+        },
+      }));
+      return;
     }
 
     const now = new Date();
@@ -1669,6 +1783,7 @@ export class RoomDurableObject {
 
     this.send(session.socket, "ROOM_JOIN_ACCEPTED", {
       room_state_snapshot: snapshot,
+      session_role: this.resolveJoinAcceptedSessionRole(session, message.player_id),
     });
     this.sendResultReadyIfAvailable(session.socket);
     this.logRoomEvent(this.buildMessageLogInput(message, {
@@ -1687,6 +1802,11 @@ export class RoomDurableObject {
   private async handleRoomLeaveMessage(session: RoomSocketSession, message: ClientMessage<"ROOM_LEAVE">): Promise<void> {
     if (session.playerId === null) {
       this.sendError(session.socket, "INVALID_STATE", "Send ROOM_JOIN before this message.", this.buildMessageLogInput(message));
+      return;
+    }
+
+    if (session.role === "SPECTATOR") {
+      await this.handleRoomLeave(session, true);
       return;
     }
 
@@ -1709,10 +1829,29 @@ export class RoomDurableObject {
 
   private async handleRoomLeave(session: RoomSocketSession, closeSocket: boolean): Promise<void> {
     const playerId = session.playerId;
+    const role = session.role;
     const previousState = this.roomState.isInitialized() ? this.roomState.getRoomState() : "(uninitialized)";
     this.clearSessionPlayerBinding(session);
 
     if (playerId === null) {
+      if (closeSocket) {
+        this.safeCloseSocket(session.socket, 1000, "Left room.");
+      }
+      return;
+    }
+
+    if (role === "SPECTATOR") {
+      this.logRoomEvent({
+        event: "room.leave",
+        player_id: playerId,
+        outcome: "ok",
+        detail: {
+          close_socket: closeSocket,
+          leave_reason: "SPECTATOR_LEFT",
+          was_host: false,
+          room_was_closed: false,
+        },
+      });
       if (closeSocket) {
         this.safeCloseSocket(session.socket, 1000, "Left room.");
       }
@@ -2588,16 +2727,25 @@ export class RoomDurableObject {
   }
 
   private sendStateSnapshot(socket: WebSocket): void {
+    const session = this.getOrCreateSocketSession(socket);
+    const snapshot = this.roomState.toSnapshot();
     this.send(socket, "STATE_SNAPSHOT", {
-      room_state_snapshot: this.roomState.toSnapshot(),
+      room_state_snapshot: this.buildSnapshotForSession(session, snapshot),
     });
     this.sendResultReadyIfAvailable(socket);
   }
 
   private broadcastRoomUpdated(): void {
-    this.broadcast("ROOM_UPDATED", {
-      room_state_snapshot: this.roomState.toSnapshot(),
-    });
+    const snapshot = this.roomState.toSnapshot();
+    for (const session of this.sessionsBySocket.values()) {
+      if (session.playerId === null) {
+        continue;
+      }
+
+      this.send(session.socket, "ROOM_UPDATED", {
+        room_state_snapshot: this.buildSnapshotForSession(session, snapshot),
+      });
+    }
   }
 
   private broadcastAcceptedPick(acceptedPick: {
@@ -2664,6 +2812,13 @@ export class RoomDurableObject {
   ): void {
     for (const session of this.sessionsBySocket.values()) {
       if (!includeUnjoined && session.playerId === null) {
+        continue;
+      }
+      if (session.role === "SPECTATOR" && type === "ROOM_UPDATED") {
+        const roomUpdatedPayload = payload as ServerMessagePayloadMap["ROOM_UPDATED"];
+        this.send(session.socket, type, {
+          room_state_snapshot: this.redactSnapshotForSpectator(roomUpdatedPayload.room_state_snapshot),
+        } as ServerMessagePayloadMap[TType]);
         continue;
       }
       this.send(session.socket, type, payload);

@@ -44,9 +44,11 @@
 
 ### 3.1 ルーム
 - `ROOM_JOIN`
-  - payload: `{ join_code?: string, display_name: string, source: "inf_daken_counter"|"inf-notebook"|"daken_counter_v3"|"reflux", client_version?: string, client_capabilities?: object }`
+  - payload（PLAYER）: `{ session_kind?: "PLAYER", join_code?: string, display_name: string, source: "inf_daken_counter"|"inf-notebook"|"daken_counter_v3"|"reflux", client_version?: string, client_capabilities?: object }`
+  - payload（SPECTATOR）: `{ session_kind: "SPECTATOR", join_code?: string, client_version?: string }`
   - 備考: WS接続直後に必ず送る（DOがJOIN完了するまでstate配信しない）
   - 備考: `client_capabilities.song_unlocks = { bit_unlocked: boolean, djp_unlocked: boolean, allow_leggendaria: boolean, owned_pack_ids: number[] }` を送ると、`START_MATCH` 時の共通解禁フィルタ計算に利用される
+  - 備考: `session_kind="SPECTATOR"` は read-only 観戦セッションを要求する（player slot 非消費）
 - `ROOM_LEAVE`
   - payload: `{ generation: number }`
 
@@ -92,7 +94,7 @@
 
 ### 4.1 ルーム
 - `ROOM_JOIN_ACCEPTED`
-  - payload: `{ room_state_snapshot: RoomStateSnapshot }`
+  - payload: `{ room_state_snapshot: RoomStateSnapshot, session_role?: "HOST"|"PLAYER"|"SPECTATOR" }`
 - `ROOM_JOIN_REJECTED`
   - payload: `{ reason: string }`
   - 備考: `client_version` が最小対応版未満または未送信の場合、`reason` には `CLIENT_VERSION_UNSUPPORTED: ...` を返す
@@ -247,6 +249,9 @@
   - `play_style/difficulty/title_search_key` は常に一致必須
   - `chart_id` は双方にある場合のみ一致必須。`expected_key.chart_id` がある `daken_counter_v3` 観測で `observed_key.chart_id` 欠落時は不採用
 - ROOM_JOIN: `client_version >= MIN_SUPPORTED_CLIENT_VERSION` を満たさない場合は `ROOM_JOIN_REJECTED` を返す
+- SPECTATOR: `ROOM_JOIN/ROOM_LEAVE/STATE_GET/PING` 以外は `ERROR(code="INVALID_STATE")` で拒否する
+- SPECTATOR: `PRIVATE` ルームでは player と同様に `join_code` 認可を必須化する
+- SPECTATOR: 配信する `room_state_snapshot` は redacted 形（少なくとも `settings.join_code=null`）で返す
 - `READY_SET / START_MATCH / RETURN_TO_LOBBY / RESULT_SUBMIT / ROOM_LEAVE` は `payload.generation == current_generation` のときのみ受理し、不一致時は操作を拒否する
 - PICKING timeout: 未pickプレイヤーへランダム割当を行ってから `PICK_FROZEN` / `ROUND_BEGIN` を配信
 - `RESULT_READY` 生成後の `RESULT` / `CLOSED` では提出系はすべて拒否（勝敗改変防止）

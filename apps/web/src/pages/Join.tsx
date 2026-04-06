@@ -1,4 +1,4 @@
-import { AppWindow, Download, LoaderCircle, RefreshCw, TriangleAlert } from "lucide-react";
+import { AppWindow, Download, Eye, LoaderCircle, RefreshCw, TriangleAlert } from "lucide-react";
 import type { FC } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { attemptOpenDeepLink, buildJoinDeepLink } from "../lib/deeplink";
@@ -31,9 +31,14 @@ const statusMetaMap: Record<RecruitmentStatus, StatusMeta> = {
     description: "このルームの募集は終了しました。",
   },
   expired: {
-    label: "期限切れ / 無効URL",
+    label: "無効リンク",
     badgeClass: "bg-rose-500/20 text-rose-300 border-rose-400/30",
-    description: "リンクが無効、または共有期限を過ぎています。",
+    description: "このリンクは使えません。新しい招待リンクを受け取ってください。",
+  },
+  unavailable: {
+    label: "接続できません",
+    badgeClass: "bg-orange-500/20 text-orange-200 border-orange-400/30",
+    description: "ルーム情報を取得できませんでした。",
   },
 };
 
@@ -54,6 +59,10 @@ export const JoinPage: FC = () => {
   const [summary, setSummary] = useState<JoinRoomSummary>(fallbackSummary);
   const [isLoading, setIsLoading] = useState<boolean>(Boolean(roomRef));
   const [deepLinkState, setDeepLinkState] = useState<DeepLinkUiState>("idle");
+  const spectateUrl = useMemo(
+    () => `${WEB_RUNTIME.basePath}spectate/?r=${encodeURIComponent(roomRef)}`,
+    [roomRef],
+  );
 
   const statusMeta = statusMetaMap[summary.status];
 
@@ -154,11 +163,8 @@ export const JoinPage: FC = () => {
       <main className="mx-auto max-w-4xl space-y-8">
         <header className="rounded-3xl border border-white/10 bg-[#15151A] p-8 shadow-[0_20px_40px_rgba(0,0,0,0.35)]">
           <p className="mb-3 text-sm uppercase tracking-widest text-cyan-300">INFINITAS Arena Join</p>
-          <h1 className="mb-4 text-3xl font-black md:text-4xl">参加導線ページ</h1>
-          <p className="text-sm leading-relaxed text-gray-300 md:text-base">
-            X などで共有されたリンクから、アプリ起動とダウンロード導線へ接続するページです。URL自体を参加券にはせず、
-            ルーム状態を確認したうえでアプリ参加へ進みます。
-          </p>
+          <h1 className="mb-4 text-3xl font-black md:text-4xl">参加ページ</h1>
+          <p className="text-sm leading-relaxed text-gray-300 md:text-base">ルーム状態を確認して、アプリ参加またはブラウザ観戦へ進みます。</p>
         </header>
 
         <section className="rounded-3xl border border-cyan-500/20 bg-[#101018] p-8 shadow-[0_0_35px_rgba(6,182,212,0.12)]">
@@ -221,15 +227,29 @@ export const JoinPage: FC = () => {
               className="inline-flex items-center justify-center gap-2 rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-6 py-3 font-semibold text-cyan-100 transition-colors hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <RefreshCw size={16} />
-              手動で再試行
+              再試行
             </button>
+
+            <a
+              href={spectateUrl}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-6 py-3 font-semibold text-emerald-100 transition-colors hover:bg-emerald-500/20"
+            >
+              <Eye size={16} />
+              ブラウザ観戦
+            </a>
           </div>
 
           <p className="mt-4 text-sm text-gray-300">{deepLinkMessage}</p>
           {summary.status === "expired" ? (
             <p className="mt-3 inline-flex items-center gap-2 rounded-lg border border-rose-400/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
               <TriangleAlert size={16} />
-              期限切れまたは無効URLです。新しい招待リンクを受け取ってください。
+              このリンクは使えません。新しい招待リンクを受け取ってください。
+            </p>
+          ) : null}
+          {summary.status === "unavailable" ? (
+            <p className="mt-3 inline-flex items-center gap-2 rounded-lg border border-orange-400/40 bg-orange-500/10 px-3 py-2 text-sm text-orange-100">
+              <TriangleAlert size={16} />
+              APIへ接続できません。`wrangler dev` と `VITE_JOIN_API_ENDPOINT` を確認してください。
             </p>
           ) : null}
         </section>
@@ -237,9 +257,9 @@ export const JoinPage: FC = () => {
         <section className="rounded-3xl border border-white/10 bg-[#15151A] p-8">
           <h2 className="mb-4 text-2xl font-bold">参加手順</h2>
           <ol className="space-y-3 text-sm leading-relaxed text-gray-300">
-            <li>1. 「アプリで開く」を押して、`infinitas-arena://join?r=...` の deep link 起動を試します。</li>
-            <li>2. アプリ未導入の場合は「ダウンロード」から Windows 版をインストールします。</li>
-            <li>3. アプリ起動後にルーム参加を続行し、募集状態に従って入室してください。</li>
+            <li>1. 「アプリで開く」で参加します。</li>
+            <li>2. アプリ未導入なら「ダウンロード」からインストールします。</li>
+            <li>3. 観戦したい場合は「ブラウザ観戦」を選びます。</li>
           </ol>
         </section>
 
