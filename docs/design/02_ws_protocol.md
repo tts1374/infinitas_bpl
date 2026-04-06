@@ -217,7 +217,7 @@
 }
 ```
 
-- `timers.result_deadline` は Ph1 現行フローでは通常 `null` 固定の予約欄
+- `timers.result_deadline` は通常 `null`。`settings.auto_match=true` の場合は RESULT 自動解散期限を保持する
 
 ### 5.4 CloseReason
 `ROOM_CLOSED.close_reason` / `RoomStateSnapshot.close_reason` は以下を扱う。
@@ -238,9 +238,11 @@
 - `SKIP_HOST_ASSIGN`: 現行v1では `INVALID_STATE` を返して受理しない
 - `FORCE_ADVANCE`: `room_state=PLAYING` かつ未確定者ありのときのみ許可し、未確定者を `TIMEOUT` / `submitted_by=SYSTEM` で確定する
 - START_MATCH: `players >= 2` かつ `room_state=LOBBY` かつ全員READY かつ前マッチ揮発状態クリア済みのみ
+- START_MATCH: `settings.auto_match=true` の部屋では手動開始を拒否し、参加者充足時の内部開始のみ許可する
 - START_MATCH: 成功時に `match_song_unlock_filter` を固定し、そのマッチ中は選曲候補とランダム抽選へ適用する
 - START_MATCH: 成功時に `current_match_id` を新規発行し、同一ルーム内の再戦と統計識別を分離する
 - RETURN_TO_LOBBY: `room_state=RESULT` のみ。復帰時は全員readyと前マッチ揮発状態をリセットする
+- RETURN_TO_LOBBY: `settings.auto_match=true` の部屋では受理しない
 - RETURN_TO_LOBBY: 復帰時は `current_match_id=room_id` に戻す（次戦開始までは provisional 識別子）
 - AUTO_REMATCH_STOP: `room_state=RESULT` かつホストのみ許可
 - AUTO_REMATCH_OPT_OUT: `room_state=RESULT` のみ許可（本人のみ）

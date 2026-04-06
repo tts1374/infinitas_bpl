@@ -25,7 +25,7 @@
 - `ready_check_deadline: datetime|null`（LOBBY ready 管理用。ルーム作成時と `RESULT -> LOBBY` 復帰時に張り直す）
 - `picking_deadline: datetime|null`
 - `match_deadline: datetime|null`（`START_MATCH` 成功時、すなわち `PICKING` 開始時点で初めて確定）
-- `result_deadline: datetime|null`（Ph1未使用。現行フローでは通常 `null` 固定の予約欄）
+- `result_deadline: datetime|null`（自動マッチ部屋の RESULT 解散用に使用。通常フローでは `null`）
 - `auto_rematch_enabled: bool`
 - `auto_rematch_countdown_started_at: datetime|null`
 - `auto_rematch_due_at: datetime|null`
@@ -45,6 +45,7 @@
 ### 2.2 RoomSettings（Ph1）
 - `mode: ARENA|BPL|BPL4`
 - `auto_rematch: bool`（`PRIVATE` のみ有効）
+- `auto_match: bool`（自動マッチ成立で生成された部屋にのみ有効。`PUBLIC` 前提）
 - `win_metric: SCORE|MISSCOUNT`
 - `play_style: SP|DP`
 - `level_filter: ANY|LV8_10|LV10|LV11|LV12`
@@ -164,6 +165,45 @@ type LobbyRoomSummary = {
   - `isFull = false`
   - `status = LOBBY`
   - TTL 未超過
+
+## 3.4 MatchmakingQueue（Auto Match / Phase1）
+
+### 3.4.1 Queue Ticket
+- `ticket_id: string`（UUID）
+- `status: SEARCHING|MATCHED|CANCELLED`
+- `mode: ARENA|BPL|BPL4`
+- `play_style: SP|DP`
+- `win_metric: SCORE|MISSCOUNT`
+- `rating: int`（クライアント自己申告）
+- `player_id: string`
+- `display_name: string`
+- `queued_at: datetime`
+- `updated_at: datetime`
+- `room_id: string|null`（成立時のみ）
+- `matched_player_count: int|null`（成立時のみ）
+
+### 3.4.2 成立条件（Phase1）
+- キー一致条件: `mode + play_style + win_metric`
+- レート許容幅:
+  - 初期 `±50`
+  - 30秒ごとに `+50`
+  - 上限 `±300`
+- ARENA:
+  - 4人成立で即開始
+  - 90秒待機後は2-4人で成立可
+- BPL/BPL4:
+  - 2人成立で開始
+
+### 3.4.3 API（HTTP Polling）
+- `POST /api/matchmaking/queue`
+- `GET /api/matchmaking/queue/:ticket_id`
+- `DELETE /api/matchmaking/queue/:ticket_id`
+
+### 3.4.4 成立後ルーム運用（Phase1）
+- 自動マッチ成立で生成するルームは `settings.auto_match=true` の `PUBLIC` ルーム
+- 参加者が `max_players` まで揃った時点で内部開始（`START_MATCH` は手動不可）
+- `RESULT` 開始から20秒後に自動解散する
+- 自動マッチ部屋は `REMAKE ROOM`（再作成）不可
 
 ## 4. キー設計
 
