@@ -344,6 +344,7 @@ foreach ($client in $clients) {
   $envVars = @{
     INFINITAS_INSTANCE_ID = $client.Id
     CARGO_TARGET_DIR = $client.CargoTargetDir
+    INF_ARENA_DISABLE_DEEP_LINK_REGISTER = "1"
   }
   if ($E2E) {
     $envVars["INF_ARENA_E2E"] = "1"
