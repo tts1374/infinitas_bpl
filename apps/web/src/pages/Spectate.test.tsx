@@ -299,6 +299,53 @@ describe("SpectatePage", () => {
     });
   });
 
+  it("ignores stale close events from a previous socket after reconnect", async () => {
+    render(<SpectatePage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "CONNECT TO MATCH" }));
+    const firstSocket = MockWebSocket.instances.at(0);
+    if (firstSocket === undefined) {
+      throw new Error("First WebSocket was not created.");
+    }
+
+    await act(async () => {
+      firstSocket.open();
+      firstSocket.emitServerMessage("ROOM_JOIN_REJECTED", {
+        reason: "ROOM_FULL",
+      });
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "CONNECT TO MATCH" }));
+
+    const secondSocket = MockWebSocket.instances.at(1);
+    if (secondSocket === undefined) {
+      throw new Error("Second WebSocket was not created.");
+    }
+
+    await act(async () => {
+      secondSocket.open();
+      secondSocket.emitServerMessage("ROOM_JOIN_ACCEPTED", {
+        room_state_snapshot: createSnapshot({
+          currentRoundIndex: 0,
+          confirmedMetrics: {},
+          frozenRoundCount: 2,
+        }),
+        session_role: "SPECTATOR",
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText("Spectator Connect")).toBeNull();
+    });
+
+    await act(async () => {
+      firstSocket.close(1006, "late close from previous socket");
+    });
+
+    expect(screen.queryByText("Spectator Connect")).toBeNull();
+    expect(screen.getByRole("button", { name: "Disconnect" })).toBeDefined();
+  });
+
   it("matches snapshot for connected layout", async () => {
     const snapshot = createSnapshot({
       currentRoundIndex: 0,

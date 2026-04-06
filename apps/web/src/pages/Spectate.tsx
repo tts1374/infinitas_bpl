@@ -265,8 +265,12 @@ export const SpectatePage: FC = () => {
       const wsUrl = buildSpectateWebSocketUrl(roomRef);
       const socket = new WebSocket(wsUrl);
       socketRef.current = socket;
+      const isStaleSocketEvent = (): boolean => socketRef.current !== socket;
 
       socket.addEventListener("open", () => {
+        if (isStaleSocketEvent()) {
+          return;
+        }
         setConnectionMessage("観戦参加を送信中...");
         sendClientMessage({
           type: "ROOM_JOIN",
@@ -282,6 +286,9 @@ export const SpectatePage: FC = () => {
       });
 
       socket.addEventListener("message", (messageEvent) => {
+        if (isStaleSocketEvent()) {
+          return;
+        }
         if (typeof messageEvent.data !== "string") {
           return;
         }
@@ -383,11 +390,17 @@ export const SpectatePage: FC = () => {
       });
 
       socket.addEventListener("error", () => {
+        if (isStaleSocketEvent()) {
+          return;
+        }
         setConnectionState("error");
         setConnectionMessage("接続エラー");
       });
 
       socket.addEventListener("close", (closeEvent) => {
+        if (isStaleSocketEvent()) {
+          return;
+        }
         socketRef.current = null;
         setConnectionState("closed");
         setConnectionMessage(`切断 (${closeEvent.code})`);
