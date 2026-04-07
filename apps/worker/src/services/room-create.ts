@@ -215,7 +215,7 @@ export async function createRoom(
 
   await initializeRoomDurableObject(env, roomId, parsed.settings, createdAtIso);
 
-  if (parsed.settings.visibility === "PUBLIC") {
+  if (parsed.settings.visibility === "PUBLIC" && parsed.settings.auto_match !== true) {
     await upsertLobbyDirectoryRoom(env, toLobbySummary(roomId, parsed));
   }
 
