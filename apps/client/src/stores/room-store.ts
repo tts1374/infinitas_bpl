@@ -1205,6 +1205,15 @@ export const roomStore = {
     }
   },
   setReady(ready: boolean): boolean {
+    const snapshot = internalStore.getState().snapshot;
+    if (
+      snapshot === null ||
+      snapshot.room_state !== "LOBBY" ||
+      snapshot.settings.auto_match === true
+    ) {
+      return false;
+    }
+
     const generation = requireCurrentGeneration();
     if (generation === null) {
       return false;

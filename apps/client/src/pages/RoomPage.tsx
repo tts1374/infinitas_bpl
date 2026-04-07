@@ -1185,7 +1185,13 @@ export function RoomPage() {
     const amHost =
       snapshot?.host_player_id === activePlayerId || roomHost?.role === "HOST";
 
-    if (snapshot?.room_state === "LOBBY" && amHost && roomHost && !roomHost.ready) {
+    if (
+      snapshot?.room_state === "LOBBY" &&
+      snapshot.settings.auto_match !== true &&
+      amHost &&
+      roomHost &&
+      !roomHost.ready
+    ) {
       roomStore.setReady(true);
     }
   }, [activePlayerId, snapshot]);
