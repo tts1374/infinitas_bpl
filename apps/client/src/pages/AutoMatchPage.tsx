@@ -17,6 +17,7 @@ import {
   cancelMatchmakingQueueTicket,
   enqueueMatchmakingQueue,
   getMatchmakingQueueTicket,
+  getMatchmakingWaitingCount,
 } from "../services/worker-api-client";
 import { roomStore, useRoomStore } from "../stores/room-store";
 import { useStatsArchiveStore } from "../services/stats-archive";
@@ -29,6 +30,8 @@ interface AutoMatchProps {
 type MatchState = "CONFIG" | "IN_QUEUE" | "MATCH_FOUND";
 
 const QUEUE_POLL_INTERVAL_MS = 2_000;
+const WAITING_COUNT_POLL_INTERVAL_MS = 5_000;
+const CANCEL_TOAST_HIDE_DELAY_MS = 3_000;
 const AUTO_MATCH_PHASE1_MODES: Mode[] = ["ARENA", "BPL4"];
 
 function getModeDescription(mode: Mode): string {
@@ -54,6 +57,10 @@ function getQueuedPlayersLabel(mode: Mode): string {
     : "2";
 }
 
+function formatCurrentRating(value: number | null): string {
+  return value === null ? "--" : String(Math.round(value));
+}
+
 function formatQueueSeconds(elapsedSeconds: number): string {
   const minutes = Math.floor(elapsedSeconds / 60)
     .toString()
@@ -75,12 +82,15 @@ export function AutoMatchPage({ onNavigate }: AutoMatchProps) {
   const [playStyle, setPlayStyle] = useState<PlayStyle>("SP");
   const [winMetric, setWinMetric] = useState<WinMetric>("SCORE");
   const [ticket, setTicket] = useState<MatchmakingQueueTicket | null>(null);
+  const [waitingCount, setWaitingCount] = useState<number | null>(null);
   const [queueTimeSeconds, setQueueTimeSeconds] = useState(0);
   const [busy, setBusy] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [displayedPlayers, setDisplayedPlayers] = useState(1);
   const [playerIncreasePulse, setPlayerIncreasePulse] = useState(false);
   const previousFoundPlayersRef = useRef(1);
+  const waitingCountRequestIdRef = useRef(0);
+  const statusMessageTimerIdRef = useRef<number | null>(null);
 
   const currentRating = getCurrentRating(statsArchive, mode === "ARENA" ? "ARENA" : "BPL", playStyle);
   const estimatedRating = currentRating ?? 1500;
@@ -138,6 +148,54 @@ export function AutoMatchPage({ onNavigate }: AutoMatchProps) {
     setMatchState("IN_QUEUE");
     setStatusMessage("ルームへの接続に失敗しました。再試行します。");
   }, [matchState, roomConnectionStatus, roomSnapshot, ticket]);
+
+  useEffect(() => {
+    return () => {
+      if (statusMessageTimerIdRef.current !== null) {
+        window.clearTimeout(statusMessageTimerIdRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (matchState !== "CONFIG") {
+      setWaitingCount(null);
+      return;
+    }
+
+    const requestId = waitingCountRequestIdRef.current + 1;
+    waitingCountRequestIdRef.current = requestId;
+    let disposed = false;
+    setWaitingCount(null);
+
+    const refreshWaitingCount = async (): Promise<void> => {
+      try {
+        const response = await getMatchmakingWaitingCount(savedSettings.apiBaseUrl, {
+          mode,
+          play_style: playStyle,
+          win_metric: winMetric,
+        });
+        if (disposed || requestId !== waitingCountRequestIdRef.current) {
+          return;
+        }
+        setWaitingCount(response.waiting_count);
+      } catch {
+        if (disposed || requestId !== waitingCountRequestIdRef.current) {
+          return;
+        }
+        setWaitingCount(null);
+      }
+    };
+
+    void refreshWaitingCount();
+    const intervalId = window.setInterval(() => {
+      void refreshWaitingCount();
+    }, WAITING_COUNT_POLL_INTERVAL_MS);
+    return () => {
+      disposed = true;
+      window.clearInterval(intervalId);
+    };
+  }, [matchState, mode, playStyle, winMetric, savedSettings.apiBaseUrl]);
 
   function connectToMatchedRoom(roomId: string): boolean {
     return roomStore.connect(
@@ -278,7 +336,15 @@ export function AutoMatchPage({ onNavigate }: AutoMatchProps) {
       setMatchState("CONFIG");
       setQueueTimeSeconds(0);
       setTicket(null);
-      setStatusMessage("マッチングキューをキャンセルしました。");
+      const message = "マッチングキューをキャンセルしました。";
+      setStatusMessage(message);
+      if (statusMessageTimerIdRef.current !== null) {
+        window.clearTimeout(statusMessageTimerIdRef.current);
+      }
+      statusMessageTimerIdRef.current = window.setTimeout(() => {
+        setStatusMessage((current) => (current === message ? null : current));
+        statusMessageTimerIdRef.current = null;
+      }, CANCEL_TOAST_HIDE_DELAY_MS);
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "マッチングキューのキャンセルに失敗しました。");
     } finally {
@@ -392,15 +458,29 @@ export function AutoMatchPage({ onNavigate }: AutoMatchProps) {
               </div>
 
               <div className="flex flex-col gap-6">
-                <div className="relative overflow-hidden rounded-3xl border border-white/5 bg-[#15151a] p-6 shadow-xl">
-                  <div className="absolute right-0 top-0 h-32 w-32 rounded-full bg-cyan-500/10 blur-3xl" />
-                  <h3 className="mb-6 flex items-center gap-2 text-sm font-bold text-gray-400">
-                    <Activity size={16} /> Queue Status
+                <div className="bg-[#15151a] border border-white/5 rounded-3xl p-6 shadow-xl relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-500/10 blur-3xl rounded-full" />
+                  <h3 className="text-sm font-bold text-gray-400 mb-6 flex items-center gap-2">
+                    <Activity size={16} /> Player Status
                   </h3>
                   <div className="space-y-4">
-                    <div className="border-t border-white/5 pt-4">
-                      <div className="mb-2 text-[10px] font-black uppercase text-gray-500">Match Condition</div>
-                      <ul className="space-y-2 text-sm font-semibold">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <div className="text-[10px] text-gray-500 font-black uppercase mb-1">Current Rating</div>
+                        <div className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500">
+                          {formatCurrentRating(currentRating)}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] text-gray-500 font-black uppercase mb-1">Waiting Players</div>
+                        <div className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500">
+                          {waitingCount === null ? "—" : waitingCount}<span className="text-xl text-yellow-500/50 font-bold ml-1">人</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="pt-4 border-t border-white/5">
+                      <div className="text-[10px] text-gray-500 font-black uppercase mb-2">Search Condition</div>
+                      <ul className="text-sm font-semibold space-y-2">
                         <li className="flex justify-between">
                           <span className="text-gray-400">Target Range</span>
                           <span className="text-cyan-400">±{MATCHMAKING_INITIAL_RATING_RANGE} (Auto Expand)</span>
@@ -424,14 +504,16 @@ export function AutoMatchPage({ onNavigate }: AutoMatchProps) {
                   onClick={() => {
                     void handleStartQueue();
                   }}
-                  className={`group flex w-full flex-col items-center justify-center gap-1 rounded-3xl py-6 text-xl font-black transition-all ${
+                  className={`w-full h-[84px] text-black font-black text-xl rounded-3xl shadow-[0_15px_40px_rgba(6,182,212,0.3)] transition-all flex items-center justify-center relative overflow-hidden group ${
                     busy || !roomEntryReady
-                      ? "cursor-not-allowed bg-gray-800 text-gray-500"
-                      : "bg-gradient-to-r from-cyan-500 to-blue-600 text-black shadow-[0_15px_40px_rgba(6,182,212,0.3)] hover:from-cyan-400 hover:to-blue-500 hover:shadow-[0_20px_50px_rgba(6,182,212,0.5)] active:scale-95"
+                      ? "cursor-not-allowed bg-gray-800 text-gray-500 shadow-none"
+                      : "bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 hover:shadow-[0_20px_50px_rgba(6,182,212,0.5)] active:scale-95"
                   }`}
                 >
-                  START MATCHING
-                  <span className="h-0 text-[10px] font-bold uppercase tracking-widest text-black/60 opacity-0 transition-all group-hover:h-auto group-hover:opacity-100">
+                  <span className="transition-transform duration-300 ease-out group-hover:-translate-y-2">
+                    START MATCHING
+                  </span>
+                  <span className="absolute bottom-4 opacity-0 translate-y-4 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300 ease-out text-[10px] font-bold text-black/60 uppercase tracking-widest">
                     Enqueue now
                   </span>
                 </button>

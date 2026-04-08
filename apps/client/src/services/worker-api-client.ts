@@ -5,6 +5,8 @@ import type {
   LobbyListResponse,
   MatchmakingQueueRequest,
   MatchmakingQueueTicket,
+  MatchmakingWaitingCountQuery,
+  MatchmakingWaitingCountResponse,
   PlayStyle,
   RoomSettings,
   SongPack,
@@ -278,5 +280,20 @@ export async function cancelMatchmakingQueueTicket(
   return requestJson<MatchmakingQueueTicket>(
     `${normalizedBaseUrl}/api/matchmaking/queue/${encodeURIComponent(normalizedTicketId)}`,
     { method: "DELETE" },
+  );
+}
+
+export async function getMatchmakingWaitingCount(
+  baseUrl: string,
+  query: MatchmakingWaitingCountQuery,
+): Promise<MatchmakingWaitingCountResponse> {
+  const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
+  const searchParams = new URLSearchParams();
+  searchParams.set("mode", query.mode);
+  searchParams.set("play_style", query.play_style);
+  searchParams.set("win_metric", query.win_metric);
+  return requestJson<MatchmakingWaitingCountResponse>(
+    `${normalizedBaseUrl}/api/matchmaking/waiting-count?${searchParams}`,
+    { method: "GET" },
   );
 }
