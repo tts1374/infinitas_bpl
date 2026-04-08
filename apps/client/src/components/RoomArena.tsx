@@ -555,12 +555,14 @@ export default function RoomArena({ onNavigate, initialStatus, controlled }: Roo
                                 </div>
                             </div>
 
-                                <div className="flex-1 flex flex-col items-center">
+                            <div className="flex-1 flex flex-col items-center">
+                                <div className="mb-1 min-h-4">
                                     {currentRoundVersion && (
-                                    <span className="text-[10px] font-black text-cyan-500 tracking-[0.2em] mb-1 italic block">
-                                        {currentRoundVersion}
-                                    </span>
-                                )}
+                                        <span className="text-[10px] font-black text-cyan-500 tracking-[0.2em] italic block">
+                                            {currentRoundVersion}
+                                        </span>
+                                    )}
+                                </div>
                                 <h2 className={`max-w-[32rem] text-center text-3xl font-black italic tracking-tighter text-white leading-tight whitespace-normal ${currentRoundTitle.length > 45 ? 'line-clamp-2 break-all' : 'break-all'}`}>
                                     {currentRoundTitle}
                                 </h2>
@@ -656,11 +658,13 @@ export default function RoomArena({ onNavigate, initialStatus, controlled }: Roo
                                     <span className="text-xl font-bold text-gray-500 tracking-widest uppercase">Round {roundCount} Summary</span>
                                 </div>
                                 <div className="mt-6">
-                                    {resultSongVersion && (
-                                        <span className="text-[10px] font-black text-cyan-500 tracking-[0.2em] mb-0.5 italic block">
-                                            {resultSongVersion}
-                                        </span>
-                                    )}
+                                    <div className="mb-0.5 min-h-4">
+                                        {resultSongVersion && (
+                                            <span className="text-[10px] font-black text-cyan-500 tracking-[0.2em] italic block">
+                                                {resultSongVersion}
+                                            </span>
+                                        )}
+                                    </div>
                                     <h2 className={`max-w-[56rem] text-6xl font-black italic tracking-tighter text-white leading-tight whitespace-normal ${resultSong?.title && resultSong.title.length > 45 ? 'line-clamp-2 break-all' : 'break-all'}`}>
                                         {resultSong?.title || 'Unknown Track'}
                                     </h2>

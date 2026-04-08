@@ -721,11 +721,13 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
                                     </div>
                                 </div>
                                 <div className="mt-8">
-                                    {currentPlayingSongVersion && (
-                                        <span className="text-[10px] font-black text-cyan-500 tracking-[0.2em] mb-1 italic block drop-shadow-[0_0_6px_rgba(6,182,212,0.45)]">
-                                            {currentPlayingSongVersion}
-                                        </span>
-                                    )}
+                                    <div className="mb-1 min-h-4">
+                                        {currentPlayingSongVersion && (
+                                            <span className="text-[10px] font-black text-cyan-500 tracking-[0.2em] italic block drop-shadow-[0_0_6px_rgba(6,182,212,0.45)]">
+                                                {currentPlayingSongVersion}
+                                            </span>
+                                        )}
+                                    </div>
                                     <h2 className="text-5xl font-black italic tracking-tighter text-white drop-shadow-[0_0_20px_rgba(255,255,255,0.2)] line-clamp-2 leading-tight break-all">
                                         {currentPlayingSong?.title || 'Unknown Track'}
                                     </h2>
@@ -875,11 +877,13 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
                                         <span className="text-lg font-bold text-gray-500 tracking-[0.2em] uppercase">STAGE {roundCount}</span>
                                     </div>
                                     <div className="mt-2 text-left">
-                                        {currentResultSongVersion && (
-                                            <span className="text-[10px] font-black text-cyan-500 tracking-[0.2em] mb-1 italic block drop-shadow-[0_0_6px_rgba(6,182,212,0.45)]">
-                                                {currentResultSongVersion}
-                                            </span>
-                                        )}
+                                        <div className="mb-1 min-h-4">
+                                            {currentResultSongVersion && (
+                                                <span className="text-[10px] font-black text-cyan-500 tracking-[0.2em] italic block drop-shadow-[0_0_6px_rgba(6,182,212,0.45)]">
+                                                    {currentResultSongVersion}
+                                                </span>
+                                            )}
+                                        </div>
                                         <h2 className="text-3xl font-black italic tracking-tighter text-white leading-tight drop-shadow-2xl line-clamp-1">
                                             {currentResultSong?.title || 'Unknown Track'}
                                         </h2>
