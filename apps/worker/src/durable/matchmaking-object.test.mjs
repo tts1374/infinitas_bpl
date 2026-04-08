@@ -93,6 +93,11 @@ async function getTicket(matchmakingObject, ticketId) {
   return matchmakingObject.fetch(new Request(`https://example.com/internal/queue/${ticketId}`));
 }
 
+async function getWaitingCount(matchmakingObject, query) {
+  const searchParams = new URLSearchParams(query);
+  return matchmakingObject.fetch(new Request(`https://example.com/internal/waiting-count?${searchParams}`));
+}
+
 test("enqueue reuses the active searching ticket for the same player", async () => {
   const { matchmakingObject, state } = await createMatchmakingObject();
 
@@ -210,4 +215,125 @@ test("stale searching tickets are evicted before matching", async () => {
   const tickets = Object.values(stored);
   assert.equal(tickets.length, 1);
   assert.equal(tickets[0]?.player_id, "active-player");
+});
+
+test("waiting-count returns searching ticket count for exact condition", async () => {
+  const nowIso = new Date().toISOString();
+  const initialTickets = {
+    ticket_1: {
+      ticket_id: "ticket_1",
+      status: "SEARCHING",
+      mode: "ARENA",
+      play_style: "SP",
+      win_metric: "SCORE",
+      rating: 2000,
+      player_id: "player-1",
+      display_name: "P1",
+      queued_at: nowIso,
+      updated_at: nowIso,
+      room_id: null,
+      matched_player_count: null,
+    },
+    ticket_2: {
+      ticket_id: "ticket_2",
+      status: "SEARCHING",
+      mode: "ARENA",
+      play_style: "SP",
+      win_metric: "SCORE",
+      rating: 2100,
+      player_id: "player-2",
+      display_name: "P2",
+      queued_at: nowIso,
+      updated_at: nowIso,
+      room_id: null,
+      matched_player_count: null,
+    },
+    ticket_3: {
+      ticket_id: "ticket_3",
+      status: "SEARCHING",
+      mode: "ARENA",
+      play_style: "DP",
+      win_metric: "SCORE",
+      rating: 2200,
+      player_id: "player-3",
+      display_name: "P3",
+      queued_at: nowIso,
+      updated_at: nowIso,
+      room_id: null,
+      matched_player_count: null,
+    },
+    ticket_4: {
+      ticket_id: "ticket_4",
+      status: "CANCELLED",
+      mode: "ARENA",
+      play_style: "SP",
+      win_metric: "SCORE",
+      rating: 2300,
+      player_id: "player-4",
+      display_name: "P4",
+      queued_at: nowIso,
+      updated_at: nowIso,
+      room_id: null,
+      matched_player_count: null,
+    },
+  };
+  const { matchmakingObject } = await createMatchmakingObject(initialTickets);
+
+  const response = await getWaitingCount(matchmakingObject, {
+    mode: "ARENA",
+    play_style: "SP",
+    win_metric: "SCORE",
+  });
+
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.equal(payload.waiting_count, 2);
+});
+
+test("waiting-count evicts stale searching tickets before counting", async () => {
+  const nowIso = new Date().toISOString();
+  const initialTickets = {
+    active_ticket: {
+      ticket_id: "active_ticket",
+      status: "SEARCHING",
+      mode: "ARENA",
+      play_style: "SP",
+      win_metric: "SCORE",
+      rating: 2100,
+      player_id: "active-player",
+      display_name: "ACTIVE",
+      queued_at: nowIso,
+      updated_at: nowIso,
+      room_id: null,
+      matched_player_count: null,
+    },
+    stale_ticket: {
+      ticket_id: "stale_ticket",
+      status: "SEARCHING",
+      mode: "ARENA",
+      play_style: "SP",
+      win_metric: "SCORE",
+      rating: 2200,
+      player_id: "stale-player",
+      display_name: "STALE",
+      queued_at: "2026-04-06T00:00:00.000Z",
+      updated_at: "2026-04-06T00:00:00.000Z",
+      room_id: null,
+      matched_player_count: null,
+    },
+  };
+  const { matchmakingObject, state } = await createMatchmakingObject(initialTickets);
+
+  const response = await getWaitingCount(matchmakingObject, {
+    mode: "ARENA",
+    play_style: "SP",
+    win_metric: "SCORE",
+  });
+
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.equal(payload.waiting_count, 1);
+
+  const stored = await state.storage.get("matchmaking-tickets");
+  assert.equal(stored.stale_ticket, undefined);
 });

@@ -11,6 +11,8 @@ import {
   WIN_METRICS,
   type MatchmakingQueueRequest,
   type MatchmakingQueueTicket,
+  type MatchmakingWaitingCountQuery,
+  type MatchmakingWaitingCountResponse,
   type MatchmakingTicketStatus,
   type Mode,
   type PlayStyle,
@@ -47,6 +49,7 @@ interface MatchmakingQueueTicketRecord {
 }
 
 const TICKETS_STORAGE_KEY = "matchmaking-tickets";
+const INTERNAL_WAITING_COUNT_PATH = "/internal/waiting-count";
 const INTERNAL_QUEUE_TICKET_PATH_PATTERN = /^\/internal\/queue\/([^/]+)$/;
 const SEARCHING_TICKET_STALE_MS = 120_000;
 
@@ -103,6 +106,22 @@ function parseQueueRequest(payload: unknown): MatchmakingQueueRequest | null {
     rating: normalizedRating,
     player_id: playerId,
     display_name: displayName,
+  };
+}
+
+function parseWaitingCountQuery(url: URL): MatchmakingWaitingCountQuery | null {
+  const mode = asEnumValue(url.searchParams.get("mode"), MODES);
+  const playStyle = asEnumValue(url.searchParams.get("play_style"), PLAY_STYLES);
+  const winMetric = asEnumValue(url.searchParams.get("win_metric"), WIN_METRICS);
+
+  if (mode === undefined || playStyle === undefined || winMetric === undefined) {
+    return null;
+  }
+
+  return {
+    mode,
+    play_style: playStyle,
+    win_metric: winMetric,
   };
 }
 
@@ -258,6 +277,9 @@ export class MatchmakingDurableObject {
     await this.readyPromise;
 
     const url = new URL(request.url);
+    if (url.pathname === INTERNAL_WAITING_COUNT_PATH && request.method === "GET") {
+      return this.handleGetWaitingCount(url);
+    }
     if (url.pathname === "/internal/queue" && request.method === "POST") {
       return this.handleEnqueue(request);
     }
@@ -366,6 +388,23 @@ export class MatchmakingDurableObject {
     }
 
     return jsonResponse(200, this.buildQueueTicketResponse(normalizedTicketId, nowMs));
+  }
+
+  private async handleGetWaitingCount(url: URL): Promise<Response> {
+    const query = parseWaitingCountQuery(url);
+    if (query === null) {
+      return jsonResponse(400, { error: "Invalid waiting-count query." });
+    }
+
+    const nowMs = Date.now();
+    if (this.expireStaleSearchingTickets(nowMs)) {
+      await this.persistTickets();
+    }
+
+    const response: MatchmakingWaitingCountResponse = {
+      waiting_count: this.countWaitingTickets(query),
+    };
+    return jsonResponse(200, response);
   }
 
   private async handleCancelTicket(ticketId: string): Promise<Response> {
@@ -647,6 +686,21 @@ export class MatchmakingDurableObject {
       if (this.isCompatible(anchor, ticket, nowMs)) {
         count += 1;
       }
+    }
+
+    return count;
+  }
+
+  private countWaitingTickets(query: MatchmakingWaitingCountQuery): number {
+    let count = 0;
+    for (const ticket of this.tickets.values()) {
+      if (ticket.status !== "SEARCHING") {
+        continue;
+      }
+      if (ticket.mode !== query.mode || ticket.play_style !== query.play_style || ticket.win_metric !== query.win_metric) {
+        continue;
+      }
+      count += 1;
     }
 
     return count;

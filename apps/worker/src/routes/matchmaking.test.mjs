@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   handleDeleteMatchmakingQueueTicket,
+  handleGetMatchmakingWaitingCount,
   handleGetMatchmakingQueueTicket,
   handlePostMatchmakingQueue,
   matchMatchmakingQueueTicketPath,
@@ -88,6 +89,7 @@ test("matchMatchmakingQueueTicketPath decodes ticket id", () => {
   const matched = matchMatchmakingQueueTicketPath("/api/matchmaking/queue/ticket%2D1");
   assert.equal(matched, "ticket-1");
   assert.equal(matchMatchmakingQueueTicketPath("/api/lobby"), null);
+  assert.equal(matchMatchmakingQueueTicketPath("/api/matchmaking/waiting-count"), null);
 });
 
 test("handlePostMatchmakingQueue forwards to matchmaking do", async () => {
@@ -174,6 +176,43 @@ test("handleGetMatchmakingQueueTicket and handleDeleteMatchmakingQueueTicket ret
   assert.equal(lastMethod, "DELETE");
   const payload = await deleteResponse.json();
   assert.equal(payload.status, "CANCELLED");
+});
+
+test("handleGetMatchmakingWaitingCount returns waiting_count from matchmaking do", async () => {
+  let forwardedPath = "";
+  const env = createEnv(async (request) => {
+    const url = new URL(request.url);
+    forwardedPath = `${url.pathname}?${url.searchParams.toString()}`;
+    return new Response(JSON.stringify({ waiting_count: 4 }), { status: 200 });
+  });
+
+  const response = await handleGetMatchmakingWaitingCount(
+    new Request("https://example.com/api/matchmaking/waiting-count?mode=ARENA&play_style=SP&win_metric=SCORE"),
+    env,
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(forwardedPath, "/internal/waiting-count?mode=ARENA&play_style=SP&win_metric=SCORE");
+  const payload = await response.json();
+  assert.equal(payload.waiting_count, 4);
+});
+
+test("handleGetMatchmakingWaitingCount rejects invalid query", async () => {
+  let called = false;
+  const env = createEnv(async () => {
+    called = true;
+    return new Response(JSON.stringify({ waiting_count: 0 }), { status: 200 });
+  });
+
+  const response = await handleGetMatchmakingWaitingCount(
+    new Request("https://example.com/api/matchmaking/waiting-count?mode=ARENA&play_style=SP"),
+    env,
+  );
+
+  assert.equal(response.status, 400);
+  assert.equal(called, false);
+  const payload = await response.json();
+  assert.equal(payload.error?.code, "BAD_REQUEST");
 });
 
 test("handlePostRooms does not upsert lobby for PUBLIC auto-match rooms", async () => {

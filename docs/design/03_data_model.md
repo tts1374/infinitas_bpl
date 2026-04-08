@@ -200,6 +200,9 @@ type LobbyRoomSummary = {
 - `POST /api/matchmaking/queue`
 - `GET /api/matchmaking/queue/:ticket_id`
 - `DELETE /api/matchmaking/queue/:ticket_id`
+- `GET /api/matchmaking/waiting-count?mode=...&play_style=...&win_metric=...`
+  - response: `{ waiting_count: number }`
+  - counting rule: stale ticket 清掃後、`status=SEARCHING` かつ `mode + play_style + win_metric` 一致件数
 
 ### 3.4.4 成立後ルーム運用（Phase1）
 - 自動マッチ成立で生成するルームは `settings.auto_match=true` の `PUBLIC` ルーム
