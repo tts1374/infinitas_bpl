@@ -36,13 +36,13 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_tts::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .setup(|app| {
+        .setup(|_app| {
             #[cfg(any(target_os = "linux", all(debug_assertions, windows)))]
             {
                 use tauri_plugin_deep_link::DeepLinkExt;
 
                 if !should_skip_deep_link_registration() {
-                    app.deep_link().register_all()?;
+                    _app.deep_link().register_all()?;
                 }
             }
 
