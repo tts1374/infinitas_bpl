@@ -787,6 +787,12 @@ function handleServerMessage(client: RoomSocketClient, message: ServerMessage): 
         previousSnapshot.room_id === payload.room_state_snapshot.room_id &&
         previousMatchId !== null &&
         previousMatchId !== nextMatchId;
+      const startedAutoMatchPicking =
+        previousSnapshot !== null &&
+        previousSnapshot.room_id === payload.room_state_snapshot.room_id &&
+        previousSnapshot.room_state === "LOBBY" &&
+        payload.room_state_snapshot.room_state === "PICKING" &&
+        payload.room_state_snapshot.settings.auto_match === true;
       if (message.type === "ROOM_JOIN_ACCEPTED") {
         void logE2EEvent("room_join_succeeded", {
           roomId: payload.room_state_snapshot.room_id,
@@ -808,6 +814,13 @@ function handleServerMessage(client: RoomSocketClient, message: ServerMessage): 
         previousSnapshot?.room_state !== "CLOSED"
       ) {
         appendEventLog(`Room closed: ${payload.room_state_snapshot.close_reason ?? "CLOSED"}.`);
+      }
+      if (startedAutoMatchPicking) {
+        pushAudioEvent({
+          kind: "round_intro",
+          eventId: `auto_match_picking_start:${payload.room_state_snapshot.room_id}:${nextMatchId}:${payload.room_state_snapshot.generation ?? "na"}`,
+          scheduledAt: new Date().toISOString(),
+        });
       }
 
       // Authoritative snapshots mark the end of a request cycle, so stale request_ids
