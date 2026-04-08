@@ -13,6 +13,7 @@ import { Activity, CheckCircle2, ChevronRight, Radar, Settings2, Swords, UserRou
 import { useEffect, useRef, useState } from "react";
 import type { AppView } from "../components/AppSidebar";
 import { getCurrentRating } from "../features/stats/stats";
+import { canApplyWaitingCountPollResult, resolveWaitingCountPollValue } from "./auto-match-waiting-count-polling";
 import {
   cancelMatchmakingQueueTicket,
   enqueueMatchmakingQueue,
@@ -176,17 +177,31 @@ export function AutoMatchPage({ onNavigate }: AutoMatchProps) {
           play_style: playStyle,
           win_metric: winMetric,
         });
-        if (disposed || requestId !== waitingCountRequestIdRef.current) {
-          return;
+        const nextWaitingCount = resolveWaitingCountPollValue(
+          {
+            disposed,
+            requestId,
+            latestRequestId: waitingCountRequestIdRef.current,
+          },
+          response.waiting_count,
+        );
+        if (nextWaitingCount !== undefined) {
+          setWaitingCount(nextWaitingCount);
         }
-        setWaitingCount(response.waiting_count);
       } catch {
-        if (disposed || requestId !== waitingCountRequestIdRef.current) {
-          return;
+        const fallbackWaitingCount = resolveWaitingCountPollValue(
+          {
+            disposed,
+            requestId,
+            latestRequestId: waitingCountRequestIdRef.current,
+          },
+          null,
+        );
+        if (fallbackWaitingCount !== undefined) {
+          setWaitingCount(fallbackWaitingCount);
         }
-        setWaitingCount(null);
       } finally {
-        if (!disposed && requestId === waitingCountRequestIdRef.current) {
+        if (canApplyWaitingCountPollResult({ disposed, requestId, latestRequestId: waitingCountRequestIdRef.current })) {
           timerId = window.setTimeout(() => {
             void refreshWaitingCount();
           }, WAITING_COUNT_POLL_INTERVAL_MS);
