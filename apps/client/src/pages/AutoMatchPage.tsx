@@ -166,6 +166,7 @@ export function AutoMatchPage({ onNavigate }: AutoMatchProps) {
     const requestId = waitingCountRequestIdRef.current + 1;
     waitingCountRequestIdRef.current = requestId;
     let disposed = false;
+    let timerId: number | null = null;
     setWaitingCount(null);
 
     const refreshWaitingCount = async (): Promise<void> => {
@@ -184,16 +185,21 @@ export function AutoMatchPage({ onNavigate }: AutoMatchProps) {
           return;
         }
         setWaitingCount(null);
+      } finally {
+        if (!disposed && requestId === waitingCountRequestIdRef.current) {
+          timerId = window.setTimeout(() => {
+            void refreshWaitingCount();
+          }, WAITING_COUNT_POLL_INTERVAL_MS);
+        }
       }
     };
 
     void refreshWaitingCount();
-    const intervalId = window.setInterval(() => {
-      void refreshWaitingCount();
-    }, WAITING_COUNT_POLL_INTERVAL_MS);
     return () => {
       disposed = true;
-      window.clearInterval(intervalId);
+      if (timerId !== null) {
+        window.clearTimeout(timerId);
+      }
     };
   }, [matchState, mode, playStyle, winMetric, savedSettings.apiBaseUrl]);
 
