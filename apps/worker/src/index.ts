@@ -5,6 +5,7 @@ import { handleGetJoin } from "./routes/join";
 import { handleGetLobby } from "./routes/lobby";
 import {
   handleDeleteMatchmakingQueueTicket,
+  handleGetMatchmakingWaitingCount,
   handleGetMatchmakingQueueTicket,
   handlePostMatchmakingQueue,
   matchMatchmakingQueueTicketPath,
@@ -25,6 +26,7 @@ const LOBBY_ALLOWED_METHODS = ["GET"];
 const FEEDBACK_ALLOWED_METHODS = ["POST"];
 const SONG_PACKS_ALLOWED_METHODS = ["GET"];
 const ROOM_CHARTS_ALLOWED_METHODS = ["GET"];
+const MATCHMAKING_WAITING_COUNT_ALLOWED_METHODS = ["GET"];
 const MATCHMAKING_QUEUE_ALLOWED_METHODS = ["POST"];
 const MATCHMAKING_QUEUE_TICKET_ALLOWED_METHODS = ["GET", "DELETE"];
 
@@ -64,6 +66,21 @@ export default {
         methodNotAllowed([...MATCHMAKING_QUEUE_ALLOWED_METHODS, "OPTIONS"]),
         request,
         MATCHMAKING_QUEUE_ALLOWED_METHODS,
+      );
+    }
+
+    if (url.pathname === "/api/matchmaking/waiting-count") {
+      if (request.method === "OPTIONS") {
+        return withCors(noContent(), request, MATCHMAKING_WAITING_COUNT_ALLOWED_METHODS);
+      }
+      if (request.method === "GET") {
+        return withCors(await handleGetMatchmakingWaitingCount(request, env), request, MATCHMAKING_WAITING_COUNT_ALLOWED_METHODS);
+      }
+
+      return withCors(
+        methodNotAllowed([...MATCHMAKING_WAITING_COUNT_ALLOWED_METHODS, "OPTIONS"]),
+        request,
+        MATCHMAKING_WAITING_COUNT_ALLOWED_METHODS,
       );
     }
 

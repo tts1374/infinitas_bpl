@@ -17,6 +17,16 @@ export interface MatchmakingQueueRequest {
   display_name: string;
 }
 
+export interface MatchmakingWaitingCountQuery {
+  mode: Mode;
+  play_style: PlayStyle;
+  win_metric: WinMetric;
+}
+
+export interface MatchmakingWaitingCountResponse {
+  waiting_count: number;
+}
+
 export interface MatchmakingQueueTicket {
   ticket_id: string;
   status: MatchmakingTicketStatus;
