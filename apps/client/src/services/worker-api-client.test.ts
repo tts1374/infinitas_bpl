@@ -4,7 +4,7 @@ import { getMatchmakingWaitingCount, WorkerApiError } from "./worker-api-client"
 
 test("getMatchmakingWaitingCount builds waiting-count query from mode/play_style/win_metric", async () => {
   const originalFetch = globalThis.fetch;
-  const calls: Array<{ input: URL | RequestInfo; init?: RequestInit }> = [];
+  const calls: Array<{ input: URL | RequestInfo; init: RequestInit | undefined }> = [];
   globalThis.fetch = (async (input: URL | RequestInfo, init?: RequestInit) => {
     calls.push({ input, init });
     return new Response(JSON.stringify({ waiting_count: 4 }), {
