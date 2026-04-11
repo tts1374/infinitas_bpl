@@ -28,23 +28,25 @@ import {
 } from "lucide-react";
 import { useDeferredValue, useEffect, useRef, useState, type ReactNode } from "react";
 import { DebugInjectionPanel } from "../components/DebugInjectionPanel";
-import { findVisualScenarioChart, listVisualScenarioCharts } from "../dev/visual-scenarios";
+import {
+  findVisualScenarioChart,
+  findVisualScenarioChartByChartKey,
+  getVisualScenario,
+  listVisualScenarioCharts,
+} from "../dev/visual-scenarios";
 import {
   RoomArenaPresentational,
   type RoomArenaFinalResultPlayerSummary,
-  type HistoryItem as ArenaHistoryItem,
   type RoomArenaControlledState,
   type RoomArenaLogEntry,
   type RoomArenaMatchInfoItem,
   type RoomArenaPlayer,
   type RoomArenaResultPhasePlayerSummary,
-  type Song as ArenaSong,
 } from "../components/RoomArena";
 import {
   RoomBPLPresentational,
   type RoomBPLControlledState,
   type RoomBPLPlayer,
-  type Song as BplSong,
 } from "../components/RoomBPL";
 import {
   resolveSongVersionDbValue,
@@ -52,6 +54,13 @@ import {
   SongSearchModalView,
   type SongSearchModalSong,
 } from "../components/SongSearchModalView";
+import { useClipboardFeedback } from "../features/room/presentation-hooks";
+import {
+  buildPresentationPlayerMaps,
+  formatCountdown,
+  type RoomHistoryItem,
+  type RoomSong,
+} from "../features/room/presentation-shared";
 import { runtimeConfig } from "../runtime/runtime-config";
 import { useLocalResultArchiveStore } from "../services/result-archive";
 import { logClientShareAnalytics } from "../services/share-analytics";
@@ -372,7 +381,10 @@ function parsePickChartKey(pickChartKey: string | null | undefined): CurrentRoun
 }
 
 function findVisualScenarioChartByPickKey(id: string, pickChartKey: string): ChartSearchEntry | null {
-  return findVisualScenarioChart(id, parsePickChartKey(pickChartKey));
+  return (
+    findVisualScenarioChartByChartKey(id, pickChartKey) ??
+    findVisualScenarioChart(id, parsePickChartKey(pickChartKey))
+  );
 }
 
 function compareMetricValues(winMetric: RoomStateSnapshot["settings"]["win_metric"], left: number, right: number): number {
@@ -632,14 +644,6 @@ function parseResultRounds(resultReady: ResultReadyPayload | null): ParsedResult
   return rounds.sort((left, right) => left.roundIndex - right.roundIndex);
 }
 
-function formatCountdown(seconds: number | null): string {
-  if (seconds === null) {
-    return "--:--";
-  }
-
-  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
-}
-
 function formatDurationLabel(totalSeconds: number | null): string {
   if (totalSeconds === null) {
     return "-";
@@ -799,9 +803,12 @@ export function RoomPage() {
   const [chartLoading, setChartLoading] = useState(false);
   const [chartNextCursor, setChartNextCursor] = useState<string | null>(null);
   const [clockNowMs, setClockNowMs] = useState(() => Date.now());
-  const [copiedRoomId, setCopiedRoomId] = useState(false);
-  const [copiedJoinCode, setCopiedJoinCode] = useState(false);
-  const [copiedShareUrl, setCopiedShareUrl] = useState(false);
+  const roomIdCopy = useClipboardFeedback();
+  const joinCodeCopy = useClipboardFeedback();
+  const shareUrlCopy = useClipboardFeedback();
+  const copiedRoomId = roomIdCopy.copied;
+  const copiedJoinCode = joinCodeCopy.copied;
+  const copiedShareUrl = shareUrlCopy.copied;
   const [includeJoinCodeInXShare, setIncludeJoinCodeInXShare] = useState(false);
   const [showHostLeaveConfirm, setShowHostLeaveConfirm] = useState(false);
   const [showRoomAudioMenu, setShowRoomAudioMenu] = useState(false);
@@ -814,6 +821,7 @@ export function RoomPage() {
   const [matchResultStartedAtMs, setMatchResultStartedAtMs] = useState<number | null>(null);
   const chartRequestIdRef = useRef(0);
   const cutInTimeoutRef = useRef<number | null>(null);
+  const autoTriggeredCutInKeyRef = useRef<string | null>(null);
   const arenaLobbyLogSequenceRef = useRef(0);
   const previousArenaLobbySnapshotRef = useRef<RoomStateSnapshot | null>(null);
   const previousLobbySoundSnapshotRef = useRef<RoomStateSnapshot | null>(null);
@@ -824,6 +832,10 @@ export function RoomPage() {
   const pickerModalVisibleRef = useRef(false);
   const mySubmittedPicks = snapshot?.picks.filter((pick) => pick.player_id === activePlayerId) ?? [];
   const mySubmittedPick = mySubmittedPicks[mySubmittedPicks.length - 1] ?? null;
+  const visualScenarioPresentation =
+    runtimeConfig.mockScenarioId === null
+      ? null
+      : getVisualScenario(runtimeConfig.mockScenarioId)?.presentation ?? null;
   const requiredPickCountPerPlayer =
     snapshot && isBplFourStageMode(snapshot.settings.mode) ? 2 : 1;
   const showPickerModal =
@@ -1218,7 +1230,7 @@ export function RoomPage() {
     setPendingOwnPickCutIn(null);
     setOwnPickCutInChart(null);
     setShowRoomAudioMenu(false);
-    setCopiedShareUrl(false);
+    shareUrlCopy.reset();
     setIncludeJoinCodeInXShare(false);
     initialShareClosedByStateRef.current = false;
     if (cutInTimeoutRef.current !== null) {
@@ -1272,6 +1284,39 @@ export function RoomPage() {
       cutInTimeoutRef.current = null;
     }, BPL_PICK_CUTIN_SECONDS * 1_000);
   }, [mySubmittedPick?.pick_chart_key, pendingOwnPickCutIn]);
+
+  useEffect(() => {
+    const ownPickCutInChartKey = visualScenarioPresentation?.ownPickCutInChartKey ?? null;
+    const roomId = snapshot?.room_id ?? null;
+    if (ownPickCutInChartKey === null || roomId === null) {
+      autoTriggeredCutInKeyRef.current = null;
+      return;
+    }
+
+    if (mySubmittedPick?.pick_chart_key !== ownPickCutInChartKey) {
+      return;
+    }
+
+    const triggerKey = `${roomId}:${ownPickCutInChartKey}`;
+    if (autoTriggeredCutInKeyRef.current === triggerKey) {
+      return;
+    }
+
+    const resolvedChart =
+      resolvedChartsByPickKey[ownPickCutInChartKey] ??
+      findVisualScenarioChartByPickKey(runtimeConfig.mockScenarioId ?? "", ownPickCutInChartKey);
+    if (resolvedChart === null) {
+      return;
+    }
+
+    autoTriggeredCutInKeyRef.current = triggerKey;
+    setPendingOwnPickCutIn(resolvedChart);
+  }, [
+    mySubmittedPick?.pick_chart_key,
+    resolvedChartsByPickKey,
+    snapshot?.room_id,
+    visualScenarioPresentation?.ownPickCutInChartKey,
+  ]);
 
   useEffect(() => {
     if (snapshot === null) {
@@ -1826,17 +1871,6 @@ export function RoomPage() {
     roomStore.leaveRoom();
   }
 
-  function handleCopy(text: string, setCopied: (value: boolean) => void): void {
-    if (!text || typeof navigator === "undefined" || !navigator.clipboard) {
-      return;
-    }
-
-    void navigator.clipboard.writeText(text).then(() => {
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 2_000);
-    });
-  }
-
   function handleCopyShareUrl(): void {
     if (!shareJoinPageUrl) {
       return;
@@ -1847,7 +1881,7 @@ export function RoomPage() {
       source: "copy",
       includeJoinCodeInX: includeJoinCodeInXShare,
     });
-    handleCopy(shareJoinPageUrl, setCopiedShareUrl);
+    shareUrlCopy.copy(shareJoinPageUrl);
   }
 
   async function handleShareToX(): Promise<void> {
@@ -2082,7 +2116,7 @@ export function RoomPage() {
     };
   });
 
-  const buildHistorySong = (round: ParsedResultRound) => {
+  const buildHistorySong = (round: ParsedResultRound): RoomSong => {
     const song = roundSongsByIndex.get(round.roundIndex);
     return {
       title: song?.playingTitle ?? round.title,
@@ -2094,7 +2128,7 @@ export function RoomPage() {
     };
   };
 
-  const bplHistory = [...historyRounds]
+  const bplHistory: RoomHistoryItem[] = [...historyRounds]
     .filter((round) => round.results.slice(0, 2).every((result) => result.metricValue !== null))
     .reverse()
     .map((round) => {
@@ -2117,7 +2151,7 @@ export function RoomPage() {
         winnerId,
       };
     });
-  const arenaHistory: ArenaHistoryItem[] = [...historyRounds]
+  const arenaHistory: RoomHistoryItem[] = [...historyRounds]
     .filter((round) => round.results.some((result) => result.metricValue !== null || result.arenaPoints !== null))
     .reverse()
     .map((round) => {
@@ -2142,7 +2176,7 @@ export function RoomPage() {
       };
     });
 
-  const bplPicks: (BplSong | null)[] = Array.from({ length: bplStageCount }, (_, index) => {
+  const bplPicks: Array<RoomSong | null> = Array.from({ length: bplStageCount }, (_, index) => {
     const roundSong = roundSongsByIndex.get(index);
     if (roundSong) {
       const revealActualSong =
@@ -2194,7 +2228,7 @@ export function RoomPage() {
     return null;
   });
 
-  const arenaPicks: Record<string, ArenaSong | null> = {
+  const arenaPicks: Record<string, RoomSong | null> = {
     "1": null,
     "2": null,
     "3": null,
@@ -2243,18 +2277,11 @@ export function RoomPage() {
     };
   });
 
-  const bplPlayerStatus = bplPlayers.reduce<Record<string, "UNCONFIRMED" | "PLAYED" | "SKIPPED" | "TIMEOUT">>((accumulator, player, index) => {
-    const actualPlayer = slots[index];
-    const status = actualPlayer ? getPlayerStatus(currentRound, actualPlayer.player_id).label : "UNCONFIRMED";
-    accumulator[player.id] =
-      status === "PLAYED" || status === "SKIPPED" || status === "TIMEOUT" ? status : "UNCONFIRMED";
-    return accumulator;
-  }, {});
-  const bplPlayerMetrics = bplPlayers.reduce<Record<string, number | null>>((accumulator, player, index) => {
-    const actualPlayer = slots[index];
-    accumulator[player.id] = actualPlayer ? getPlayerStatus(currentRound, actualPlayer.player_id).metric : null;
-    return accumulator;
-  }, {});
+  const { playerStatus: bplPlayerStatus, playerMetrics: bplPlayerMetrics } = buildPresentationPlayerMaps(
+    bplPlayers,
+    slots.map((player) => player?.player_id ?? null),
+    (playerId) => getPlayerStatus(currentRound, playerId),
+  );
   const bplMetricLabel = snapshot.settings.win_metric === "MISSCOUNT" ? "MISS COUNT" : "EX SCORE";
   const bplResultPlayers = bplPlayers.reduce<Record<string, {
     metricValue: number | null;
@@ -2415,18 +2442,11 @@ export function RoomPage() {
     };
     return accumulator;
   }, {});
-  const arenaPlayerStatus = arenaPlayers.reduce<Record<string, "UNCONFIRMED" | "PLAYED" | "SKIPPED" | "TIMEOUT">>((accumulator, player, index) => {
-    const actualPlayer = orderedPlayers[index] ?? null;
-    const status = actualPlayer ? getPlayerStatus(currentRound, actualPlayer.player_id).label : "UNCONFIRMED";
-    accumulator[player.id] =
-      status === "PLAYED" || status === "SKIPPED" || status === "TIMEOUT" ? status : "UNCONFIRMED";
-    return accumulator;
-  }, {});
-  const arenaPlayerMetrics = arenaPlayers.reduce<Record<string, number | null>>((accumulator, player, index) => {
-    const actualPlayer = orderedPlayers[index] ?? null;
-    accumulator[player.id] = actualPlayer ? getPlayerStatus(currentRound, actualPlayer.player_id).metric : null;
-    return accumulator;
-  }, {});
+  const { playerStatus: arenaPlayerStatus, playerMetrics: arenaPlayerMetrics } = buildPresentationPlayerMaps(
+    arenaPlayers,
+    orderedPlayers.map((player) => player?.player_id ?? null),
+    (playerId) => getPlayerStatus(currentRound, playerId),
+  );
   const arenaMetricLabel = snapshot.settings.win_metric === "MISSCOUNT" ? "MISS COUNT" : "EX SCORE";
   const arenaResultSong = arenaResultRound ? buildHistorySong(arenaResultRound) : null;
   const arenaResultRoundResultsByPlayerId = new Map(
@@ -2703,8 +2723,8 @@ export function RoomPage() {
           (isHost && lobbyStartIssues.length > 0),
         disableLeave: leaveRoomDisabled,
         searchModal: pickerModal,
-        onCopyRoomId: () => handleCopy(roomIdLabel, setCopiedRoomId),
-        onCopyJoinCode: () => handleCopy(joinCodeLabel, setCopiedJoinCode),
+        onCopyRoomId: () => roomIdCopy.copy(roomIdLabel),
+        onCopyJoinCode: () => joinCodeCopy.copy(joinCodeLabel),
         onPrimaryAction: onPrimaryRoomAction,
         onSkip: onMockSkip,
         onProceedToResult: () => {
@@ -2793,8 +2813,8 @@ export function RoomPage() {
         snapshot.settings.auto_match === true ||
         (isHost && lobbyStartIssues.length > 0),
       disableLeave: leaveRoomDisabled,
-      onCopyRoomId: () => handleCopy(roomIdLabel, setCopiedRoomId),
-      onCopyJoinCode: () => handleCopy(joinCodeLabel, setCopiedJoinCode),
+      onCopyRoomId: () => roomIdCopy.copy(roomIdLabel),
+      onCopyJoinCode: () => joinCodeCopy.copy(joinCodeLabel),
       onPrimaryAction: onPrimaryRoomAction,
       onToggleReady: onPrimaryRoomAction,
       onSkip: onMockSkip,
