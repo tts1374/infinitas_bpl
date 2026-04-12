@@ -3,26 +3,22 @@ import {
     User, CheckCircle2, Circle, LogOut,
     Database, Swords, Music, Copy, Check, Clock
 } from 'lucide-react';
-import SongSearchModal from './SongSearchModal';
+import { RoomPickDecisionCutIn, RoomSearchModalGate } from '../features/room/presentation-components';
+import { useClipboardFeedback, useResultPhaseTimer } from '../features/room/presentation-hooks';
+import {
+    formatCountdown,
+    formatOrdinal,
+    getDifficultyBadgeClass,
+    getDifficultyBadgeLabel,
+    maskJoinCode,
+    type RoomHistoryItem,
+    type RoomPlayerStatusLabel,
+    type RoomSong
+} from '../features/room/presentation-shared';
 import { resolveSongVersionLabel } from './SongSearchModalView';
 
-export interface Song {
-    id?: string | number;
-    title: string;
-    artist: string;
-    version?: string;
-    playStyle?: string;
-    level: string | number;
-    difficulty?: string | undefined;
-    genre?: string;
-}
-
-export interface HistoryItem {
-    round: number;
-    song: Song;
-    scores: Record<string, number>;
-    winnerId: string | 'DRAW';
-}
+export type Song = RoomSong;
+export type HistoryItem = RoomHistoryItem;
 
 export interface ResultPhasePlayerSummary {
     metricValue: number | null;
@@ -71,7 +67,7 @@ export interface RoomBPLControlledState {
     playTime: number;
     playingPhase: 'MUSIC_SELECT' | 'PLAY_START' | 'IN_PLAY';
     playingCountdownSeconds?: number | null;
-    playerStatus: Record<string, 'UNCONFIRMED' | 'PLAYED' | 'SKIPPED' | 'TIMEOUT'>;
+    playerStatus: Record<string, RoomPlayerStatusLabel>;
     playerMetrics?: Record<string, number | null>;
     metricLabel?: string;
     resultPlayers?: Record<string, ResultPhasePlayerSummary>;
@@ -105,64 +101,10 @@ const BPL_PLAY_BEGIN_SECONDS = BPL_MUSIC_SELECT_SECONDS + BPL_PLAY_START_SECONDS
 const BPL_STAGE_COUNT = 4;
 const BPL_REGULATION_LABEL = `${BPL_STAGE_COUNT} STAGES`;
 
-function maskJoinCode(joinCode: string): string {
-    return '*'.repeat(joinCode.length);
-}
-
-function formatOrdinal(value: number): string {
-    const mod10 = value % 10;
-    const mod100 = value % 100;
-    if (mod10 === 1 && mod100 !== 11) {
-        return `${value}st`;
-    }
-    if (mod10 === 2 && mod100 !== 12) {
-        return `${value}nd`;
-    }
-    if (mod10 === 3 && mod100 !== 13) {
-        return `${value}rd`;
-    }
-    return `${value}th`;
-}
-
-function getDifficultyBadgeClass(difficulty: string | undefined): string {
-    switch (difficulty) {
-        case 'B':
-            return 'bg-green-500 text-black shadow-[0_0_18px_rgba(34,197,94,0.35)]';
-        case 'N':
-            return 'bg-blue-500 text-white shadow-[0_0_18px_rgba(59,130,246,0.35)]';
-        case 'H':
-            return 'bg-yellow-400 text-black shadow-[0_0_20px_rgba(250,204,21,0.45)]';
-        case 'A':
-            return 'bg-red-600 text-white shadow-[0_0_20px_rgba(220,38,38,0.4)]';
-        case 'L':
-            return 'bg-purple-600 text-white shadow-[0_0_20px_rgba(147,51,234,0.4)]';
-        default:
-            return 'bg-gray-600 text-white';
-    }
-}
-
-function getDifficultyBadgeLabel(difficulty: string | undefined): string {
-    switch (difficulty) {
-        case 'B':
-            return 'BEGINNER';
-        case 'N':
-            return 'NORMAL';
-        case 'H':
-            return 'HYPER';
-        case 'A':
-            return 'ANOTHER';
-        case 'L':
-            return 'LEGGENDARIA';
-        default:
-            return difficulty ?? '-';
-    }
-}
-
 export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomBPLProps) {
     const [roomStatusState, setRoomStatus] = useState<'WAITING' | 'SELECTING' | 'PLAYING' | 'RESULT' | 'CLOSED'>(initialStatus || 'WAITING');
     const [isReadyState, setIsReady] = useState(initialStatus === 'SELECTING' || initialStatus === 'PLAYING' || initialStatus === 'RESULT' || initialStatus === 'CLOSED');
     const [closeReasonState, setCloseReason] = useState<string>('ALL_ROUNDS_COMPLETED');
-    const [resultTimerState, setResultTimer] = useState(10);
     const [currentTurnState, setCurrentTurn] = useState(0); // 0: 1P, 1: 2P
     const [roundCountState, setRoundCount] = useState(1);
     const [picksState, setPicks] = useState<(Song | null)[]>(Array.from({ length: BPL_STAGE_COUNT }, () => null));
@@ -170,9 +112,11 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
     const [showSearchState, setShowSearch] = useState(false);
     const [lastPickedSongState, setLastPickedSong] = useState<Song | null>(null);
     const [showCutInState, setShowCutIn] = useState(false);
-    const [copiedIdState, setCopiedId] = useState(false);
-    const [copiedCodeState, setCopiedCode] = useState(false);
     const [lobbyTimerState, setLobbyTimer] = useState(1200); // 20 minutes in seconds
+    const roomStatus = controlled?.roomStatus ?? roomStatusState;
+    const [resultTimerState] = useResultPhaseTimer(roomStatus === 'RESULT', finalizeRound);
+    const roomIdCopy = useClipboardFeedback();
+    const joinCodeCopy = useClipboardFeedback();
 
     const roomId = controlled?.roomId ?? "";
     const joinCode = controlled?.joinCode ?? "";
@@ -180,18 +124,13 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
     const hasJoinCode = joinCode.trim().length > 0;
     const maskedJoinCode = hasJoinCode ? maskJoinCode(joinCode) : '';
 
-    const handleCopy = (text: string, setCopied: (v: boolean) => void) => {
-        navigator.clipboard.writeText(text);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-    };
     const handleCopyRoomId = () => {
         if (controlled?.onCopyRoomId) {
             controlled.onCopyRoomId();
             return;
         }
 
-        handleCopy(roomId, setCopiedId);
+        roomIdCopy.copy(roomId);
     };
     const handleCopyJoinCode = () => {
         if (controlled?.onCopyJoinCode) {
@@ -199,13 +138,13 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
             return;
         }
 
-        handleCopy(joinCode, setCopiedCode);
+        joinCodeCopy.copy(joinCode);
     };
 
     // PLAYING state logic
     const [playTimeState, setPlayTime] = useState(0);
     const [playingPhaseState, setPlayingPhase] = useState<'MUSIC_SELECT' | 'PLAY_START' | 'IN_PLAY'>('MUSIC_SELECT');
-    const [playerStatusState, setPlayerStatus] = useState<Record<string, 'UNCONFIRMED' | 'PLAYED' | 'SKIPPED' | 'TIMEOUT'>>(
+    const [playerStatusState, setPlayerStatus] = useState<Record<string, RoomPlayerStatusLabel>>(
         initialStatus === 'PLAYING' ? {
             '1': 'PLAYED',
             '2': 'UNCONFIRMED'
@@ -227,7 +166,6 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
 
     const isHost = controlled?.isHost ?? true;
 
-    const roomStatus = controlled?.roomStatus ?? roomStatusState;
     const isReady = controlled?.isReady ?? isReadyState;
     const closeReason = controlled?.closeReason ?? closeReasonState;
     const resultTimer = controlled?.resultTimer ?? resultTimerState;
@@ -238,8 +176,8 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
     const showSearch = controlled?.showSearch ?? showSearchState;
     const lastPickedSong = controlled?.lastPickedSong ?? lastPickedSongState;
     const showCutIn = controlled?.showCutIn ?? showCutInState;
-    const copiedId = controlled?.copiedId ?? copiedIdState;
-    const copiedCode = controlled?.copiedCode ?? copiedCodeState;
+    const copiedId = controlled?.copiedId ?? roomIdCopy.copied;
+    const copiedCode = controlled?.copiedCode ?? joinCodeCopy.copied;
     const lobbyTimer = controlled?.lobbyTimer ?? lobbyTimerState;
     const playTime = controlled?.playTime ?? playTimeState;
     const playingPhase = controlled?.playingPhase ?? playingPhaseState;
@@ -308,27 +246,6 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
         }, 3000);
     };
 
-    // RESULT タイム管理 (10秒で自動遷移)
-    useEffect(() => {
-        if (roomStatus !== 'RESULT') {
-            setResultTimer(10);
-            return;
-        }
-
-        const interval = setInterval(() => {
-            setResultTimer(prev => {
-                if (prev <= 1) {
-                    clearInterval(interval);
-                    finalizeRound();
-                    return 0;
-                }
-                return prev - 1;
-            });
-        }, 1000);
-
-        return () => clearInterval(interval);
-    }, [roomStatus]);
-
     // Lobby Timer management
     useEffect(() => {
         if (roomStatus !== 'WAITING') return;
@@ -347,12 +264,6 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
 
         return () => clearInterval(interval);
     }, [roomStatus]);
-
-    const formatTime = (seconds: number) => {
-        const mins = Math.floor(seconds / 60);
-        const secs = seconds % 60;
-        return `${mins}:${secs.toString().padStart(2, '0')}`;
-    };
 
     // PLAYING タイム管理
     useEffect(() => {
@@ -383,7 +294,7 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
         setPlayerStatus(prev => ({ ...prev, [playerId]: 'SKIPPED' }));
     };
 
-    const finalizeRound = () => {
+    function finalizeRound() {
         const currentSong = picks[roundCount - 1] || picks[2];
         if (!currentSong) return;
 
@@ -416,7 +327,7 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
             setRoomStatus('CLOSED');
             setCloseReason('ALL_ROUNDS_COMPLETED');
         }
-    };
+    }
 
     const handleProceedToResult = () => {
         if (controlled?.onProceedToResult) {
@@ -439,48 +350,14 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
     return (
         <div className="flex h-screen w-screen bg-[#0f0f10] text-white font-sans overflow-hidden">
 
-            {/* 決定カットイン演出 */}
-            {showCutIn && lastPickedSong && (
-                <div className="fixed inset-0 z-[300] flex items-center justify-center pointer-events-none">
-                    <div className="absolute inset-0 bg-cyan-500/10 animate-pulse opacity-50" />
-                    <div className="w-full bg-black/90 border-y-4 border-cyan-500 h-64 relative flex items-center justify-center overflow-hidden animate-[in-out_3s_ease-in-out]">
-                        <div className="absolute inset-0 flex items-center justify-center opacity-10">
-                            <span className="text-[200px] font-black italic tracking-tighter text-cyan-500">DECISION</span>
-                        </div>
-                        <div className="relative flex items-center gap-8 px-12 w-full max-w-5xl">
-                            <div className="w-32 h-32 bg-[#252526] border-4 border-cyan-500 rounded-2xl flex-shrink-0 flex items-center justify-center shadow-[0_0_50px_rgba(6,182,212,0.4)]">
-                                <Music size={48} className="text-cyan-500" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                                <p className="text-cyan-500 font-black italic tracking-[0.5em] text-lg mb-1 animate-bounce">TRACK DECIDED</p>
-                                <h2 className="text-xl lg:text-2xl font-black italic tracking-tighter text-white drop-shadow-lg leading-tight line-clamp-2 break-words whitespace-normal">{lastPickedSong.title}</h2>
-                                <p className="text-xl font-bold text-gray-400 mt-1 truncate">{lastPickedSong.artist}</p>
-                            </div>
-                            <div className="text-right shrink-0">
-                                <span className="text-6xl font-black italic tracking-tighter text-cyan-500">Lv{lastPickedSong.level}</span>
-                            </div>
-                        </div>
-                    </div>
+            {showCutIn ? <RoomPickDecisionCutIn song={lastPickedSong} /> : null}
 
-                    <style dangerouslySetInnerHTML={{
-                        __html: `
-                        @keyframes in-out {
-                            0% { transform: scaleY(0); opacity: 0; }
-                            10% { transform: scaleY(1); opacity: 1; }
-                            90% { transform: scaleY(1); opacity: 1; }
-                            100% { transform: scaleY(0); opacity: 0; }
-                        }
-                    `}} />
-                </div>
-            )}
-
-            {controlled?.searchModal ?? (
-                <SongSearchModal
-                    isOpen={showSearch}
-                    onClose={() => setShowSearch(false)}
-                    onSelect={handleSelectSong}
-                />
-            )}
+            <RoomSearchModalGate
+                modal={controlled?.searchModal}
+                isOpen={showSearch}
+                onClose={() => setShowSearch(false)}
+                onSelect={handleSelectSong}
+            />
 
             {/* メイン対峙エリア */}
             <main className="flex-1 flex flex-col p-8 relative overflow-hidden">
@@ -522,7 +399,7 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
                                 <Clock size={8} /> Lobby TTL
                             </span>
                             <span className={`font-mono font-bold text-xs ${lobbyTimer < 60 ? 'text-red-500 animate-pulse' : 'text-gray-300'}`}>
-                                {formatTime(lobbyTimer)}
+                                {formatCountdown(lobbyTimer)}
                             </span>
                         </div>
                     </div>

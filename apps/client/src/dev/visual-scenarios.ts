@@ -14,14 +14,20 @@ import type { ClientSettings } from "../stores/settings-store";
 type VisualScenarioId =
   | "bpl-lobby"
   | "bpl-picking"
+  | "bpl-cut-in"
   | "bpl-playing"
   | "bpl-result-phase"
   | "bpl-final"
   | "arena-lobby"
   | "arena-picking"
+  | "arena-cut-in"
   | "arena-playing"
   | "arena-result"
   | "room-closed";
+
+export interface VisualScenarioPresentation {
+  ownPickCutInChartKey?: string;
+}
 
 export interface VisualScenarioRoomState {
   roomId: string;
@@ -42,16 +48,20 @@ export interface VisualScenario {
   settings: ClientSettings;
   room: VisualScenarioRoomState;
   charts: ChartSearchEntry[];
+  presentation?: VisualScenarioPresentation;
+  captureDelayMs?: number;
 }
 
 export const VISUAL_SCENARIO_IDS: VisualScenarioId[] = [
   "bpl-lobby",
   "bpl-picking",
+  "bpl-cut-in",
   "bpl-playing",
   "bpl-result-phase",
   "bpl-final",
   "arena-lobby",
   "arena-picking",
+  "arena-cut-in",
   "arena-playing",
   "arena-result",
   "room-closed",
@@ -642,6 +652,42 @@ function buildScenario(id: VisualScenarioId, nowMs: number): VisualScenario {
         charts: VISUAL_CHARTS,
       };
     }
+    case "bpl-cut-in": {
+      const snapshot = createSnapshot({
+        roomId,
+        roomState: "PICKING",
+        settings: createBplSettings(bplJoinCode),
+        players: bplPlayers,
+        picks: [
+          createPick(HOST_PLAYER_ID, bplChartOne, isoAt(nowMs, -1)),
+        ],
+        pickingDeadline: isoAt(nowMs, 92),
+        createdAt,
+      });
+
+      return {
+        id,
+        label: "BPL Pick Cut-In",
+        settings,
+        captureDelayMs: 100,
+        room: {
+          roomId,
+          joinCode: bplJoinCode,
+          connectionStatus: "CONNECTED",
+          connectionDetail: "Mock scenario: BPL pick cut-in.",
+          snapshot,
+          resultReady: null,
+          roundConfirmations: {},
+          endedRoundIndices: [],
+          errorDialog: null,
+          eventLog: ["Mock scenario: BPL pick cut-in.", "Own pick accepted."],
+        },
+        charts: VISUAL_CHARTS,
+        presentation: {
+          ownPickCutInChartKey: bplChartOne.chart_key,
+        },
+      };
+    }
     case "bpl-playing": {
       const picks = [
         createPick(HOST_PLAYER_ID, bplChartOne, isoAt(nowMs, -150)),
@@ -898,6 +944,43 @@ function buildScenario(id: VisualScenarioId, nowMs: number): VisualScenario {
         charts: VISUAL_CHARTS,
       };
     }
+    case "arena-cut-in": {
+      const snapshot = createSnapshot({
+        roomId,
+        roomState: "PICKING",
+        settings: createArenaSettings(arenaJoinCode),
+        players: arenaPlayers,
+        picks: [
+          createPick(HOST_PLAYER_ID, arenaChartOne, isoAt(nowMs, -1)),
+          createPick(GUEST_PLAYER_ID, arenaChartTwo, isoAt(nowMs, -28)),
+        ],
+        pickingDeadline: isoAt(nowMs, 80),
+        createdAt,
+      });
+
+      return {
+        id,
+        label: "Arena Pick Cut-In",
+        settings,
+        captureDelayMs: 100,
+        room: {
+          roomId,
+          joinCode: arenaJoinCode,
+          connectionStatus: "CONNECTED",
+          connectionDetail: "Mock scenario: Arena pick cut-in.",
+          snapshot,
+          resultReady: null,
+          roundConfirmations: {},
+          endedRoundIndices: [],
+          errorDialog: null,
+          eventLog: ["Mock scenario: Arena pick cut-in.", "Own pick accepted."],
+        },
+        charts: VISUAL_CHARTS,
+        presentation: {
+          ownPickCutInChartKey: arenaChartOne.chart_key,
+        },
+      };
+    }
     case "arena-playing": {
       const currentRound = createCurrentRound(
         arenaChartOne,
@@ -1146,4 +1229,15 @@ export function findVisualScenarioChart(id: string, expectedKey: ExpectedKey | n
         ),
     ) ?? null
   );
+}
+
+export function findVisualScenarioChartByChartKey(id: string, chartKey: string | null | undefined): ChartSearchEntry | null {
+  const normalizedChartKey = chartKey?.trim();
+  if (!normalizedChartKey) {
+    return null;
+  }
+
+  const scenario = getVisualScenario(id);
+  const charts = scenario?.charts ?? VISUAL_CHARTS;
+  return charts.find((chart) => chart.chart_key === normalizedChartKey) ?? null;
 }

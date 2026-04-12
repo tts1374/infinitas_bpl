@@ -426,12 +426,13 @@ export function App() {
     }
 
     let cancelled = false;
+    const captureDelayMs = mockScenario.captureDelayMs ?? runtimeConfig.captureDelayMs;
 
     void (async () => {
       if ("fonts" in document) {
         await document.fonts.ready;
       }
-      await new Promise((resolve) => window.setTimeout(resolve, runtimeConfig.captureDelayMs));
+      await new Promise((resolve) => window.setTimeout(resolve, captureDelayMs));
       if (cancelled) {
         return;
       }

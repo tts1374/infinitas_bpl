@@ -1,25 +1,21 @@
 import React, { useEffect, useRef, useState, type ReactNode } from 'react';
 import { User, CircleCheck as CheckCircle2, Circle, Play, LogOut, MessageSquare, Info, ShieldCheck, Database, Zap, Music, Copy, Check, Clock } from 'lucide-react';
-import SongSearchModal from './SongSearchModal';
+import { RoomPickDecisionCutIn, RoomSearchModalGate } from '../features/room/presentation-components';
+import { useClipboardFeedback, useResultPhaseTimer } from '../features/room/presentation-hooks';
+import {
+    formatCountdown,
+    formatRankLabel,
+    getDifficultyBadgeClass,
+    getDifficultyBadgeLabel,
+    maskJoinCode,
+    type RoomHistoryItem,
+    type RoomPlayerStatusLabel,
+    type RoomSong
+} from '../features/room/presentation-shared';
 import { resolveSongVersionLabel } from './SongSearchModalView';
 
-export interface Song {
-    id?: string | number;
-    title: string;
-    artist: string;
-    version?: string;
-    playStyle?: string;
-    difficulty?: string;
-    level: string | number;
-    genre?: string;
-}
-
-export interface HistoryItem {
-    round: number;
-    song: Song;
-    scores: Record<string, number>;
-    winnerId: string | 'DRAW';
-}
+export type Song = RoomSong;
+export type HistoryItem = RoomHistoryItem;
 
 export interface RoomArenaPlayer {
     id: string;
@@ -88,7 +84,7 @@ export interface RoomArenaControlledState {
     playTime: number;
     playingPhase: 'MUSIC_SELECT' | 'PLAY_START' | 'IN_PLAY';
     playingCountdownSeconds?: number | null;
-    playerStatus: Record<string, 'UNCONFIRMED' | 'PLAYED' | 'SKIPPED' | 'TIMEOUT'>;
+    playerStatus: Record<string, RoomPlayerStatusLabel>;
     playerMetrics?: Record<string, number | null>;
     metricLabel?: string;
     resultSong?: Song | null;
@@ -117,70 +113,10 @@ export function RoomArenaPresentational(props: RoomArenaControlledState) {
     return <RoomArena controlled={props} />;
 }
 
-function maskJoinCode(joinCode: string): string {
-    return '*'.repeat(joinCode.length);
-}
-
-function formatRankLabel(rank: number | null): string {
-    if (rank === null) {
-        return '-';
-    }
-
-    if (rank % 100 >= 11 && rank % 100 <= 13) {
-        return `${rank}th`;
-    }
-
-    switch (rank % 10) {
-        case 1:
-            return `${rank}st`;
-        case 2:
-            return `${rank}nd`;
-        case 3:
-            return `${rank}rd`;
-        default:
-            return `${rank}th`;
-    }
-}
-
-function getDifficultyBadgeClass(difficulty: string | undefined): string {
-    switch (difficulty) {
-        case 'B':
-            return 'bg-green-500 text-black shadow-[0_0_18px_rgba(34,197,94,0.35)]';
-        case 'N':
-            return 'bg-blue-500 text-white shadow-[0_0_18px_rgba(59,130,246,0.35)]';
-        case 'H':
-            return 'bg-yellow-400 text-black shadow-[0_0_20px_rgba(250,204,21,0.45)]';
-        case 'A':
-            return 'bg-red-600 text-white shadow-[0_0_20px_rgba(220,38,38,0.4)]';
-        case 'L':
-            return 'bg-purple-600 text-white shadow-[0_0_20px_rgba(147,51,234,0.4)]';
-        default:
-            return 'bg-gray-600 text-white';
-    }
-}
-
-function getDifficultyBadgeLabel(difficulty: string | undefined): string {
-    switch (difficulty) {
-        case 'B':
-            return 'BEGINNER';
-        case 'N':
-            return 'NORMAL';
-        case 'H':
-            return 'HYPER';
-        case 'A':
-            return 'ANOTHER';
-        case 'L':
-            return 'LEGGENDARIA';
-        default:
-            return difficulty ?? '-';
-    }
-}
-
 export default function RoomArena({ onNavigate, initialStatus, controlled }: RoomProps) {
     const [isReadyState, setIsReady] = useState(initialStatus === 'SELECTING' || initialStatus === 'PLAYING' || initialStatus === 'RESULT' || initialStatus === 'CLOSED');
     const [roomStatusState, setRoomStatus] = useState<'WAITING' | 'SELECTING' | 'PLAYING' | 'RESULT' | 'CLOSED'>(initialStatus || 'WAITING');
     const [closeReasonState, setCloseReason] = useState<string>('ALL_ROUNDS_COMPLETED');
-    const [resultTimerState, setResultTimer] = useState(10);
     const [roundCountState, setRoundCount] = useState(1);
     const [historyState, setHistory] = useState<HistoryItem[]>([]);
     const [playerPicksState, setPlayerPicks] = useState<Record<string, Song | null>>(initialStatus === 'PLAYING' || initialStatus === 'RESULT' ? {
@@ -192,11 +128,13 @@ export default function RoomArena({ onNavigate, initialStatus, controlled }: Roo
     const [showSearchState, setShowSearch] = useState(false);
     const [showCutInState, setShowCutIn] = useState(false);
     const [lastPickedSongState, setLastPickedSong] = useState<Song | null>(null);
-    const [copiedIdState, setCopiedId] = useState(false);
-    const [copiedCodeState, setCopiedCode] = useState(false);
     const [lobbyTimerState, setLobbyTimer] = useState(1200); // 20 minutes in seconds
     const [currentPlayersState, _setCurrentPlayers] = useState(2); // Mock current players
     const [maxPlayersState, _setMaxPlayers] = useState(4); // Mock room capacity
+    const roomStatus = controlled?.roomStatus ?? roomStatusState;
+    const [resultTimerState] = useResultPhaseTimer(roomStatus === 'RESULT', finalizeRound);
+    const roomIdCopy = useClipboardFeedback();
+    const joinCodeCopy = useClipboardFeedback();
 
     const roomId = controlled?.roomId ?? "3f8e6f5d-9ba0-4268-936d-a5a2ebfd7ccd";
     const joinCode = controlled?.joinCode ?? "ARENA123";
@@ -205,18 +143,13 @@ export default function RoomArena({ onNavigate, initialStatus, controlled }: Roo
     const regCount = controlled?.regCount ?? maxPlayersState;
     const isPrivateRoom = controlled?.isPrivateRoom ?? false;
 
-    const handleCopy = (text: string, setCopied: (v: boolean) => void) => {
-        navigator.clipboard.writeText(text);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-    };
     const handleCopyRoomId = () => {
         if (controlled?.onCopyRoomId) {
             controlled.onCopyRoomId();
             return;
         }
 
-        handleCopy(roomId, setCopiedId);
+        roomIdCopy.copy(roomId);
     };
     const handleCopyJoinCode = () => {
         if (controlled?.onCopyJoinCode) {
@@ -224,13 +157,13 @@ export default function RoomArena({ onNavigate, initialStatus, controlled }: Roo
             return;
         }
 
-        handleCopy(joinCode, setCopiedCode);
+        joinCodeCopy.copy(joinCode);
     };
 
     // PLAYING state logic
     const [playTimeState, setPlayTime] = useState(0);
     const [playingPhaseState, setPlayingPhase] = useState<'MUSIC_SELECT' | 'PLAY_START' | 'IN_PLAY'>('MUSIC_SELECT');
-    const [playerStatusState, setPlayerStatus] = useState<Record<string, 'UNCONFIRMED' | 'PLAYED' | 'SKIPPED' | 'TIMEOUT'>>(
+    const [playerStatusState, setPlayerStatus] = useState<Record<string, RoomPlayerStatusLabel>>(
         initialStatus === 'PLAYING' ? {
             '1': 'PLAYED',
             '2': 'UNCONFIRMED',
@@ -252,7 +185,6 @@ export default function RoomArena({ onNavigate, initialStatus, controlled }: Roo
     const isHost = controlled?.isHost ?? true;
 
     const isReady = controlled?.isReady ?? isReadyState;
-    const roomStatus = controlled?.roomStatus ?? roomStatusState;
     const closeReason = controlled?.closeReason ?? closeReasonState;
     const resultTimer = controlled?.resultTimer ?? resultTimerState;
     const roundCount = controlled?.roundCount ?? roundCountState;
@@ -261,8 +193,8 @@ export default function RoomArena({ onNavigate, initialStatus, controlled }: Roo
     const showSearch = controlled?.showSearch ?? showSearchState;
     const showCutIn = controlled?.showCutIn ?? showCutInState;
     const lastPickedSong = controlled?.lastPickedSong ?? lastPickedSongState;
-    const copiedId = controlled?.copiedId ?? copiedIdState;
-    const copiedCode = controlled?.copiedCode ?? copiedCodeState;
+    const copiedId = controlled?.copiedId ?? roomIdCopy.copied;
+    const copiedCode = controlled?.copiedCode ?? joinCodeCopy.copied;
     const lobbyTimer = controlled?.lobbyTimer ?? lobbyTimerState;
     const currentPlayers = controlled?.currentPlayers ?? currentPlayersState;
     const maxPlayers = controlled?.maxPlayers ?? maxPlayersState;
@@ -368,12 +300,6 @@ export default function RoomArena({ onNavigate, initialStatus, controlled }: Roo
         return () => clearInterval(interval);
     }, [roomStatus]);
 
-    const formatTime = (seconds: number) => {
-        const mins = Math.floor(seconds / 60);
-        const secs = seconds % 60;
-        return `${mins}:${secs.toString().padStart(2, '0')}`;
-    };
-
     // PLAYING タイム管理
     React.useEffect(() => {
         if (roomStatus !== 'PLAYING') return;
@@ -391,27 +317,6 @@ export default function RoomArena({ onNavigate, initialStatus, controlled }: Roo
         return () => clearInterval(interval);
     }, [roomStatus]);
 
-    // RESULT タイム管理 (10秒で自動遷移)
-    React.useEffect(() => {
-        if (roomStatus !== 'RESULT') {
-            setResultTimer(10);
-            return;
-        }
-
-        const interval = setInterval(() => {
-            setResultTimer(prev => {
-                if (prev <= 1) {
-                    clearInterval(interval);
-                    finalizeRound();
-                    return 0;
-                }
-                return prev - 1;
-            });
-        }, 1000);
-
-        return () => clearInterval(interval);
-    }, [roomStatus]);
-
     const handleSkip = (playerId: string) => {
         if (controlled?.onSkip) {
             controlled.onSkip(playerId);
@@ -421,7 +326,7 @@ export default function RoomArena({ onNavigate, initialStatus, controlled }: Roo
         setPlayerStatus(prev => ({ ...prev, [playerId]: 'SKIPPED' }));
     };
 
-    const finalizeRound = () => {
+    function finalizeRound() {
         const currentSong = playerPicks['1'] || { title: 'Unknown', artist: 'Unknown', level: '?' };
 
         const mockScores: Record<string, number> = {
@@ -465,7 +370,7 @@ export default function RoomArena({ onNavigate, initialStatus, controlled }: Roo
             setRoomStatus('CLOSED');
             setCloseReason('ALL_ROUNDS_COMPLETED');
         }
-    };
+    }
 
     const handleProceedToResult = () => {
         if (controlled?.onProceedToResult) {
@@ -491,48 +396,14 @@ export default function RoomArena({ onNavigate, initialStatus, controlled }: Roo
     return (
         <div className="flex h-screen w-screen bg-[#1a1a1b] text-white font-sans overflow-hidden">
 
-            {/* 決定カットイン演出 */}
-            {showCutIn && lastPickedSong && (
-                <div className="fixed inset-0 z-[300] flex items-center justify-center pointer-events-none">
-                    <div className="absolute inset-0 bg-cyan-500/10 animate-pulse opacity-50" />
-                    <div className="w-full bg-black/90 border-y-4 border-cyan-500 h-64 relative flex items-center justify-center overflow-hidden animate-[in-out_3s_ease-in-out]">
-                        <div className="absolute inset-0 flex items-center justify-center opacity-10">
-                            <span className="text-[200px] font-black italic tracking-tighter text-cyan-500">DECISION</span>
-                        </div>
-                        <div className="relative flex items-center gap-8 px-12 w-full max-w-5xl">
-                            <div className="w-32 h-32 bg-[#252526] border-4 border-cyan-500 rounded-2xl flex-shrink-0 flex items-center justify-center shadow-[0_0_50px_rgba(6,182,212,0.4)]">
-                                <Music size={48} className="text-cyan-500" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                                <p className="text-cyan-500 font-black italic tracking-[0.5em] text-lg mb-1 animate-bounce">TRACK DECIDED</p>
-                                <h2 className="text-xl lg:text-2xl font-black italic tracking-tighter text-white drop-shadow-lg leading-tight line-clamp-2 break-words whitespace-normal">{lastPickedSong.title}</h2>
-                                <p className="text-xl font-bold text-gray-400 mt-1 truncate">{lastPickedSong.artist}</p>
-                            </div>
-                            <div className="text-right shrink-0">
-                                <span className="text-6xl font-black italic tracking-tighter text-cyan-500">Lv{lastPickedSong.level}</span>
-                            </div>
-                        </div>
-                    </div>
+            {showCutIn ? <RoomPickDecisionCutIn song={lastPickedSong} /> : null}
 
-                    <style dangerouslySetInnerHTML={{
-                        __html: `
-                        @keyframes in-out {
-                            0% { transform: scaleY(0); opacity: 0; }
-                            10% { transform: scaleY(1); opacity: 1; }
-                            90% { transform: scaleY(1); opacity: 1; }
-                            100% { transform: scaleY(0); opacity: 0; }
-                        }
-                    `}} />
-                </div>
-            )}
-
-            {controlled?.searchModal ?? (
-                <SongSearchModal
-                    isOpen={showSearch}
-                    onClose={() => setShowSearch(false)}
-                    onSelect={handleSelectSong}
-                />
-            )}
+            <RoomSearchModalGate
+                modal={controlled?.searchModal}
+                isOpen={showSearch}
+                onClose={() => setShowSearch(false)}
+                onSelect={handleSelectSong}
+            />
 
             {/* メインエリア */}
             <main className="flex-1 flex flex-col p-6 gap-6 relative">
@@ -826,7 +697,7 @@ export default function RoomArena({ onNavigate, initialStatus, controlled }: Roo
                                 <div className="px-4 py-1.5 bg-cyan-500 text-black font-black italic tracking-widest rounded-lg text-sm">ARENA SELECTION</div>
                                 <div className="flex flex-col">
                                     <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest">Time Remaining</span>
-                                    <span className="text-2xl font-black italic tracking-tighter font-mono text-cyan-400">{formatTime(pickingCountdownSeconds)}</span>
+                                    <span className="text-2xl font-black italic tracking-tighter font-mono text-cyan-400">{formatCountdown(pickingCountdownSeconds)}</span>
                                 </div>
                             </div>
                             <div className="flex items-center gap-4">
@@ -888,7 +759,7 @@ export default function RoomArena({ onNavigate, initialStatus, controlled }: Roo
                                             <Clock size={8} /> Lobby TTL
                                         </span>
                                         <span className={`font-mono font-bold text-sm ${lobbyTimer < 60 ? 'text-red-500 animate-pulse' : 'text-gray-300'}`}>
-                                            {formatTime(lobbyTimer)}
+                                            {formatCountdown(lobbyTimer)}
                                         </span>
                                     </div>
                                     <div className="px-3 py-2 border-r border-white/10 flex flex-col items-center justify-center flex-1 min-w-0">
