@@ -954,6 +954,12 @@ export class RoomDurableObject {
       }
       return this.handleInternalJoinStatus();
     }
+    if (url.pathname === "/internal/lobby-eligibility") {
+      if (request.method !== "GET") {
+        return jsonResponse(405, { error: "Method not allowed." });
+      }
+      return this.handleInternalLobbyEligibility();
+    }
     if (url.pathname === "/charts") {
       if (request.method !== "GET") {
         return jsonResponse(405, { error: "Method not allowed." });
@@ -1140,6 +1146,16 @@ export class RoomDurableObject {
     }
 
     return jsonResponse(200, payload);
+  }
+
+  private handleInternalLobbyEligibility(): Response {
+    if (!this.roomState.isInitialized()) {
+      return jsonResponse(404, { error: "ROOM_STATE_LOST" });
+    }
+
+    return jsonResponse(200, {
+      eligible: this.isLobbyEligible(this.roomState.toSnapshot()),
+    });
   }
 
   async webSocketMessage(
@@ -3361,6 +3377,22 @@ export class RoomDurableObject {
     }
 
     return createdAtMs;
+  }
+
+  private isLobbyEligible(snapshot: RoomStateSnapshot): boolean {
+    if (snapshot.settings.visibility !== "PUBLIC" || snapshot.settings.auto_match === true) {
+      return false;
+    }
+
+    if (snapshot.room_state !== "LOBBY") {
+      return false;
+    }
+
+    if (snapshot.players.length >= snapshot.settings.max_players) {
+      return false;
+    }
+
+    return this.buildLobbySummary(snapshot, Date.now()) !== null;
   }
 
   private buildLobbySummary(snapshot: RoomStateSnapshot, nowMs: number): LobbyRoomSummary | null {

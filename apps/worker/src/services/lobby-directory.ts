@@ -6,6 +6,7 @@ const JSON_CONTENT_TYPE = "application/json; charset=utf-8";
 const INTERNAL_LOBBY_LIST_URL = "https://lobby-directory.internal/internal/list";
 const INTERNAL_LOBBY_UPSERT_URL = "https://lobby-directory.internal/internal/upsert";
 const INTERNAL_LOBBY_REMOVE_URL = "https://lobby-directory.internal/internal/remove";
+const INTERNAL_ROOM_LOBBY_ELIGIBILITY_URL = "https://room.internal/internal/lobby-eligibility";
 
 interface LobbyRemovePayload {
   roomId: string;
@@ -14,6 +15,11 @@ interface LobbyRemovePayload {
 function getLobbyDirectoryStub(env: WorkerEnv) {
   const doId = env.LOBBY_DIRECTORY_DO.idFromName(LOBBY_DIRECTORY_NAME);
   return env.LOBBY_DIRECTORY_DO.get(doId);
+}
+
+function getRoomStub(env: WorkerEnv, roomId: string) {
+  const doId = env.ROOM_DO.idFromName(roomId);
+  return env.ROOM_DO.get(doId);
 }
 
 async function fetchLobbyDirectoryJson<TResponse>(
@@ -72,5 +78,19 @@ export async function removeLobbyDirectoryRoom(env: WorkerEnv, roomId: string): 
       body: JSON.stringify(payload),
     }),
     "Failed to remove lobby room",
+  );
+}
+
+export async function fetchRoomLobbyEligibility(
+  env: WorkerEnv,
+  roomId: string,
+): Promise<Response> {
+  return getRoomStub(env, roomId).fetch(
+    new Request(INTERNAL_ROOM_LOBBY_ELIGIBILITY_URL, {
+      method: "GET",
+      headers: {
+        "content-type": JSON_CONTENT_TYPE,
+      },
+    }),
   );
 }

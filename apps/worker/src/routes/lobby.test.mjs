@@ -1,0 +1,181 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { handleGetLobby } from "./lobby.ts";
+
+function createJsonResponse(body, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+    },
+  });
+}
+
+function createEnv({ eligibilityByRoomId = {}, removeCalls = [], failRemoveFor = new Set() } = {}) {
+  return {
+    ROOM_DO: {
+      idFromName(name) {
+        return { toString: () => name };
+      },
+      get(id) {
+        const roomId = id.toString();
+        return {
+          fetch: async (request) => {
+            const url = new URL(request.url);
+            if (url.pathname === "/internal/lobby-eligibility") {
+              const response = eligibilityByRoomId[roomId];
+              if (response instanceof Error) {
+                throw response;
+              }
+              return response ?? createJsonResponse({ eligible: true });
+            }
+
+            return createJsonResponse({ error: "unexpected room request" }, 500);
+          },
+        };
+      },
+    },
+    LOBBY_DIRECTORY_DO: {
+      idFromName() {
+        return { toString: () => "lobby-directory" };
+      },
+      get() {
+        return {
+          fetch: async (request) => {
+            const url = new URL(request.url);
+            if (url.pathname === "/internal/list") {
+              return createJsonResponse({
+                rooms: [
+                  {
+                    roomId: "room-eligible-false",
+                    roomName: "eligible false",
+                  },
+                  {
+                    roomId: "room-lost",
+                    roomName: "lost",
+                  },
+                  {
+                    roomId: "room-500",
+                    roomName: "server error",
+                  },
+                  {
+                    roomId: "room-transport",
+                    roomName: "transport error",
+                  },
+                ],
+                serverTime: 123,
+              });
+            }
+
+            if (url.pathname === "/internal/remove") {
+              const payload = await request.json();
+              if (failRemoveFor.has(payload.roomId)) {
+                throw new Error("remove failed");
+              }
+              removeCalls.push(payload.roomId);
+              return createJsonResponse({ ok: true });
+            }
+
+            return createJsonResponse({ error: "unexpected lobby request" }, 500);
+          },
+        };
+      },
+    },
+  };
+}
+
+test("handleGetLobby removes stale eligibility failures but keeps response schema intact", async () => {
+  const removeCalls = [];
+  const env = createEnv({
+    removeCalls,
+    eligibilityByRoomId: {
+      "room-eligible-false": createJsonResponse({ eligible: false }),
+      "room-lost": createJsonResponse({ error: "ROOM_STATE_LOST" }, 404),
+      "room-500": createJsonResponse({ error: "boom" }, 500),
+      "room-transport": new Error("socket hang up"),
+    },
+  });
+
+  const response = await handleGetLobby(new Request("https://worker.test/api/lobby", { method: "GET" }), env);
+  assert.equal(response.status, 200);
+
+  const payload = await response.json();
+  assert.deepEqual(payload, {
+    rooms: [
+      {
+        roomId: "room-500",
+        roomName: "server error",
+      },
+      {
+        roomId: "room-transport",
+        roomName: "transport error",
+      },
+    ],
+    serverTime: 123,
+  });
+
+  assert.deepEqual(removeCalls.sort(), ["room-eligible-false", "room-lost"]);
+});
+
+test("handleGetLobby fail-open keeps lobby response when eligibility probes reject", async () => {
+  const env = createEnv({
+    eligibilityByRoomId: {
+      "room-eligible-false": createJsonResponse({ eligible: true }),
+      "room-lost": createJsonResponse({ eligible: true }),
+      "room-500": createJsonResponse({ error: "boom" }, 500),
+      "room-transport": new Error("transport failure"),
+    },
+  });
+
+  const response = await handleGetLobby(new Request("https://worker.test/api/lobby", { method: "GET" }), env);
+  assert.equal(response.status, 200);
+
+  const payload = await response.json();
+  assert.equal(payload.rooms.length, 4);
+  assert.deepEqual(payload.rooms.map((room) => room.roomId), [
+    "room-eligible-false",
+    "room-lost",
+    "room-500",
+    "room-transport",
+  ]);
+});
+
+test("handleGetLobby excludes rooms that probe as stale on the same response", async () => {
+  const removeCalls = [];
+  const env = createEnv({
+    removeCalls,
+    eligibilityByRoomId: {
+      "room-eligible-false": createJsonResponse({ eligible: false }),
+      "room-lost": createJsonResponse({ error: "ROOM_STATE_LOST" }, 404),
+      "room-500": createJsonResponse({ eligible: true }),
+      "room-transport": createJsonResponse({ eligible: true }),
+    },
+  });
+
+  const response = await handleGetLobby(new Request("https://worker.test/api/lobby", { method: "GET" }), env);
+  assert.equal(response.status, 200);
+
+  const payload = await response.json();
+  assert.deepEqual(payload.rooms.map((room) => room.roomId), ["room-500", "room-transport"]);
+  assert.deepEqual(removeCalls.sort(), ["room-eligible-false", "room-lost"]);
+});
+
+test("handleGetLobby keeps stale rooms excluded when cleanup removal fails", async () => {
+  const removeCalls = [];
+  const env = createEnv({
+    removeCalls,
+    failRemoveFor: new Set(["room-eligible-false"]),
+    eligibilityByRoomId: {
+      "room-eligible-false": createJsonResponse({ eligible: false }),
+      "room-lost": createJsonResponse({ eligible: false }),
+      "room-500": createJsonResponse({ eligible: true }),
+      "room-transport": createJsonResponse({ eligible: true }),
+    },
+  });
+
+  const response = await handleGetLobby(new Request("https://worker.test/api/lobby", { method: "GET" }), env);
+  assert.equal(response.status, 200);
+
+  const payload = await response.json();
+  assert.deepEqual(payload.rooms.map((room) => room.roomId), ["room-500", "room-transport"]);
+});
