@@ -47,7 +47,7 @@ export async function handleGetLobby(_request: Request, env: WorkerEnv): Promise
 
         if (result.stale) {
           try {
-            await removeLobbyDirectoryRoom(env, result.room.roomId);
+            await removeLobbyDirectoryRoom(env, result.room.roomId, result.room.updatedAt);
           } catch {
             // Best effort only: stale rooms must stay excluded from this response even if cleanup fails.
           }

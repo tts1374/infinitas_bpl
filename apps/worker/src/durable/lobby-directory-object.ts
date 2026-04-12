@@ -159,7 +159,7 @@ function asSerializableRecord(rooms: Map<string, LobbyRoomSummary>): Record<stri
   return result;
 }
 
-function parseRemovePayload(payload: unknown): { roomId: string } | null {
+function parseRemovePayload(payload: unknown): { roomId: string; expectedUpdatedAt?: number } | null {
   if (!isRecord(payload)) {
     return null;
   }
@@ -169,7 +169,12 @@ function parseRemovePayload(payload: unknown): { roomId: string } | null {
     return null;
   }
 
-  return { roomId };
+  const expectedUpdatedAt = payload.expectedUpdatedAt;
+  if (expectedUpdatedAt !== undefined && !isFiniteNumber(expectedUpdatedAt)) {
+    return null;
+  }
+
+  return expectedUpdatedAt === undefined ? { roomId } : { roomId, expectedUpdatedAt };
 }
 
 export class LobbyDirectoryDO {
@@ -280,9 +285,21 @@ export class LobbyDirectoryDO {
 
     const now = Date.now();
     this.cleanupExpired(now);
+    const current = this.rooms.get(parsed.roomId);
+    if (current === undefined) {
+      return jsonResponse(200, { ok: true, removed: false });
+    }
+
+    if (
+      parsed.expectedUpdatedAt !== undefined &&
+      current.updatedAt !== parsed.expectedUpdatedAt
+    ) {
+      return jsonResponse(200, { ok: true, removed: false });
+    }
+
     this.rooms.delete(parsed.roomId);
     await this.persistRooms();
-    return jsonResponse(200, { ok: true });
+    return jsonResponse(200, { ok: true, removed: true });
   }
 
   private cleanupExpired(now: number): boolean {

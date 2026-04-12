@@ -11,6 +11,28 @@ function createJsonResponse(body, status = 200) {
   });
 }
 
+function buildRoom(roomId, roomName, updatedAt) {
+  return {
+    roomId,
+    roomName,
+    ownerUserId: "owner-1",
+    ownerDisplayName: "Owner",
+    mode: "ARENA",
+    playStyle: "SP",
+    levelFilter: "ANY",
+    winMetric: "SCORE",
+    hasJoinCode: false,
+    isPublic: true,
+    currentPlayers: 1,
+    maxPlayers: 2,
+    isFull: false,
+    status: "LOBBY",
+    ttlStartedAt: 100,
+    createdAt: 100,
+    updatedAt,
+  };
+}
+
 function createEnv({ eligibilityByRoomId = {}, removeCalls = [], failRemoveFor = new Set() } = {}) {
   return {
     ROOM_DO: {
@@ -46,22 +68,10 @@ function createEnv({ eligibilityByRoomId = {}, removeCalls = [], failRemoveFor =
             if (url.pathname === "/internal/list") {
               return createJsonResponse({
                 rooms: [
-                  {
-                    roomId: "room-eligible-false",
-                    roomName: "eligible false",
-                  },
-                  {
-                    roomId: "room-lost",
-                    roomName: "lost",
-                  },
-                  {
-                    roomId: "room-500",
-                    roomName: "server error",
-                  },
-                  {
-                    roomId: "room-transport",
-                    roomName: "transport error",
-                  },
+                  buildRoom("room-eligible-false", "eligible false", 101),
+                  buildRoom("room-lost", "lost", 102),
+                  buildRoom("room-500", "server error", 103),
+                  buildRoom("room-transport", "transport error", 104),
                 ],
                 serverTime: 123,
               });
@@ -72,7 +82,7 @@ function createEnv({ eligibilityByRoomId = {}, removeCalls = [], failRemoveFor =
               if (failRemoveFor.has(payload.roomId)) {
                 throw new Error("remove failed");
               }
-              removeCalls.push(payload.roomId);
+              removeCalls.push(payload);
               return createJsonResponse({ ok: true });
             }
 
@@ -100,21 +110,17 @@ test("handleGetLobby removes stale eligibility failures but keeps response schem
   assert.equal(response.status, 200);
 
   const payload = await response.json();
-  assert.deepEqual(payload, {
-    rooms: [
-      {
-        roomId: "room-500",
-        roomName: "server error",
-      },
-      {
-        roomId: "room-transport",
-        roomName: "transport error",
-      },
+  assert.deepEqual(payload.rooms.map((room) => room.roomId), ["room-500", "room-transport"]);
+  assert.deepEqual(
+    removeCalls
+      .sort((left, right) => left.roomId.localeCompare(right.roomId))
+      .map((call) => ({ roomId: call.roomId, expectedUpdatedAt: call.expectedUpdatedAt })),
+    [
+      { roomId: "room-eligible-false", expectedUpdatedAt: 101 },
+      { roomId: "room-lost", expectedUpdatedAt: 102 },
     ],
-    serverTime: 123,
-  });
-
-  assert.deepEqual(removeCalls.sort(), ["room-eligible-false", "room-lost"]);
+  );
+  assert.equal(payload.serverTime, 123);
 });
 
 test("handleGetLobby fail-open keeps lobby response when eligibility probes reject", async () => {
@@ -157,7 +163,15 @@ test("handleGetLobby excludes rooms that probe as stale on the same response", a
 
   const payload = await response.json();
   assert.deepEqual(payload.rooms.map((room) => room.roomId), ["room-500", "room-transport"]);
-  assert.deepEqual(removeCalls.sort(), ["room-eligible-false", "room-lost"]);
+  assert.deepEqual(
+    removeCalls
+      .sort((left, right) => left.roomId.localeCompare(right.roomId))
+      .map((call) => ({ roomId: call.roomId, expectedUpdatedAt: call.expectedUpdatedAt })),
+    [
+      { roomId: "room-eligible-false", expectedUpdatedAt: 101 },
+      { roomId: "room-lost", expectedUpdatedAt: 102 },
+    ],
+  );
 });
 
 test("handleGetLobby keeps stale rooms excluded when cleanup removal fails", async () => {
@@ -178,4 +192,5 @@ test("handleGetLobby keeps stale rooms excluded when cleanup removal fails", asy
 
   const payload = await response.json();
   assert.deepEqual(payload.rooms.map((room) => room.roomId), ["room-500", "room-transport"]);
+  assert.deepEqual(removeCalls, [{ roomId: "room-lost", expectedUpdatedAt: 102 }]);
 });

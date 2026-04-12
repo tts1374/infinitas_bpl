@@ -10,6 +10,7 @@ const INTERNAL_ROOM_LOBBY_ELIGIBILITY_URL = "https://room.internal/internal/lobb
 
 interface LobbyRemovePayload {
   roomId: string;
+  expectedUpdatedAt?: number;
 }
 
 function getLobbyDirectoryStub(env: WorkerEnv) {
@@ -65,8 +66,15 @@ export async function upsertLobbyDirectoryRoom(
   );
 }
 
-export async function removeLobbyDirectoryRoom(env: WorkerEnv, roomId: string): Promise<void> {
-  const payload: LobbyRemovePayload = { roomId };
+export async function removeLobbyDirectoryRoom(
+  env: WorkerEnv,
+  roomId: string,
+  expectedUpdatedAt?: number,
+): Promise<void> {
+  const payload: LobbyRemovePayload =
+    expectedUpdatedAt === undefined
+      ? { roomId }
+      : { roomId, expectedUpdatedAt };
 
   await fetchLobbyDirectoryJson<{ ok: true }>(
     env,
