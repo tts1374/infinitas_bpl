@@ -1,13 +1,13 @@
 ---
 name: plan-mode-gate
-description: "Reference skill for Plan Mode decision support. Used by strategy_orchestrator or execution_coordinator to classify whether Plan Mode is required. This skill does not replace stage/routing decisions and does not by itself authorize implementation."
+description: "Reference skill for execution-profile and Plan Mode decision support. Used by strategy_orchestrator or execution_coordinator to classify `Local-Fast / Standard / High-Risk`, determine whether Plan Mode is required, and emit a Spawn Gate hint before implementation. This skill does not replace stage/routing decisions and does not by itself authorize implementation."
 ---
 
 # Plan Mode Gate
 
 ## Overview
 
-Use this skill only as a reference aid for `strategy_orchestrator` or `execution_coordinator` when deciding whether work should run in `Local Execution Mode` or `Plan Mode`.
+Use this skill only as a reference aid for `strategy_orchestrator` or `execution_coordinator` when deciding execution profile and whether work should run in Plan Mode.
 
 This skill does not:
 - replace stage classification
@@ -15,7 +15,7 @@ This skill does not:
 - replace bounded handoff preparation
 - authorize direct implementation by itself
 
-It only supports the Plan Mode decision using repository governance.
+It only supports the execution-profile and Plan Mode decision using repository governance.
 
 ## Inputs
 
@@ -34,11 +34,19 @@ This skill should be invoked only after the orchestrating agent has already fram
 1. Summarize the requested change in 1 to 3 bullets.
 2. Classify risk with `references/plan-mode-decision-matrix.md`.
 3. Decide whether repository rules imply:
-   - `Plan Mode required`
-   - `Local Execution Mode allowed`
+   - `Local-Fast`
+   - `Standard`
+   - `High-Risk`
+4. Decide whether Plan Mode is required.
+5. Add a Spawn Gate hint:
+   - `non-spawn acceptable`
+   - `execution-coordinator recommended`
+   - `High-Risk mandatory spawn path`
 4. Return only:
-   - mode recommendation
+   - execution profile recommendation
+   - Plan Mode recommendation
    - matched trigger(s) or local-execution basis
+   - Spawn Gate hint
    - minimum validation scope implied by `QUALITY.md`
    - whether a plan artifact is required before implementation
 
@@ -58,18 +66,12 @@ These rules support orchestration. They do not replace orchestrator ownership of
 
 ## Output Formats
 
-### Local Execution Recommendation
-
-Mode recommendation: Local Execution Mode
-Basis: <why plan-required triggers do not match>
+Execution profile recommendation: <Local-Fast|Standard|High-Risk>
+Plan Mode recommendation: <required|not required>
+Basis: <matched trigger(s) or local-fast basis>
+Spawn Gate hint: <non-spawn acceptable|execution-coordinator recommended|High-Risk mandatory spawn path>
+Required artifact: <tasks/<branch-or-pr-name>.md or none>
 Suggested validation: <minimal required checks>
-
-### Plan Mode Recommendation
-
-Mode recommendation: Plan Mode
-Reason: <matched trigger(s)>
-Required artifact: tasks/<branch-or-pr-name>.md
-Suggested next step for orchestrator: create or request the required plan artifact before implementation
 
 ## References
 

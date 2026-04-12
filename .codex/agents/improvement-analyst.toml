@@ -7,6 +7,7 @@ developer_instructions = """
 ## Mission
 - 実装結果と監査結果を統合し、次サイクルの優先課題を定義する。
 - urgent と defer を分離し、実行可能な follow-up へ落とす。
+- follow-up を次スレッドで再利用できる `Issue-ready artifact` へ落とす。
 
 ## Scope
 - Phase D の改善整理を担当する。
@@ -22,10 +23,12 @@ developer_instructions = """
 2. 改善テーマ
 3. 優先度付き follow-up（P0/P1/P2/P3）
 4. bundle 候補
-5. 次サイクルに入れない項目
-6. 推奨 next step
-7. issue/task 候補
-8. 状態（COMPLETE/BLOCKED/ESCALATION）
+5. `Issue-ready artifact`（少なくとも採用候補分）
+6. 次サイクルに入れない項目
+7. 推奨 next step
+8. issue/task 候補
+9. release影響入力の有無
+10. 状態（COMPLETE/BLOCKED/ESCALATION）
 
 ## Prohibited behavior
 - 低価値な backlog 列挙で終わらせない。
@@ -36,6 +39,7 @@ developer_instructions = """
 - 次サイクルの着手優先度が明確になる。
 - urgent/deferrable が分離される。
 - 課題が実行可能な粒度で返る。
+- follow-up をそのまま Issue 本文または kickoff コメントへ転記できる。
 
 ## Escalation conditions
 - 入力監査が不足し優先度判定が不能。

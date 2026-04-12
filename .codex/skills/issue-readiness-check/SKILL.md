@@ -1,6 +1,6 @@
 ---
 name: issue-readiness-check
-description: "Phase 1 exit-gate skill for deciding whether an issue is ready to hand off to execution planning. Use after issue shaping or wall-sparring to check specification gaps, acceptance criteria coverage, scope boundaries, and blocking unresolved items, then return ready/not ready with concrete next actions."
+description: "Phase A exit-gate skill for deciding whether an issue is ready to hand off to execution planning. Use after issue shaping, follow-up issue drafting, or wall-sparring to check specification gaps, acceptance criteria coverage, scope boundaries, unresolved decisions, and next-role clarity, then return repository-aligned status (`READY / NOT_READY / WAITING_FOR_HUMAN_DECISION`)."
 ---
 
 # Issue Readiness Check
@@ -17,7 +17,7 @@ Use this as a readiness gate only, not as execution planning or post-implementat
 - Verify scope boundary clarity for in-scope and out-of-scope.
 - Detect unresolved items and classify blocking impact.
 - Select the next role or skill to run.
-- Return a final readiness decision: `ready` or `not ready`.
+- Return a repository-aligned readiness decision.
 
 ## Use Cases
 
@@ -57,25 +57,27 @@ Require these inputs:
    - `non-blocking`: useful improvement that does not block handoff
 4. Identify missing inputs needed to defend the decision.
 5. Decide readiness:
-   - return `ready` only when no blocking gap remains
-   - return `not ready` when one or more blocking gaps remain
+   - return `READY` only when no blocking gap remains
+   - return `NOT_READY` when one or more blocking gap remains and additional shaping is still possible without human decision
+   - return `WAITING_FOR_HUMAN_DECISION` when a pending decision must be resolved by a human before safe handoff
 6. Recommend only 1 or 2 next steps, including next role or skill.
 
 ## Output Contract
 
 Always return these sections in this order:
-1. `Readiness status`: `ready` or `not ready`
+1. `Readiness status`: `READY` / `NOT_READY` / `WAITING_FOR_HUMAN_DECISION`
 2. `Ready rationale`
 3. `Blocking gaps`
 4. `Non-blocking gaps`
 5. `Missing inputs`
-6. `Next role/skill`
-7. `Handoff cautions for execution planning`
+6. `Decision gate`
+7. `Next role/skill`
+8. `Handoff cautions for execution planning`
 
 Use this output template:
 
 ```text
-Readiness status: <ready|not ready>
+Readiness status: <READY|NOT_READY|WAITING_FOR_HUMAN_DECISION>
 
 Ready rationale:
 - <reason 1>
@@ -89,6 +91,9 @@ Non-blocking gaps:
 
 Missing inputs:
 - <input or "none">
+
+Decision gate:
+- <decision needed or "none">
 
 Next role/skill:
 - <role_or_skill_1>
@@ -104,6 +109,7 @@ Apply these format rules:
 - Separate missing points into `Blocking gaps` and `Non-blocking gaps`.
 - Write concrete missing information, not abstract statements.
 - Keep next steps to 1 or 2 actions.
+- Use repository status vocabulary exactly as written.
 
 ## Success Criteria
 

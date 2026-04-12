@@ -77,6 +77,15 @@ Client 変更時:
 - 廃止 agent 名の残存参照がない
 - 状態語彙/severity 語彙の統一定義が維持される
 
+### 3.5 Workflow Artifact / Closure Task 実行時
+必須確認:
+- Entry Protocol に `Stage / affected layers / contract-sensitive / execution profile / Plan Mode` がある
+- 委譲した場合は `delegation execution record` が残っている
+- 非委譲の場合は `No-delegate reason` が残っている
+- Phase C 実行時は C Kickoff 出力が実装開始前にある
+- Phase D で follow-up を作る場合は、次スレッドで再利用可能な `Issue-ready artifact` 粒度になっている
+- Issue を閉じる場合は `docs/issue_close_evidence_template.md` に準拠している
+
 ---
 
 ## 4. Severity Convention (統一)

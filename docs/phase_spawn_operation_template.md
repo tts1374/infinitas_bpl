@@ -51,6 +51,7 @@ C Kickoff Gate（Phase C開始前に必須）:
     - no-delegate reason（noの場合）
 - 必須ロール未spawnの場合は BLOCKED を返して停止すること。
 - 上記出力完了まで Phase C 実装を開始してはならない。
+- コメントひな型が必要な場合は `docs/c_kickoff_comment_template.md` を参照してよい。
 
 Replan Gate:
 - Phase C/D中に次のいずれかが発生したら実装を停止し、Phase A/Bへ戻すこと。
@@ -122,6 +123,7 @@ Phase D（C完了後は必須）:
 - follow-up を P0/P1/P2/P3 で整理
 - 今サイクル外項目を分離
 - release影響入力（有無）を明示
+- 別Issue化する場合は `docs/issue_ready_followup_template.md` 相当の境界情報まで残す
 - Issueをクローズする場合は `docs/issue_close_evidence_template.md` の証跡を記載
 - 最終状態（COMPLETE/BLOCKED/ESCALATION）を明示
 

@@ -40,10 +40,12 @@ Invoke this skill only after the calling agent has framed the task enough to ide
 3. Select required checks:
    - Always include universal checks.
    - Add conditional checks only for matched areas.
+   - Add workflow-artifact checks when the task is governance-heavy, closure-heavy, or explicitly about Phase C/D operation.
 4. Return only:
    - required validation groups
    - not-required validation groups with reasons
    - residual risks when checks are expected to remain `not run`
+   - artifact/evidence reminders when the task is planning/closure oriented
 
 Do not:
 - execute implementation work
@@ -54,6 +56,7 @@ Do not:
 
 - Include all universal checks on every task.
 - Include area-specific checks only when the touched area matches the matrix.
+- Include workflow-artifact checks when the task updates governance docs, performs closure work, or produces C Kickoff / follow-up / issue-close evidence artifacts.
 - If uncertain whether a conditional area is touched, recommend including the safer additional checks.
 - If an environment constraint may prevent execution, keep the check in scope and surface the resulting residual risk explicitly.
 
@@ -72,6 +75,9 @@ Not required:
 
 Residual risks if not run:
 - <risk or None>
+
+Artifact reminders:
+- <artifact or None>
 
 ## References
 

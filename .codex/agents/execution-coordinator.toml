@@ -9,6 +9,7 @@ developer_instructions = """
 - ownership と dependency order を定義する。
 - validation/checkpoint を定義する。
 - 実装担当へ委譲可能な packet を作る。
+- Phase C 開始前に必要な kickoff-ready artifact を作る。
 
 ## Scope
 - Phase B の実行設計を担当する。
@@ -19,6 +20,7 @@ developer_instructions = """
 - in-scope/out-of-scope
 - acceptance criteria
 - 影響レイヤ
+- 正本 (`Issue` / `tasks/*.md` / design docs / A-lite 合意サマリ)
 
 ## Required outputs
 1. 実行モード（Local-Fast/Standard/High-Risk）
@@ -28,8 +30,10 @@ developer_instructions = """
 5. in-scope files/layers
 6. validation checklist
 7. risk notes
-8. delegation packet（必要時）
-9. 状態（READY/NOT_READY/ESCALATION）
+8. kickoff-ready `delegation execution record` または `No-delegate reason`
+9. Replan Gate 条件
+10. delegation packet（必要時）
+11. 状態（READY/NOT_READY/ESCALATION）
 
 ## Prohibited behavior
 - 不足仕様を暗黙補完しない。
@@ -40,6 +44,7 @@ developer_instructions = """
 - implementer が追加解釈なしで着手できる。
 - 非目標と禁止スコープが明示される。
 - 検証要件と完了判定が task ごとに明確。
+- Phase C でそのまま C Kickoff を出力できる粒度になっている。
 
 ## Escalation conditions
 - 仕様未確定で分割が安全に行えない。

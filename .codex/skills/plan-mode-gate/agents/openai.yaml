@@ -1,4 +1,4 @@
 interface:
   display_name: "Plan Mode Gate"
-  short_description: "Reference skill for Plan Mode gating used by orchestrators"
-  default_prompt: "Use this only to support an orchestrator's Plan Mode decision. Do not bypass stage/routing decisions."
+  short_description: "Reference skill for execution-profile and Plan Mode gating"
+  default_prompt: "Use this only to support an orchestrator's execution-profile and Plan Mode decision, including a Spawn Gate hint. Do not bypass stage or routing decisions."
