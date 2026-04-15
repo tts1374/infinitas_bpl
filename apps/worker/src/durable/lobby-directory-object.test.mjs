@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { READY_CHECK_TTL_MS } from "@infinitas/shared";
 import { LobbyDirectoryDO } from "./lobby-directory-object.ts";
 
 class TestStorage {
@@ -12,6 +13,11 @@ class TestStorage {
   async put(key, value) {
     this.#records.set(key, value);
   }
+
+  snapshot() {
+    return Object.fromEntries(this.#records.entries());
+  }
+
 }
 
 class TestDurableObjectState {
@@ -153,4 +159,43 @@ test("conditional remove does not delete a recreated summary from the same milli
   assert.equal(listPayload.rooms.length, 1);
   assert.equal(listPayload.rooms[0].roomId, "room-1");
   assert.equal(listPayload.rooms[0].updatedAt, 1_001);
+});
+
+test("restores the monotonic updatedAt counter from legacy per-room storage", async () => {
+  const state = new TestDurableObjectState();
+  await state.storage.put("rooms", {
+    "room-legacy": createSummary("room-legacy"),
+  });
+  await state.storage.put("lastUpdatedAtByRoomId", {
+    "room-legacy": 1_000,
+    "room-old": 2_500,
+  });
+
+  const lobbyDirectory = new LobbyDirectoryDO(state);
+  await upsertRoom(lobbyDirectory, 2_000, "room-new");
+
+  const listResponse = await listRooms(lobbyDirectory, 2_000);
+  const listPayload = await listResponse.json();
+  const roomNew = listPayload.rooms.find((room) => room.roomId === "room-new");
+  assert.equal(roomNew?.updatedAt, 2_501);
+});
+
+test("persisted monotonic counter does not retain per-room tombstones after remove and expiry cleanup", async () => {
+  const state = new TestDurableObjectState();
+  const lobbyDirectory = new LobbyDirectoryDO(state);
+
+  await upsertRoom(lobbyDirectory, 1_000, "room-remove");
+  await upsertRoom(lobbyDirectory, 1_000, "room-expire");
+
+  await removeRoom(lobbyDirectory, 2_000, {
+    roomId: "room-remove",
+    expectedUpdatedAt: 1_000,
+  });
+
+  await listRooms(lobbyDirectory, 1_000 + READY_CHECK_TTL_MS + 1);
+
+  const storage = state.storage.snapshot();
+  assert.equal(storage.rooms["room-remove"], undefined);
+  assert.equal(storage.rooms["room-expire"], undefined);
+  assert.equal(typeof storage.lastUpdatedAtByRoomId, "number");
 });

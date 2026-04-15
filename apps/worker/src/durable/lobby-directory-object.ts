@@ -154,40 +154,35 @@ function buildStoredRooms(input: unknown): Map<string, LobbyRoomSummary> {
   return rooms;
 }
 
-function buildStoredLastUpdatedAt(input: unknown): Map<string, number> {
-  if (!isRecord(input)) {
-    return new Map<string, number>();
-  }
+function restoreLastIssuedUpdatedAt(
+  input: unknown,
+  rooms: Map<string, LobbyRoomSummary>,
+): number {
+  let lastIssuedUpdatedAt = Number.NEGATIVE_INFINITY;
 
-  const result = new Map<string, number>();
-  for (const [roomId, rawUpdatedAt] of Object.entries(input)) {
-    if (!isFiniteNumber(rawUpdatedAt)) {
-      continue;
+  if (isFiniteNumber(input)) {
+    lastIssuedUpdatedAt = input;
+  } else if (isRecord(input)) {
+    for (const rawUpdatedAt of Object.values(input)) {
+      if (!isFiniteNumber(rawUpdatedAt)) {
+        continue;
+      }
+
+      lastIssuedUpdatedAt = Math.max(lastIssuedUpdatedAt, rawUpdatedAt);
     }
-
-    result.set(roomId, rawUpdatedAt);
   }
 
-  return result;
+  for (const room of rooms.values()) {
+    lastIssuedUpdatedAt = Math.max(lastIssuedUpdatedAt, room.updatedAt);
+  }
+
+  return lastIssuedUpdatedAt;
 }
 
-function asSerializableRecord(
-  rooms: Map<string, LobbyRoomSummary>,
-): Record<string, LobbyRoomSummary> {
+function asSerializableRecord(rooms: Map<string, LobbyRoomSummary>): Record<string, LobbyRoomSummary> {
   const result: Record<string, LobbyRoomSummary> = {};
   for (const [roomId, room] of rooms.entries()) {
     result[roomId] = room;
-  }
-
-  return result;
-}
-
-function asSerializableLastUpdatedAt(
-  lastUpdatedAtByRoomId: Map<string, number>,
-): Record<string, number> {
-  const result: Record<string, number> = {};
-  for (const [roomId, updatedAt] of lastUpdatedAtByRoomId.entries()) {
-    result[roomId] = updatedAt;
   }
 
   return result;
@@ -213,28 +208,20 @@ function parseRemovePayload(payload: unknown): { roomId: string; expectedUpdated
 
 export class LobbyDirectoryDO {
   private readonly rooms = new Map<string, LobbyRoomSummary>();
-  private readonly lastUpdatedAtByRoomId = new Map<string, number>();
+  private lastIssuedUpdatedAt = Number.NEGATIVE_INFINITY;
   private readonly readyPromise: Promise<void>;
 
   constructor(private readonly state: DurableObjectStateLike) {
     this.readyPromise = this.state.blockConcurrencyWhile(async () => {
       const stored = await this.state.storage.get<Record<string, LobbyRoomSummary>>(ROOMS_STORAGE_KEY);
-      const storedLastUpdatedAt = await this.state.storage.get<Record<string, number>>(LAST_UPDATED_AT_STORAGE_KEY);
+      const storedLastUpdatedAt = await this.state.storage.get<unknown>(LAST_UPDATED_AT_STORAGE_KEY);
 
       const restored = buildStoredRooms(stored);
-      const restoredLastUpdatedAt = buildStoredLastUpdatedAt(storedLastUpdatedAt);
       this.rooms.clear();
-      this.lastUpdatedAtByRoomId.clear();
-      for (const [roomId, updatedAt] of restoredLastUpdatedAt.entries()) {
-        this.lastUpdatedAtByRoomId.set(roomId, updatedAt);
-      }
       for (const [roomId, room] of restored.entries()) {
         this.rooms.set(roomId, room);
-        this.lastUpdatedAtByRoomId.set(
-          roomId,
-          Math.max(this.lastUpdatedAtByRoomId.get(roomId) ?? Number.NEGATIVE_INFINITY, room.updatedAt),
-        );
       }
+      this.lastIssuedUpdatedAt = restoreLastIssuedUpdatedAt(storedLastUpdatedAt, restored);
     });
   }
 
@@ -294,11 +281,8 @@ export class LobbyDirectoryDO {
 
     const now = Date.now();
     this.cleanupExpired(now);
-    const nextUpdatedAt = Math.max(
-      now,
-      (this.lastUpdatedAtByRoomId.get(parsed.roomId) ?? Number.NEGATIVE_INFINITY) + 1,
-    );
-    this.lastUpdatedAtByRoomId.set(parsed.roomId, nextUpdatedAt);
+    const nextUpdatedAt = Math.max(now, this.lastIssuedUpdatedAt + 1);
+    this.lastIssuedUpdatedAt = nextUpdatedAt;
 
     const normalized: LobbyRoomSummary = {
       ...parsed,
@@ -334,6 +318,7 @@ export class LobbyDirectoryDO {
     this.cleanupExpired(now);
     const current = this.rooms.get(parsed.roomId);
     if (current === undefined) {
+      await this.persistRooms();
       return jsonResponse(200, { ok: true, removed: false });
     }
 
@@ -367,7 +352,7 @@ export class LobbyDirectoryDO {
   private async persistRooms(): Promise<void> {
     await Promise.all([
       this.state.storage.put(ROOMS_STORAGE_KEY, asSerializableRecord(this.rooms)),
-      this.state.storage.put(LAST_UPDATED_AT_STORAGE_KEY, asSerializableLastUpdatedAt(this.lastUpdatedAtByRoomId)),
+      this.state.storage.put(LAST_UPDATED_AT_STORAGE_KEY, this.lastIssuedUpdatedAt),
     ]);
   }
 }
