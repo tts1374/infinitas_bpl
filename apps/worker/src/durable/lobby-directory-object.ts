@@ -6,7 +6,6 @@ import {
   PLAY_STYLES,
   READY_CHECK_TTL_MS,
   WIN_METRICS,
-  type LobbyListResponse,
   type LobbyRoomSummary,
 } from "@infinitas/shared";
 import { isRecord } from "../utils/validation";
@@ -22,6 +21,7 @@ interface DurableObjectStateLike {
 }
 
 const ROOMS_STORAGE_KEY = "rooms";
+const LAST_UPDATED_AT_STORAGE_KEY = "lastUpdatedAtByRoomId";
 
 function jsonResponse(status: number, payload: unknown): Response {
   return new Response(JSON.stringify(payload), {
@@ -139,6 +139,10 @@ function buildStoredRooms(input: unknown): Map<string, LobbyRoomSummary> {
   const entries = Object.entries(input);
   const rooms = new Map<string, LobbyRoomSummary>();
   for (const [roomId, rawRoom] of entries) {
+    if (!isRecord(rawRoom)) {
+      continue;
+    }
+
     const parsed = parseLobbyRoomSummary(rawRoom);
     if (parsed === null) {
       continue;
@@ -150,10 +154,40 @@ function buildStoredRooms(input: unknown): Map<string, LobbyRoomSummary> {
   return rooms;
 }
 
-function asSerializableRecord(rooms: Map<string, LobbyRoomSummary>): Record<string, LobbyRoomSummary> {
+function buildStoredLastUpdatedAt(input: unknown): Map<string, number> {
+  if (!isRecord(input)) {
+    return new Map<string, number>();
+  }
+
+  const result = new Map<string, number>();
+  for (const [roomId, rawUpdatedAt] of Object.entries(input)) {
+    if (!isFiniteNumber(rawUpdatedAt)) {
+      continue;
+    }
+
+    result.set(roomId, rawUpdatedAt);
+  }
+
+  return result;
+}
+
+function asSerializableRecord(
+  rooms: Map<string, LobbyRoomSummary>,
+): Record<string, LobbyRoomSummary> {
   const result: Record<string, LobbyRoomSummary> = {};
   for (const [roomId, room] of rooms.entries()) {
     result[roomId] = room;
+  }
+
+  return result;
+}
+
+function asSerializableLastUpdatedAt(
+  lastUpdatedAtByRoomId: Map<string, number>,
+): Record<string, number> {
+  const result: Record<string, number> = {};
+  for (const [roomId, updatedAt] of lastUpdatedAtByRoomId.entries()) {
+    result[roomId] = updatedAt;
   }
 
   return result;
@@ -179,19 +213,27 @@ function parseRemovePayload(payload: unknown): { roomId: string; expectedUpdated
 
 export class LobbyDirectoryDO {
   private readonly rooms = new Map<string, LobbyRoomSummary>();
+  private readonly lastUpdatedAtByRoomId = new Map<string, number>();
   private readonly readyPromise: Promise<void>;
 
   constructor(private readonly state: DurableObjectStateLike) {
     this.readyPromise = this.state.blockConcurrencyWhile(async () => {
       const stored = await this.state.storage.get<Record<string, LobbyRoomSummary>>(ROOMS_STORAGE_KEY);
-      if (stored === undefined) {
-        return;
-      }
+      const storedLastUpdatedAt = await this.state.storage.get<Record<string, number>>(LAST_UPDATED_AT_STORAGE_KEY);
 
       const restored = buildStoredRooms(stored);
+      const restoredLastUpdatedAt = buildStoredLastUpdatedAt(storedLastUpdatedAt);
       this.rooms.clear();
+      this.lastUpdatedAtByRoomId.clear();
+      for (const [roomId, updatedAt] of restoredLastUpdatedAt.entries()) {
+        this.lastUpdatedAtByRoomId.set(roomId, updatedAt);
+      }
       for (const [roomId, room] of restored.entries()) {
         this.rooms.set(roomId, room);
+        this.lastUpdatedAtByRoomId.set(
+          roomId,
+          Math.max(this.lastUpdatedAtByRoomId.get(roomId) ?? Number.NEGATIVE_INFINITY, room.updatedAt),
+        );
       }
     });
   }
@@ -229,7 +271,7 @@ export class LobbyDirectoryDO {
         return left.roomId.localeCompare(right.roomId);
       });
 
-    const response: LobbyListResponse = {
+    const response = {
       rooms,
       serverTime: now,
     };
@@ -252,12 +294,17 @@ export class LobbyDirectoryDO {
 
     const now = Date.now();
     this.cleanupExpired(now);
+    const nextUpdatedAt = Math.max(
+      now,
+      (this.lastUpdatedAtByRoomId.get(parsed.roomId) ?? Number.NEGATIVE_INFINITY) + 1,
+    );
+    this.lastUpdatedAtByRoomId.set(parsed.roomId, nextUpdatedAt);
 
     const normalized: LobbyRoomSummary = {
       ...parsed,
       currentPlayers: Math.max(0, Math.floor(parsed.currentPlayers)),
       isFull: Math.max(0, Math.floor(parsed.currentPlayers)) >= parsed.maxPlayers,
-      updatedAt: now,
+      updatedAt: nextUpdatedAt,
     };
 
     if (isExpired(normalized, now) || !normalized.isPublic) {
@@ -318,6 +365,9 @@ export class LobbyDirectoryDO {
   }
 
   private async persistRooms(): Promise<void> {
-    await this.state.storage.put(ROOMS_STORAGE_KEY, asSerializableRecord(this.rooms));
+    await Promise.all([
+      this.state.storage.put(ROOMS_STORAGE_KEY, asSerializableRecord(this.rooms)),
+      this.state.storage.put(LAST_UPDATED_AT_STORAGE_KEY, asSerializableLastUpdatedAt(this.lastUpdatedAtByRoomId)),
+    ]);
   }
 }

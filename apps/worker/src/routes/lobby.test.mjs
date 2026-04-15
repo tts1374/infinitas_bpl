@@ -121,6 +121,7 @@ test("handleGetLobby removes stale eligibility failures but keeps response schem
     ],
   );
   assert.equal(payload.serverTime, 123);
+  assert.ok(payload.rooms.every((room) => !("revision" in room)));
 });
 
 test("handleGetLobby fail-open keeps lobby response when eligibility probes reject", async () => {

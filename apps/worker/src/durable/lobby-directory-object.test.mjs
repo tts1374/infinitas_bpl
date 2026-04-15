@@ -86,13 +86,13 @@ async function listRooms(lobbyDirectory, now) {
   );
 }
 
-test("conditional remove does not delete a newer lobby summary", async () => {
+test("conditional remove does not delete a newer lobby summary from the same millisecond", async () => {
   const lobbyDirectory = new LobbyDirectoryDO(new TestDurableObjectState());
 
   await upsertRoom(lobbyDirectory, 1_000);
-  await upsertRoom(lobbyDirectory, 2_000);
+  await upsertRoom(lobbyDirectory, 1_000);
 
-  const removeResponse = await removeRoom(lobbyDirectory, 3_000, {
+  const removeResponse = await removeRoom(lobbyDirectory, 2_000, {
     roomId: "room-1",
     expectedUpdatedAt: 1_000,
   });
@@ -101,11 +101,11 @@ test("conditional remove does not delete a newer lobby summary", async () => {
   const removePayload = await removeResponse.json();
   assert.equal(removePayload.removed, false);
 
-  const listResponse = await listRooms(lobbyDirectory, 3_000);
+  const listResponse = await listRooms(lobbyDirectory, 2_000);
   const listPayload = await listResponse.json();
   assert.equal(listPayload.rooms.length, 1);
   assert.equal(listPayload.rooms[0].roomId, "room-1");
-  assert.equal(listPayload.rooms[0].updatedAt, 2_000);
+  assert.equal(listPayload.rooms[0].updatedAt, 1_001);
 });
 
 test("conditional remove deletes the matching lobby summary", async () => {
@@ -125,4 +125,32 @@ test("conditional remove deletes the matching lobby summary", async () => {
   const listResponse = await listRooms(lobbyDirectory, 2_000);
   const listPayload = await listResponse.json();
   assert.equal(listPayload.rooms.length, 0);
+});
+
+test("conditional remove does not delete a recreated summary from the same millisecond", async () => {
+  const lobbyDirectory = new LobbyDirectoryDO(new TestDurableObjectState());
+
+  await upsertRoom(lobbyDirectory, 1_000);
+
+  const firstRemoveResponse = await removeRoom(lobbyDirectory, 1_000, {
+    roomId: "room-1",
+    expectedUpdatedAt: 1_000,
+  });
+  assert.equal(firstRemoveResponse.status, 200);
+  assert.equal((await firstRemoveResponse.json()).removed, true);
+
+  await upsertRoom(lobbyDirectory, 1_000);
+
+  const delayedRemoveResponse = await removeRoom(lobbyDirectory, 1_001, {
+    roomId: "room-1",
+    expectedUpdatedAt: 1_000,
+  });
+  assert.equal(delayedRemoveResponse.status, 200);
+  assert.equal((await delayedRemoveResponse.json()).removed, false);
+
+  const listResponse = await listRooms(lobbyDirectory, 1_001);
+  const listPayload = await listResponse.json();
+  assert.equal(listPayload.rooms.length, 1);
+  assert.equal(listPayload.rooms[0].roomId, "room-1");
+  assert.equal(listPayload.rooms[0].updatedAt, 1_001);
 });
