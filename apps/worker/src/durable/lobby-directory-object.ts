@@ -6,7 +6,6 @@ import {
   PLAY_STYLES,
   READY_CHECK_TTL_MS,
   WIN_METRICS,
-  type LobbyListResponse,
   type LobbyRoomSummary,
 } from "@infinitas/shared";
 import { isRecord } from "../utils/validation";
@@ -22,6 +21,7 @@ interface DurableObjectStateLike {
 }
 
 const ROOMS_STORAGE_KEY = "rooms";
+const LAST_UPDATED_AT_STORAGE_KEY = "lastUpdatedAtByRoomId";
 
 function jsonResponse(status: number, payload: unknown): Response {
   return new Response(JSON.stringify(payload), {
@@ -139,6 +139,10 @@ function buildStoredRooms(input: unknown): Map<string, LobbyRoomSummary> {
   const entries = Object.entries(input);
   const rooms = new Map<string, LobbyRoomSummary>();
   for (const [roomId, rawRoom] of entries) {
+    if (!isRecord(rawRoom)) {
+      continue;
+    }
+
     const parsed = parseLobbyRoomSummary(rawRoom);
     if (parsed === null) {
       continue;
@@ -150,6 +154,31 @@ function buildStoredRooms(input: unknown): Map<string, LobbyRoomSummary> {
   return rooms;
 }
 
+function restoreLastIssuedUpdatedAt(
+  input: unknown,
+  rooms: Map<string, LobbyRoomSummary>,
+): number {
+  let lastIssuedUpdatedAt = Number.NEGATIVE_INFINITY;
+
+  if (isFiniteNumber(input)) {
+    lastIssuedUpdatedAt = input;
+  } else if (isRecord(input)) {
+    for (const rawUpdatedAt of Object.values(input)) {
+      if (!isFiniteNumber(rawUpdatedAt)) {
+        continue;
+      }
+
+      lastIssuedUpdatedAt = Math.max(lastIssuedUpdatedAt, rawUpdatedAt);
+    }
+  }
+
+  for (const room of rooms.values()) {
+    lastIssuedUpdatedAt = Math.max(lastIssuedUpdatedAt, room.updatedAt);
+  }
+
+  return lastIssuedUpdatedAt;
+}
+
 function asSerializableRecord(rooms: Map<string, LobbyRoomSummary>): Record<string, LobbyRoomSummary> {
   const result: Record<string, LobbyRoomSummary> = {};
   for (const [roomId, room] of rooms.entries()) {
@@ -159,7 +188,7 @@ function asSerializableRecord(rooms: Map<string, LobbyRoomSummary>): Record<stri
   return result;
 }
 
-function parseRemovePayload(payload: unknown): { roomId: string } | null {
+function parseRemovePayload(payload: unknown): { roomId: string; expectedUpdatedAt?: number } | null {
   if (!isRecord(payload)) {
     return null;
   }
@@ -169,25 +198,30 @@ function parseRemovePayload(payload: unknown): { roomId: string } | null {
     return null;
   }
 
-  return { roomId };
+  const expectedUpdatedAt = payload.expectedUpdatedAt;
+  if (expectedUpdatedAt !== undefined && !isFiniteNumber(expectedUpdatedAt)) {
+    return null;
+  }
+
+  return expectedUpdatedAt === undefined ? { roomId } : { roomId, expectedUpdatedAt };
 }
 
 export class LobbyDirectoryDO {
   private readonly rooms = new Map<string, LobbyRoomSummary>();
+  private lastIssuedUpdatedAt = Number.NEGATIVE_INFINITY;
   private readonly readyPromise: Promise<void>;
 
   constructor(private readonly state: DurableObjectStateLike) {
     this.readyPromise = this.state.blockConcurrencyWhile(async () => {
       const stored = await this.state.storage.get<Record<string, LobbyRoomSummary>>(ROOMS_STORAGE_KEY);
-      if (stored === undefined) {
-        return;
-      }
+      const storedLastUpdatedAt = await this.state.storage.get<unknown>(LAST_UPDATED_AT_STORAGE_KEY);
 
       const restored = buildStoredRooms(stored);
       this.rooms.clear();
       for (const [roomId, room] of restored.entries()) {
         this.rooms.set(roomId, room);
       }
+      this.lastIssuedUpdatedAt = restoreLastIssuedUpdatedAt(storedLastUpdatedAt, restored);
     });
   }
 
@@ -224,7 +258,7 @@ export class LobbyDirectoryDO {
         return left.roomId.localeCompare(right.roomId);
       });
 
-    const response: LobbyListResponse = {
+    const response = {
       rooms,
       serverTime: now,
     };
@@ -247,12 +281,14 @@ export class LobbyDirectoryDO {
 
     const now = Date.now();
     this.cleanupExpired(now);
+    const nextUpdatedAt = Math.max(now, this.lastIssuedUpdatedAt + 1);
+    this.lastIssuedUpdatedAt = nextUpdatedAt;
 
     const normalized: LobbyRoomSummary = {
       ...parsed,
       currentPlayers: Math.max(0, Math.floor(parsed.currentPlayers)),
       isFull: Math.max(0, Math.floor(parsed.currentPlayers)) >= parsed.maxPlayers,
-      updatedAt: now,
+      updatedAt: nextUpdatedAt,
     };
 
     if (isExpired(normalized, now) || !normalized.isPublic) {
@@ -280,9 +316,22 @@ export class LobbyDirectoryDO {
 
     const now = Date.now();
     this.cleanupExpired(now);
+    const current = this.rooms.get(parsed.roomId);
+    if (current === undefined) {
+      await this.persistRooms();
+      return jsonResponse(200, { ok: true, removed: false });
+    }
+
+    if (
+      parsed.expectedUpdatedAt !== undefined &&
+      current.updatedAt !== parsed.expectedUpdatedAt
+    ) {
+      return jsonResponse(200, { ok: true, removed: false });
+    }
+
     this.rooms.delete(parsed.roomId);
     await this.persistRooms();
-    return jsonResponse(200, { ok: true });
+    return jsonResponse(200, { ok: true, removed: true });
   }
 
   private cleanupExpired(now: number): boolean {
@@ -301,6 +350,9 @@ export class LobbyDirectoryDO {
   }
 
   private async persistRooms(): Promise<void> {
-    await this.state.storage.put(ROOMS_STORAGE_KEY, asSerializableRecord(this.rooms));
+    await Promise.all([
+      this.state.storage.put(ROOMS_STORAGE_KEY, asSerializableRecord(this.rooms)),
+      this.state.storage.put(LAST_UPDATED_AT_STORAGE_KEY, this.lastIssuedUpdatedAt),
+    ]);
   }
 }

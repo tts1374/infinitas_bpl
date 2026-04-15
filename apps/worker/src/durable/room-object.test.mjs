@@ -463,6 +463,71 @@ test("internal join-status returns recruiting after host recreates room via RETU
   assert.equal(payload.shareable, true);
 });
 
+test("internal lobby-eligibility returns eligible for PUBLIC lobby rooms", async () => {
+  const roomObject = await createRoomObject();
+  const response = await roomObject.fetch(new Request("https://room.internal/internal/lobby-eligibility", { method: "GET" }));
+  assert.equal(response.status, 200);
+
+  const payload = await response.json();
+  assert.equal(payload.eligible, true);
+});
+
+test("internal lobby-eligibility returns false for auto-match rooms", async () => {
+  const roomObject = await createRoomObject();
+  enableAutoMatchRoom(roomObject);
+
+  const response = await roomObject.fetch(new Request("https://room.internal/internal/lobby-eligibility", { method: "GET" }));
+  assert.equal(response.status, 200);
+
+  const payload = await response.json();
+  assert.equal(payload.eligible, false);
+});
+
+test("internal lobby-eligibility returns false when lobby is full", async () => {
+  const roomObject = await createRoomObject();
+  roomObject.roomState.settings.max_players = 2;
+  const hostSocket = new TestSocket();
+  const guestSocket = new TestSocket();
+  await joinPlayer(roomObject, hostSocket, "host", "msg-1");
+  await joinPlayer(roomObject, guestSocket, "guest", "msg-2");
+
+  const response = await roomObject.fetch(new Request("https://room.internal/internal/lobby-eligibility", { method: "GET" }));
+  assert.equal(response.status, 200);
+
+  const payload = await response.json();
+  assert.equal(payload.eligible, false);
+});
+
+test("internal lobby-eligibility returns false after match starts", async () => {
+  const roomObject = await createRoomObject();
+  const hostSocket = new TestSocket();
+  const guestSocket = new TestSocket();
+  await joinPlayer(roomObject, hostSocket, "host", "msg-1");
+  await joinPlayer(roomObject, guestSocket, "guest", "msg-2");
+  roomObject.roomState.setPlayerReady("host", true);
+  roomObject.roomState.setPlayerReady("guest", true);
+  const startResult = roomObject.roomState.startMatch("host", new Date("2026-03-08T00:00:00.000Z"));
+  assert.equal(startResult.ok, true);
+
+  const response = await roomObject.fetch(new Request("https://room.internal/internal/lobby-eligibility", { method: "GET" }));
+  assert.equal(response.status, 200);
+
+  const payload = await response.json();
+  assert.equal(payload.eligible, false);
+});
+
+test("internal lobby-eligibility returns ROOM_STATE_LOST for uninitialized rooms", async () => {
+  const state = new TestDurableObjectState();
+  const roomObject = new RoomDurableObject(state, createEnv());
+  await roomObject.readyPromise;
+
+  const response = await roomObject.fetch(new Request("https://room.internal/internal/lobby-eligibility", { method: "GET" }));
+  assert.equal(response.status, 404);
+
+  const payload = await response.json();
+  assert.equal(payload.error, "ROOM_STATE_LOST");
+});
+
 test("READY_SET with stale generation is rejected", async () => {
   const roomObject = await createRoomObject();
   const hostSocket = new TestSocket();
