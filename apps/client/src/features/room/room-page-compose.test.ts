@@ -41,7 +41,14 @@ test("buildBplControlledProps forwards shared and BPL-specific props", () => {
     currentTurn: 1,
     roundCount: 3,
     picks: [{ title: "Pick", artist: "Artist", level: "11" }],
-    history: [{ roundIndex: 1 }],
+    history: [
+      {
+        round: 1,
+        song: { title: "History Song", artist: "Artist", level: "10" },
+        scores: { "1": 1000, "2": 900 },
+        winnerId: "1",
+      },
+    ],
     playerStatus: { "1": "PLAYED" },
     playerMetrics: { "1": 123 },
     metricLabel: "EX SCORE",
@@ -81,7 +88,14 @@ test("buildBplControlledProps forwards shared and BPL-specific props", () => {
   assert.equal(controlled.currentTurn, 1);
   assert.equal(controlled.roundCount, 3);
   assert.deepEqual(controlled.picks, [{ title: "Pick", artist: "Artist", level: "11" }]);
-  assert.deepEqual(controlled.history, [{ roundIndex: 1 }]);
+  assert.deepEqual(controlled.history, [
+    {
+      round: 1,
+      song: { title: "History Song", artist: "Artist", level: "10" },
+      scores: { "1": 1000, "2": 900 },
+      winnerId: "1",
+    },
+  ]);
   assert.deepEqual(controlled.playerStatus, { "1": "PLAYED" });
   assert.deepEqual(controlled.playerMetrics, { "1": 123 });
   assert.equal(controlled.metricLabel, "EX SCORE");
@@ -129,7 +143,14 @@ test("buildArenaControlledProps forwards shared and ARENA-specific props", () =>
     onLeaveRoom,
     onRemakeStage,
     roundCount: 4,
-    history: [{ roundIndex: 2 }],
+    history: [
+      {
+        round: 2,
+        song: { title: "Arena History Song", artist: "Artist", level: "11" },
+        scores: { "1": 1200, "2": 1100, "3": 1000, "4": 900 },
+        winnerId: "1",
+      },
+    ],
     playerPicks: { "1": { title: "Arena Song", artist: "Artist", level: "12" } },
     currentPlayers: 2,
     maxPlayers: 4,
@@ -177,7 +198,14 @@ test("buildArenaControlledProps forwards shared and ARENA-specific props", () =>
   assert.equal(controlled.onLeaveRoom, onLeaveRoom);
   assert.equal(controlled.onRemakeStage, onRemakeStage);
   assert.equal(controlled.roundCount, 4);
-  assert.deepEqual(controlled.history, [{ roundIndex: 2 }]);
+  assert.deepEqual(controlled.history, [
+    {
+      round: 2,
+      song: { title: "Arena History Song", artist: "Artist", level: "11" },
+      scores: { "1": 1200, "2": 1100, "3": 1000, "4": 900 },
+      winnerId: "1",
+    },
+  ]);
   assert.deepEqual(controlled.playerPicks, { "1": { title: "Arena Song", artist: "Artist", level: "12" } });
   assert.equal(controlled.currentPlayers, 2);
   assert.equal(controlled.maxPlayers, 4);
