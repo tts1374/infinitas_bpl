@@ -9,6 +9,7 @@ description: "Turn Phase D findings into issue-ready follow-up artifacts. Use wh
 
 Use this skill to prevent Phase D from ending with only a priority list.
 Convert accepted follow-up candidates into artifacts that can be pasted into Issues or kickoff comments.
+This includes governance/process/prompt/snippet improvements when they are explicit Phase D findings.
 
 ## Inputs
 
@@ -16,6 +17,7 @@ Convert accepted follow-up candidates into artifacts that can be pasted into Iss
 - Audit findings
 - Current constraints and non-goals
 - Release timing or cycle boundary, if known
+- Governance/process gaps, if any
 
 ## Workflow
 
@@ -24,6 +26,7 @@ Convert accepted follow-up candidates into artifacts that can be pasted into Iss
    - urgent correctness work
    - bounded maintenance work
    - optional polish
+   - governance/process/prompt improvements
 3. Decide which items deserve their own follow-up Issue versus a bundle.
 4. For promoted items, emit an `Issue-ready artifact` using [docs/issue_ready_followup_template.md](C:/work/infinitas_arena/infinitas_arena/docs/issue_ready_followup_template.md).
 5. Add:
@@ -47,3 +50,5 @@ Apply these rules:
 - Do not stop at title-only backlog entries.
 - Keep each issue-ready artifact bounded enough to re-enter Phase A/B without re-discovery.
 - If an item still needs a human product decision, mark it explicitly instead of pretending it is ready.
+- Do not auto-convert every governance observation into a docs patch. Promote only recurring or reusable gaps.
+- Governance/process follow-ups should identify the affected doc/skill/agent/prompt surface explicitly.

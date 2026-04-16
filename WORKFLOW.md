@@ -230,7 +230,8 @@ Phase C 開始前に次を必ず出力する:
 ルール:
 - C Kickoff 出力完了まで Phase C 実装を開始してはならない
 - 必須ロール未委譲の場合は `BLOCKED` で停止する
-- Plan成果物がない場合は、C Kickoff 冒頭で `A-lite` 合意サマリを再掲して境界を固定する
+- concrete な `tasks/*.md` を要求していない文脈でのみ、Plan成果物がない場合は C Kickoff 冒頭で `A-lite` 合意サマリを再掲して境界を固定する
+- cross-turn handoff や prompt/skill が concrete な `tasks/*.md` を要求する文脈では、A-lite へフォールバックせず `BLOCKED` で停止する
 - ひな型が必要な場合は `docs/c_kickoff_comment_template.md` を使用してよい
 - 将来の spawn 意図だけがある状態で `delegation execution record` を完了扱いしない
 
@@ -279,6 +280,30 @@ Phase D で follow-up を起票または起票準備する場合は、優先度�
 ルール:
 - 今サイクル外へ出す項目は、次スレッドでそのまま Phase A/B を再開できる粒度にする
 - ひな型が必要な場合は `docs/issue_ready_followup_template.md` を使用してよい
+
+### 6.6.1 Phase D Governance Feedback Loop
+
+Phase D 終了時は、必要に応じて governance / agent / skill / prompt/snippet 側の改善余地を確認する。
+
+最低限の確認:
+- user が同じ制約や順序を複数回再指摘したか
+- local validation と CI validation の面差で取りこぼしが起きたか
+- `delegation execution plan` / `delegation execution record` の語彙や運用が曖昧だったか
+- review / close の GitHub write-back で反映確認不足があったか
+- 同種の `P1` / `P2` 指摘や運用ミスが再発したか
+- prompt/snippet の文面不足で planning-only / placeholder handoff / close ordering miss が起きたか
+
+出力:
+- `none`
+- `governance follow-up needed`
+- `governance patch applied by explicit request`
+
+ルール:
+- 上記確認は行うが、毎回 docs/skills/agents/snippets を自動変更しない
+- governance 変更は、current scope に含まれるか、user が明示的に要求した場合のみ実施する
+- 実施しない場合でも、再利用価値があるギャップは follow-up candidate として Phase D 出力へ残す
+- governance 改善を follow-up 化する場合は、`phase-d-followup-issue-flow` を使って issue-ready artifact 粒度まで整える
+- 会話をまたぐ Phase C/D handoff では、concrete な `tasks/*.md` がない placeholder 指定をそのまま受理しない。必要なら `BLOCKED` で止める
 
 ### 6.7 Review Response Protocol
 

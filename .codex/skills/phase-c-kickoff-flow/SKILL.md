@@ -1,6 +1,6 @@
 ---
 name: phase-c-kickoff-flow
-description: "Create Phase C kickoff artifacts before implementation starts. Use when Phase A/B is already decided and Codex needs to restate the source of truth, re-judge execution profile, apply the Spawn Gate, and emit a `delegation execution record` from an Issue, `tasks/*.md`, or A-lite agreement."
+description: "Create Phase C kickoff artifacts before implementation starts. Use when Phase A/B is already decided and Codex needs to restate the source of truth, re-judge execution profile, apply the Spawn Gate, and emit a `delegation execution record` from an Issue, `tasks/*.md`, or, only when concrete task artifacts are not required, an A-lite agreement."
 ---
 
 # Phase C Kickoff Flow
@@ -13,9 +13,9 @@ Do not use it for initial requirement shaping or task breakdown.
 ## Inputs
 
 - Source of truth:
-  - `Issue`
   - `tasks/*.md`
-  - A-lite agreement summary
+  - `Issue`
+  - A-lite agreement summary (only when governing context does not require a concrete task artifact)
 - Current Phase A/B result, if already stated
 - Expected touched layers
 - Applicable governance:
@@ -26,14 +26,16 @@ Do not use it for initial requirement shaping or task breakdown.
 ## Workflow
 
 1. Confirm that Phase C is the next intended step.
-2. Identify the source of truth and restate it explicitly.
-3. Re-judge:
+2. Confirm whether the governing context requires a concrete `tasks/*.md` artifact.
+3. Identify the source of truth and restate it explicitly.
+4. Re-judge:
    - execution profile
    - Plan Mode status
    - Spawn Gate result
-4. Emit `delegation execution record` entries for each role that matters now.
-5. If a mandatory spawn path is missing, return `BLOCKED` instead of silently continuing.
-6. Use [references/kickoff-checklist.md](references/kickoff-checklist.md) and [docs/c_kickoff_comment_template.md](C:/work/infinitas_arena/infinitas_arena/docs/c_kickoff_comment_template.md) to keep output shape stable.
+5. Emit `delegation execution record` entries for each role that matters now.
+6. If a concrete task artifact is required and missing, return `BLOCKED` instead of falling back to A-lite.
+7. If a mandatory spawn path is missing, return `BLOCKED` instead of silently continuing.
+8. Use [references/kickoff-checklist.md](references/kickoff-checklist.md) and [docs/c_kickoff_comment_template.md](C:/work/infinitas_arena/infinitas_arena/docs/c_kickoff_comment_template.md) to keep output shape stable.
 
 ## Output Contract
 
@@ -78,4 +80,6 @@ Replan triggers:
 - Do not start implementation in the same output block.
 - Do not omit the source of truth.
 - Do not mark kickoff `READY` if a mandatory High-Risk spawn path is still missing.
-- If Plan artifact is missing, restate the A-lite agreement before giving kickoff output.
+- Use `delegation execution record` consistently in kickoff output; do not replace it with `delegation execution plan`.
+- If governing context requires `tasks/*.md`, do not fall back to an A-lite agreement when the artifact is missing; return `BLOCKED`.
+- A-lite fallback is allowed only when the workflow explicitly permits no concrete task artifact.
