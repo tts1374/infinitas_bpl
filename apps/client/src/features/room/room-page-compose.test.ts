@@ -132,6 +132,7 @@ test("buildArenaControlledProps forwards shared and ARENA-specific props", () =>
     playingPhase: "PLAY_START",
     playingCountdownSeconds: 9,
     isHost: true,
+    selfPlayerId: "1",
     searchModal: "modal",
     disablePrimaryAction: false,
     disableLeave: true,
@@ -189,6 +190,7 @@ test("buildArenaControlledProps forwards shared and ARENA-specific props", () =>
   assert.equal(controlled.playingPhase, "PLAY_START");
   assert.equal(controlled.playingCountdownSeconds, 9);
   assert.equal(controlled.isHost, true);
+  assert.equal(controlled.selfPlayerId, "1");
   assert.equal(controlled.searchModal, "modal");
   assert.equal(controlled.disablePrimaryAction, false);
   assert.equal(controlled.disableLeave, true);
