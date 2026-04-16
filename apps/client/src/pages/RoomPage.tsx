@@ -62,6 +62,8 @@ import { useClipboardFeedback } from "../features/room/presentation-hooks";
 import {
   buildPresentationPlayerMaps,
   formatCountdown,
+  getDifficultyFromShortLabel,
+  getDifficultyShortLabel,
   type RoomHistoryItem,
   type RoomSong,
 } from "../features/room/presentation-shared";
@@ -80,12 +82,6 @@ import { openExternalUrl } from "../services/tauri-bridge";
 import { roomStore, useRoomStore, type RoomConnectionStatus } from "../stores/room-store";
 import { isVoicePlaybackEnabled, useSettingsStore } from "../stores/settings-store";
 import { formatDateTime, stringifyJson } from "../utils/format";
-
-type DifficultyPresentation = {
-  shortLabel: string;
-  colorClass: string;
-  textClass: string;
-};
 
 type DisplayExpectedKey = {
   play_style: string;
@@ -247,25 +243,8 @@ function getPlayingCountdown(round: CurrentRoundSnapshot, nowMs: number): {
   };
 }
 
-function getDifficultyPresentation(difficulty: string | null | undefined): DifficultyPresentation {
-  switch (difficulty) {
-    case "BEGINNER":
-      return { shortLabel: "B", colorClass: "bg-green-500", textClass: "text-green-400" };
-    case "NORMAL":
-      return { shortLabel: "N", colorClass: "bg-blue-500", textClass: "text-blue-400" };
-    case "HYPER":
-      return { shortLabel: "H", colorClass: "bg-yellow-500", textClass: "text-yellow-400" };
-    case "ANOTHER":
-      return { shortLabel: "A", colorClass: "bg-red-500", textClass: "text-red-400" };
-    case "LEGGENDARIA":
-      return { shortLabel: "L", colorClass: "bg-purple-600", textClass: "text-purple-400" };
-    default:
-      return { shortLabel: "-", colorClass: "bg-slate-500", textClass: "text-slate-400" };
-  }
-}
-
 function getDifficultyId(difficulty: string | null | undefined): string {
-  return getDifficultyPresentation(difficulty).shortLabel;
+  return getDifficultyShortLabel(difficulty);
 }
 
 function describeAutoRematchBlockReason(reason: string | null | undefined): string {
@@ -286,20 +265,7 @@ function describeAutoRematchBlockReason(reason: string | null | undefined): stri
 }
 
 function getDifficultyFromId(difficultyId: string | null): (typeof CHART_DIFFICULTIES)[number] | null {
-  switch (difficultyId) {
-    case "B":
-      return "BEGINNER";
-    case "N":
-      return "NORMAL";
-    case "H":
-      return "HYPER";
-    case "A":
-      return "ANOTHER";
-    case "L":
-      return "LEGGENDARIA";
-    default:
-      return null;
-  }
+  return getDifficultyFromShortLabel(difficultyId);
 }
 
 function formatSongKeyTitle(
@@ -307,7 +273,7 @@ function formatSongKeyTitle(
   playStyle: string | null | undefined,
   difficulty: string | null | undefined,
 ): string {
-  return `${titleSearchKey}(${playStyle ?? "SP"}${getDifficultyPresentation(difficulty).shortLabel})`;
+  return `${titleSearchKey}(${playStyle ?? "SP"}${getDifficultyShortLabel(difficulty)})`;
 }
 
 function getExpectedKeyCacheKey(expectedKey: DisplayExpectedKey | null | undefined): string | null {
