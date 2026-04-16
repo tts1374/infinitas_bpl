@@ -10,30 +10,23 @@ max_depth = 2
 
 [mcp_servers]
 
-# GitHub MCP (official local server via Docker)
-# Required env on host: GITHUB_PERSONAL_ACCESS_TOKEN
-[mcp_servers.github]
-command = "docker"
-args = [
-  "run", "-i", "--rm",
-  "-e", "GITHUB_PERSONAL_ACCESS_TOKEN",
-  "-e", "GITHUB_TOOLSETS=repos,issues,pull_requests,actions",
-  "-e", "GITHUB_READ_ONLY=1",
-  "ghcr.io/github/github-mcp-server"
-]
-startup_timeout_sec = 30.0
-tool_timeout_sec = 60.0
+# GitHub MCP is intentionally user-local.
+# Configure it in ~/.codex/config.toml (or via `codex mcp add`) so PAT wiring stays out of repo config.
 
 # Cloudflare Workers Bindings MCP (remote)
 [mcp_servers.cloudflareBindings]
-url = "https://bindings.mcp.cloudflare.com/mcp"
+# Keep Bindings on mcp-remote so Cloudflare remote MCP auth/transport matches Observability.
+command = "npx"
+args = ["-y", "mcp-remote@latest", "https://bindings.mcp.cloudflare.com/mcp"]
 startup_timeout_sec = 30.0
 tool_timeout_sec = 60.0
 
 # Cloudflare Observability MCP (remote)
 
 [mcp_servers.cloudflareObservability]
-url = "https://observability.mcp.cloudflare.com/mcp"
+# Keep Observability on mcp-remote so OAuth state persists reliably in Codex desktop.
+command = "npx"
+args = ["-y", "mcp-remote@latest", "https://observability.mcp.cloudflare.com/mcp"]
 startup_timeout_sec = 30.0
 tool_timeout_sec = 60.0
 
