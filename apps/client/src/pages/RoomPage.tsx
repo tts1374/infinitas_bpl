@@ -49,6 +49,10 @@ import {
   type RoomBPLPlayer,
 } from "../components/RoomBPL";
 import {
+  buildArenaControlledProps,
+  buildBplControlledProps,
+} from "../features/room/room-page-compose";
+import {
   resolveSongVersionDbValue,
   resolveSongVersionLabel,
   SongSearchModalView,
@@ -2680,7 +2684,7 @@ export function RoomPage() {
             : historyRounds.length > 0
               ? historyRounds[historyRounds.length - 1]!.roundIndex + 1
               : 1;
-      const controlledProps: RoomBPLControlledState = {
+      const controlledProps: RoomBPLControlledState = buildBplControlledProps({
         roomStatus: bplRoomStatus,
         isReady: isHost ? true : me?.ready ?? false,
         closeReason: snapshot.close_reason ?? "ALL_ROUNDS_COMPLETED",
@@ -2690,39 +2694,25 @@ export function RoomPage() {
               ? finalMatchResultCountdownSeconds ?? BPL_RESULT_PHASE_SECONDS
               : bplLeadInSeconds
             : resultCountdown ?? BPL_RESULT_PHASE_SECONDS,
-        currentTurn: activeBplPickIndex ?? 0,
-        roundCount: bplRoundCount,
-        picks: bplPicks,
-        history: bplHistory,
         showSearch: showPickerModal,
-        lastPickedSong: lastMockPickedSong,
         showCutIn: ownPickCutInChart !== null,
+        lastPickedSong: lastMockPickedSong,
         copiedId: copiedRoomId,
         copiedCode: copiedJoinCode,
         lobbyTimer: getRemainingSeconds(getIsoTimeMs(snapshot.timers.ready_check_deadline), clockNowMs) ?? 0,
         roomId: roomIdLabel,
         joinCode: joinCodeLabel,
-        battleModeLabel: formatRegulationLabel(snapshot.settings.play_style, snapshot.settings.level_filter),
         playTime: playElapsedSeconds,
         playingPhase: mockPlayingPhase,
         playingCountdownSeconds: playingCountdown?.remainingSeconds ?? null,
-        playerStatus: bplPlayerStatus,
-        playerMetrics: bplPlayerMetrics,
-        metricLabel: bplMetricLabel,
-        resultPlayers: bplResultPlayers,
-        resultRegulationLabel: getBplStageLabel(snapshot.settings.mode),
-        finalResultPlayers: bplFinalResultPlayers,
-        finalWinningPlayerName: bplWinningPlayerName,
         isHost,
-        players: bplPlayers,
-        roundPickerNames: bplRoundPickerNames,
         selfPlayerId: selfMockPlayerId ?? (isHost ? "1" : "2"),
+        searchModal: pickerModal,
         disablePrimaryAction:
           snapshot.room_state !== "LOBBY" ||
           snapshot.settings.auto_match === true ||
           (isHost && lobbyStartIssues.length > 0),
         disableLeave: leaveRoomDisabled,
-        searchModal: pickerModal,
         onCopyRoomId: () => roomIdCopy.copy(roomIdLabel),
         onCopyJoinCode: () => joinCodeCopy.copy(joinCodeLabel),
         onPrimaryAction: onPrimaryRoomAction,
@@ -2734,7 +2724,21 @@ export function RoomPage() {
         },
         onLeaveRoom: requestLeaveRoom,
         ...(snapshot.settings.auto_match === true ? {} : { onRemakeStage: onReturnToLobby }),
-      };
+        currentTurn: activeBplPickIndex ?? 0,
+        roundCount: bplRoundCount,
+        picks: bplPicks,
+        history: bplHistory,
+        battleModeLabel: formatRegulationLabel(snapshot.settings.play_style, snapshot.settings.level_filter),
+        playerStatus: bplPlayerStatus,
+        playerMetrics: bplPlayerMetrics,
+        metricLabel: bplMetricLabel,
+        resultPlayers: bplResultPlayers,
+        resultRegulationLabel: getBplStageLabel(snapshot.settings.mode),
+        finalResultPlayers: bplFinalResultPlayers,
+        finalWinningPlayerName: bplWinningPlayerName,
+        players: bplPlayers,
+        roundPickerNames: bplRoundPickerNames,
+      });
 
       return <RoomBPLPresentational {...controlledProps} />;
     }
@@ -2761,7 +2765,7 @@ export function RoomPage() {
           : historyRounds.length > 0
             ? historyRounds[historyRounds.length - 1]!.roundIndex + 1
             : 1;
-    const controlledProps: RoomArenaControlledState = {
+    const controlledProps: RoomArenaControlledState = buildArenaControlledProps({
       roomStatus: arenaRoomStatus,
       isReady: isHost ? true : me?.ready ?? false,
       closeReason: snapshot.close_reason ?? "ALL_ROUNDS_COMPLETED",
@@ -2771,41 +2775,18 @@ export function RoomPage() {
             ? finalMatchResultCountdownSeconds ?? ARENA_RESULT_PHASE_SECONDS
             : arenaLeadInSeconds
           : resultCountdown ?? ARENA_RESULT_PHASE_SECONDS,
-      roundCount: arenaRoundCount,
-      history: arenaHistory,
-      playerPicks: arenaPicks,
       showSearch: showPickerModal,
       showCutIn: ownPickCutInChart !== null,
       lastPickedSong: lastMockPickedSong,
       copiedId: copiedRoomId,
       copiedCode: copiedJoinCode,
       lobbyTimer: getRemainingSeconds(getIsoTimeMs(snapshot.timers.ready_check_deadline), clockNowMs) ?? 0,
-      currentPlayers: snapshot.players.length,
-      maxPlayers: snapshot.settings.max_players,
-      roomName: arenaRoomName,
-      battleModeLabel: arenaBattleModeLabel,
-      regCount: arenaRegCount,
-      isPrivateRoom: snapshot.settings.visibility === "PRIVATE",
       roomId: roomIdLabel,
       joinCode: joinCodeLabel,
-      pickingCountdownSeconds: pickingCountdown ?? 0,
-      logs: arenaLobbyLogs,
-      matchInfoItems: arenaMatchInfoItems,
-      publicSharePanel,
       playTime: playElapsedSeconds,
       playingPhase: mockPlayingPhase,
       playingCountdownSeconds: playingCountdown?.remainingSeconds ?? null,
-      playerStatus: arenaPlayerStatus,
-      playerMetrics: arenaPlayerMetrics,
-      metricLabel: arenaMetricLabel,
-      resultSong: arenaResultSong,
-      resultPlayers: arenaResultPlayers,
-      durationLabel: arenaFinalDurationLabel,
-      finalResultPlayers: arenaFinalResultPlayers,
-      totalRounds: arenaTotalRounds,
       isHost,
-      allPlayers: arenaPlayers,
-      selectedByName: arenaCurrentRoundPickerName,
       selfPlayerId: selfMockPlayerId ?? (isHost ? "1" : "2"),
       searchModal: pickerModal,
       disablePrimaryAction:
@@ -2816,7 +2797,6 @@ export function RoomPage() {
       onCopyRoomId: () => roomIdCopy.copy(roomIdLabel),
       onCopyJoinCode: () => joinCodeCopy.copy(joinCodeLabel),
       onPrimaryAction: onPrimaryRoomAction,
-      onToggleReady: onPrimaryRoomAction,
       onSkip: onMockSkip,
       onProceedToResult: () => {
         if (currentRound) {
@@ -2825,7 +2805,31 @@ export function RoomPage() {
       },
       onLeaveRoom: requestLeaveRoom,
       ...(snapshot.settings.auto_match === true ? {} : { onRemakeStage: onReturnToLobby }),
-    };
+      roundCount: arenaRoundCount,
+      history: arenaHistory,
+      playerPicks: arenaPicks,
+      currentPlayers: snapshot.players.length,
+      maxPlayers: snapshot.settings.max_players,
+      roomName: arenaRoomName,
+      battleModeLabel: arenaBattleModeLabel,
+      regCount: arenaRegCount,
+      isPrivateRoom: snapshot.settings.visibility === "PRIVATE",
+      pickingCountdownSeconds: pickingCountdown ?? 0,
+      logs: arenaLobbyLogs,
+      matchInfoItems: arenaMatchInfoItems,
+      publicSharePanel,
+      playerStatus: arenaPlayerStatus,
+      playerMetrics: arenaPlayerMetrics,
+      metricLabel: arenaMetricLabel,
+      resultSong: arenaResultSong,
+      resultPlayers: arenaResultPlayers,
+      durationLabel: arenaFinalDurationLabel,
+      finalResultPlayers: arenaFinalResultPlayers,
+      totalRounds: arenaTotalRounds,
+      allPlayers: arenaPlayers,
+      selectedByName: arenaCurrentRoundPickerName,
+      onToggleReady: onPrimaryRoomAction,
+    });
 
     return <RoomArenaPresentational {...controlledProps} />;
   })();
