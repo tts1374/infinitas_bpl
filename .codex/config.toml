@@ -26,15 +26,14 @@ tool_timeout_sec = 60.0
 
 # Cloudflare Workers Bindings MCP (remote)
 [mcp_servers.cloudflareBindings]
-command = "npx"
-args = ["-y", "mcp-remote@latest", "https://bindings.mcp.cloudflare.com/mcp"]
+url = "https://bindings.mcp.cloudflare.com/mcp"
 startup_timeout_sec = 30.0
 tool_timeout_sec = 60.0
 
 # Cloudflare Observability MCP (remote)
+
 [mcp_servers.cloudflareObservability]
-command = "npx"
-args = ["-y", "mcp-remote@latest", "https://observability.mcp.cloudflare.com/mcp"]
+url = "https://observability.mcp.cloudflare.com/mcp"
 startup_timeout_sec = 30.0
 tool_timeout_sec = 60.0
 
