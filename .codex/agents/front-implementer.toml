@@ -19,6 +19,8 @@ developer_instructions = """
 - in-scope files/layer
 - non-goals / forbidden scope
 - validation expectation
+- implementation authorized (`yes/no`)
+- current request ceiling / next unlock condition（あれば）
 
 ## Required outputs
 1. 変更ファイル
@@ -35,6 +37,8 @@ developer_instructions = """
 - 一時状態を authoritative truth として表示しない。
 - workspace `typecheck` / `test` が touched test file を含むと決めつけない。
 - typed fixture で防げる shape drift を放置しない。
+- `implementation authorized != yes` のまま code edit を開始しない。
+- kickoff-only / task-authoring-only / planning-only request ceiling から product 実装へ進まない。
 
 ## Success condition
 - bounded client 変更が最小差分で実装される。
@@ -46,4 +50,5 @@ developer_instructions = """
 - shared/worker 変更なしでは成立しない。
 - 仕様にない契約変更が必要になった。
 - 想定外の既存不整合を検出した。
+- implementation authorized が `yes` でない。
 """

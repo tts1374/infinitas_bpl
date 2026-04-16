@@ -56,6 +56,15 @@
 - design docs が期待動作を既に定義している場合、意図変更でない限り docs 追加より実装整合を優先する
 - docs 更新が必要なのは、仕様自体を変えるとき、または現行 docs が実態と食い違っていると確認できたときに限る
 
+### 1.4.1 Phase Boundary Anchoring
+
+ルール:
+- 正本にした `tasks/*.md` / kickoff artifact / accepted plan / Phase summary が `terminal phase` / `stop condition` / `current request ceiling` を含む場合、それらも execution boundary の一部として扱う
+- user の広い動詞（例: 「この plan を実施する」）は、正本 artifact にあるより狭い phase 境界や停止条件を自動では上書きしない
+- 正本 artifact が `task作成まで` / `kickoffまで` / `planning-only` を示している場合、その turn で blocker を解消しても downstream の実装/commit/PR を自動開始しない
+- 広い要求と狭い phase 指示が競合する場合、より狭い phase 指示を優先する
+- downstream phase へ進むには、user の明示解除または正本 artifact 側の明示許可が必要
+
 ### 1.5 Sticky User Constraints
 
 ルール:
@@ -63,6 +72,7 @@
 - user が同じ制約を再度指摘した場合、その制約は「見逃してはいけない運用ルール」に格上げし、以後の Phase / delegation / validation / close に持ち越す
 - sticky constraint は、後続の Entry Protocol / delegation packet / validation plan / close plan に影響する場合、出力へ再掲または織り込む
 - ローカル判断や慣例で sticky constraint を黙って上書きしない。成立不能なら `BLOCKED` / `ESCALATION` を返す
+- `A〜C Kickoffまで` / `task作成まで` / `実装は開始しない` のような terminal phase 指示は sticky hard constraint として扱い、明示解除まで downstream phase を開始しない
 
 ---
 

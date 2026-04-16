@@ -5,6 +5,8 @@ Use this checklist before creating commits and PRs in Phase C.
 ## 1. Scope Gate
 
 - [ ] Changed files match declared in-scope files/subtree.
+- [ ] Current request ceiling permits commit/PR work.
+- [ ] Unrelated local diff is isolated or deferred before staging.
 - [ ] No unrelated refactor, rename, reorder, or formatting-only change.
 - [ ] Any scope expansion is explicitly justified.
 

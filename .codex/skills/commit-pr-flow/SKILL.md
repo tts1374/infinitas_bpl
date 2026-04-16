@@ -28,6 +28,7 @@ Convert a scoped diff into reviewable commits and a PR without expanding scope.
 
 2. Confirm scope boundary:
 - Compare changed files to declared in-scope files.
+- If unrelated local changes exist, isolate the scoped work in a clean worktree or equivalent before staging.
 - Isolate or defer unrelated changes.
 - Keep `1 plan item = 1 logical commit` when practical.
 

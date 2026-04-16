@@ -4,6 +4,9 @@
 - Name the source of truth explicitly.
 - Re-judge `Local-Fast / Standard / High-Risk`.
 - Restate `Plan Mode`.
+- Restate current request ceiling / allowed outputs / forbidden outputs.
+- State whether implementation is authorized now.
+- State the next unlock condition.
 - Apply the correct Spawn Gate from `WORKFLOW.md`.
 - Emit `delegation execution record`.
 - Stop with `BLOCKED` if mandatory spawn is still missing.

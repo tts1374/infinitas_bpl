@@ -18,6 +18,7 @@ Do not use it for initial requirement shaping or task breakdown.
   - A-lite agreement summary (only when governing context does not require a concrete task artifact)
 - Current Phase A/B result, if already stated
 - Expected touched layers
+- Current request ceiling / next unlock condition, if already fixed
 - Applicable governance:
   - `AGENTS.md`
   - `WORKFLOW.md`
@@ -32,10 +33,14 @@ Do not use it for initial requirement shaping or task breakdown.
    - execution profile
    - Plan Mode status
    - Spawn Gate result
-5. Emit `delegation execution record` entries for each role that matters now.
-6. If a concrete task artifact is required and missing, return `BLOCKED` instead of falling back to A-lite.
-7. If a mandatory spawn path is missing, return `BLOCKED` instead of silently continuing.
-8. Use [references/kickoff-checklist.md](references/kickoff-checklist.md) and [docs/c_kickoff_comment_template.md](C:/work/infinitas_arena/infinitas_arena/docs/c_kickoff_comment_template.md) to keep output shape stable.
+5. State:
+   - current request ceiling
+   - whether implementation is authorized now
+   - next unlock condition
+6. Emit `delegation execution record` entries for each role that matters now.
+7. If a concrete task artifact is required and missing, return `BLOCKED` instead of falling back to A-lite.
+8. If a mandatory spawn path is missing, return `BLOCKED` instead of silently continuing.
+9. Use [references/kickoff-checklist.md](references/kickoff-checklist.md) and [docs/c_kickoff_comment_template.md](C:/work/infinitas_arena/infinitas_arena/docs/c_kickoff_comment_template.md) to keep output shape stable.
 
 ## Output Contract
 
@@ -44,9 +49,11 @@ Always return these sections in this order:
 2. `Source of truth`
 3. `Execution profile re-judgment`
 4. `Plan Mode`
-5. `Spawn Gate result`
-6. `delegation execution record`
-7. `Replan triggers`
+5. `Current request boundary`
+6. `Implementation authorization`
+7. `Spawn Gate result`
+8. `delegation execution record`
+9. `Replan triggers`
 
 Use this template:
 
@@ -60,6 +67,15 @@ Execution profile re-judgment:
 - <Local-Fast|Standard|High-Risk>
 
 Plan Mode:
+- <YES|NO>
+
+Current request boundary:
+- <ceiling>
+- allowed now: <outputs>
+- forbidden now: <outputs>
+- next unlock condition: <condition>
+
+Implementation authorization:
 - <YES|NO>
 
 Spawn Gate result:
@@ -78,8 +94,11 @@ Replan triggers:
 ## Rules
 
 - Do not start implementation in the same output block.
+- `READY` kickoff does not by itself authorize implementation.
 - Do not omit the source of truth.
 - Do not mark kickoff `READY` if a mandatory High-Risk spawn path is still missing.
 - Use `delegation execution record` consistently in kickoff output; do not replace it with `delegation execution plan`.
 - If governing context requires `tasks/*.md`, do not fall back to an A-lite agreement when the artifact is missing; return `BLOCKED`.
 - A-lite fallback is allowed only when the workflow explicitly permits no concrete task artifact.
+- If current request ceiling is kickoff-only / task-authoring-only / planning-only, stop after kickoff even when kickoff is `READY`.
+- If missing artifact is the only blocker and artifact creation is allowed, creating that artifact does not automatically authorize same-turn implementation.

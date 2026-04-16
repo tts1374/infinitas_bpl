@@ -27,6 +27,20 @@
 - Entry Protocol の出力は短くてよいが、後続の Phase 判断を再現できる粒度で残す
 - user が同一スレッドで再指摘した制約や順序がある場合、sticky constraint として以後の Phase 出力にも反映する
 
+### 0.2 Execution Boundary From Source Artifact
+
+正本にした `Issue` / `tasks/*.md` / kickoff artifact / accepted plan に phase 境界や停止条件がある場合、着手前に最低限次を抽出する:
+- `current request ceiling`
+- `allowed outputs now`
+- `forbidden outputs now`
+- `next unlock condition`
+
+ルール:
+- user の広い動詞は、正本 artifact のより狭い phase 境界を自動では上書きしない
+- `task作成まで` / `kickoffまで` / `planning-only` が ceiling の場合、artifact 作成や blocker 解消後もその turn では downstream phase を開始しない
+- missing artifact が唯一の blocker で、その作成が allowed output に含まれる場合、artifact 作成で止まり、実装は `next unlock condition` を満たすまで開始しない
+- broad request と narrow phase ceiling が競合する場合、narrow ceiling を優先する
+
 ---
 
 ## 1. Phase Model (A/B/C/D)
@@ -140,6 +154,10 @@ Plan Mode では `tasks/<branch-or-pr-name>.md` を作成する。
 最低限の記載:
 - 目的
 - 非目的
+- 現リクエスト境界
+- 今やってよい出力
+- 今やってはいけない出力
+- 次の解除条件
 - 変更点
 - 影響範囲（ユーザー/データ/互換性/Cloudflare）
 - 対象レイヤ/対象ファイル
@@ -229,11 +247,14 @@ Phase C 開始前に次を必ず出力する:
 
 ルール:
 - C Kickoff 出力完了まで Phase C 実装を開始してはならない
+- `C Kickoff status: READY` は kickoff 完了を意味し、単独では実装許可を意味しない
 - 必須ロール未委譲の場合は `BLOCKED` で停止する
 - concrete な `tasks/*.md` を要求していない文脈でのみ、Plan成果物がない場合は C Kickoff 冒頭で `A-lite` 合意サマリを再掲して境界を固定する
 - cross-turn handoff や prompt/skill が concrete な `tasks/*.md` を要求する文脈では、A-lite へフォールバックせず `BLOCKED` で停止する
 - ひな型が必要な場合は `docs/c_kickoff_comment_template.md` を使用してよい
 - 将来の spawn 意図だけがある状態で `delegation execution record` を完了扱いしない
+- current request ceiling が kickoff-only / task-authoring-only の場合、`READY` を返してもその turn では実装を開始せず停止する
+- missing task artifact が唯一の blocker で、その作成のみが許可されている場合、artifact 作成で blocker を解消しても same turn で code implementation へ自動継続しない
 
 ### 6.4 Validation Parity Gate
 
@@ -292,6 +313,7 @@ Phase D 終了時は、必要に応じて governance / agent / skill / prompt/sn
 - review / close の GitHub write-back で反映確認不足があったか
 - 同種の `P1` / `P2` 指摘や運用ミスが再発したか
 - prompt/snippet の文面不足で planning-only / placeholder handoff / close ordering miss が起きたか
+- 広い user verb に引っ張られて、正本 artifact のより狭い phase ceiling を踏み越えなかったか
 
 出力:
 - `none`

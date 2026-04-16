@@ -100,6 +100,9 @@ Client 変更時:
 - 委譲した場合は `delegation execution record` が残っている
 - 非委譲の場合は `No-delegate reason` が残っている
 - Phase C 実行時は C Kickoff 出力が実装開始前にある
+- 正本 artifact が `current request ceiling` / `stop condition` を持つ場合、実施内容がその ceiling を超えていない
+- `planning-only` / `kickoff-only` / `task-authoring-only` の turn では、許可された artifact 以外の product implementation diff がない
+- blocker 解消のための artifact 作成だけが許可されている turn では、same turn の downstream 実装差分がない
 - review response 実行時は、対応 thread / validation / reply / resolve / 再レビュー依頼の処理状況が追跡できる
 - Phase D で follow-up を作る場合は、次スレッドで再利用可能な `Issue-ready artifact` 粒度になっている
 - Issue を閉じる場合は `docs/issue_close_evidence_template.md` に準拠している
