@@ -20,14 +20,28 @@ Do not use it for generic progress reports.
   - non-code
 - PR URL or commit SHA, if code
 - Follow-up Issue/PR links, if any
+- Follow-up detection sources:
+  - Issue body / comments
+  - merged PR body / comments
+  - Phase D output
+  - `tasks/issue-*.md`
 
 ## Workflow
 
 1. Decide whether the closure is `code` or `non-code`.
-2. Load [docs/issue_close_evidence_template.md](C:/work/infinitas_arena/infinitas_arena/docs/issue_close_evidence_template.md).
-3. Fill the closure-evidence section.
-4. If the Issue is a milestone-management Issue, add the milestone audit table too.
-5. Use [references/closure-checklist.md](references/closure-checklist.md) to verify status vocabulary, links, and evidence completeness.
+2. Collect closure evidence:
+   - PR URL or commit SHA when `code`
+   - non-code completion reason when `non-code`
+3. Detect follow-ups only from explicit sources:
+   - Issue body / comments
+   - merged PR body / comments
+   - Phase D output
+   - `tasks/issue-*.md`
+4. If follow-up is only inferable and not explicitly linked, stop with `BLOCKED`.
+5. Load [docs/issue_close_evidence_template.md](C:/work/infinitas_arena/infinitas_arena/docs/issue_close_evidence_template.md).
+6. Fill the closure-evidence section.
+7. If the Issue is a milestone-management Issue, add the milestone audit table too.
+8. Use [references/closure-checklist.md](references/closure-checklist.md) to verify status vocabulary, links, follow-up evidence completeness, and close ordering.
 
 ## Output Contract
 
@@ -41,3 +55,6 @@ Rules:
 - If required evidence is missing, recommend `BLOCKED` instead of fabricating closure text.
 - Preserve repository status vocabulary.
 - For non-code closure, explain why code evidence is `N/A`.
+- If no explicit follow-up is found, write `なし`.
+- Do not invent follow-up numbers from implication alone.
+- Closure evidence comment must be ready before recommending the close action.

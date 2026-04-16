@@ -53,7 +53,16 @@ Client 変更時:
 - host 権限境界
 - LobbyDirectory 公開条件
 
-### 3.2 Source I/O 変更時
+### 3.2 Lobby summary / freshness / cleanup 変更時
+必須確認:
+- stale cleanup が probe 後の newer summary を削除しない
+- freshness token が同一 ms / 同一 tick 衝突で再利用されない
+- `delete -> recreate` や reorder を含む経路で古い cleanup 条件が再一致しない
+- 公開レスポンス schema が意図せず拡張されていない
+- persisted helper state に bounded-growth または明示 reclaim 方針がある
+- internal storage shape 変更時に restore compatibility がある
+
+### 3.3 Source I/O 変更時
 必須確認:
 - `inf-notebook` 抽出
 - `daken_counter_v3` 抽出
@@ -62,7 +71,7 @@ Client 変更時:
 - `observed_key == expected_key` 採用
 - 異常時 `SOURCE_UNAVAILABLE` と TECHスキップ導線
 
-### 3.3 E2E/シナリオ必須時
+### 3.4 E2E/シナリオ必須時
 最低限:
 - create -> ready -> pick -> play -> result
 - duplicate pick 差し替え
@@ -70,19 +79,20 @@ Client 変更時:
 - `SKIP_HOST_ASSIGN` 拒否動作
 - `ROOM_STATE_LOST` 経路
 
-### 3.4 Agent/Governance 変更時
+### 3.5 Agent/Governance 変更時
 必須確認:
 - `npm run check:agents` 成功
 - `npm run check:design-contracts` 成功
 - 廃止 agent 名の残存参照がない
 - 状態語彙/severity 語彙の統一定義が維持される
 
-### 3.5 Workflow Artifact / Closure Task 実行時
+### 3.6 Workflow Artifact / Closure Task 実行時
 必須確認:
 - Entry Protocol に `Stage / affected layers / contract-sensitive / execution profile / Plan Mode` がある
 - 委譲した場合は `delegation execution record` が残っている
 - 非委譲の場合は `No-delegate reason` が残っている
 - Phase C 実行時は C Kickoff 出力が実装開始前にある
+- review response 実行時は、対応 thread / validation / reply / resolve / 再レビュー依頼の処理状況が追跡できる
 - Phase D で follow-up を作る場合は、次スレッドで再利用可能な `Issue-ready artifact` 粒度になっている
 - Issue を閉じる場合は `docs/issue_close_evidence_template.md` に準拠している
 

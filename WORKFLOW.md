@@ -251,6 +251,28 @@ Phase D で follow-up を起票または起票準備する場合は、優先度�
 - 今サイクル外へ出す項目は、次スレッドでそのまま Phase A/B を再開できる粒度にする
 - ひな型が必要な場合は `docs/issue_ready_followup_template.md` を使用してよい
 
+### 6.6 Review Response Protocol
+
+PR review / inline thread への対応は、原則として元の `Issue` / `tasks/*.md` を正本にした `Phase C` 継続として扱う。
+
+最低限の流れ:
+1. review URL / thread を特定する
+2. 元の正本と in-scope / forbidden scope を再確認する
+3. actionable thread を抽出し、bounded fix に落とす
+4. required validation を再実行する
+5. 対応内容を thread へ返信する
+6. 解消済み thread を resolve する
+7. 未解決 actionable thread がなければ再レビュー依頼を行う
+
+ルール:
+- review comment 自体を新しい正本にしない。正本は元の `Issue` / `tasks/*.md` / design docs のまま維持する
+- user が review URL/結果を提示して対応を依頼した場合、明示的に read-only 指示がない限り、fix / validation / thread 返信 / resolve / 再レビュー依頼まで同一依頼に含めてよい
+- `High-Risk` 変更の review fix では、current state に対して required audit を再実行する
+- review 指摘が in-scope 外の拡張、契約変更、依存変更、CI 変更を要求する場合は `Replan Gate` を適用する
+- thread 返信なしの resolve はしない
+- unresolved actionable thread が残る状態で再レビュー依頼をしない
+- review fix の完了報告には、どの thread をどう処理したかを明示する
+
 ---
 
 ## 7. PR / Closure Rules
@@ -273,6 +295,29 @@ Issue クローズ時:
 - `docs/issue_close_evidence_template.md` の証跡を必須記載
 - Milestone 管理 Issue では同テンプレ内の「Milestone監査ログ（Issue↔PR対応表）」を併記する
 - follow-up を別Issue化した場合は、Issue 本文または起票コメントに `Issue-ready artifact` 相当の境界情報を残す
+
+### 7.1 Post-Merge Issue Closure Protocol
+
+Issue をクローズする前に、少なくとも次を確認する:
+- 対応種別（`コード` / `非コード`）
+- PR URL または commit SHA
+- follow-up の有無
+- milestone 管理 Issue かどうか
+
+follow-up 検出元:
+- Issue 本文
+- Issue コメント
+- merge 済み PR 本文
+- merge 済み PR コメント
+- Phase D 出力
+- `tasks/issue-*.md`
+
+ルール:
+- follow-up は「明示された Issue / PR」のみ列挙する
+- 明示された follow-up が見つからない場合は `なし` と記載する
+- 推測しかできない場合は `BLOCKED` とし、番号を捏造しない
+- closure evidence comment を先に投稿し、その後に Issue を close する
+- milestone 管理 Issue では、closure evidence と同一コメント内に Milestone 監査ログを併記する
 
 ---
 

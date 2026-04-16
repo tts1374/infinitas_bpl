@@ -26,6 +26,9 @@
 - Worker route は thin を維持
 - lifecycle/timer/acceptance authority は DO に集約
 - LobbyDirectoryDO を public summary の唯一 source とする
+- read path cleanup は probe 時点より新しい summary を削除してはならない
+- freshness 判定に使う token は、同一 ms 衝突をまたいでも単調性を失わない形を優先する
+- lobby cleanup / freshness のための persisted helper state は bounded であるか、明示 reclamation を持つ
 - generation/recreation/recovery 意味を暗黙化しない
 - `ROOM_STATE_LOST` を汎用 close へ downgrade しない
 
@@ -55,4 +58,6 @@ worker 変更時は最低限次を確認:
 - acceptance boundary/current-round enforcement
 - idempotency duplicate/replay
 - lobby visibility/TTL
+- stale cleanup vs newer upsert/recreate race
+- lobby helper state の growth / reclaim / restore compatibility
 - recovery/reconnect/`ROOM_STATE_LOST`
