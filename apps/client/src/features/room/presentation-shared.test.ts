@@ -1,14 +1,20 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  DIFFICULTY_PRESENTATIONS,
   buildPresentationPlayerMaps,
   formatCountdown,
   formatOrdinal,
   formatRankLabel,
   getDifficultyBadgeClass,
   getDifficultyBadgeLabel,
+  getDifficultyFromShortLabel,
+  getDifficultyPresentation,
+  getDifficultyPresentationByShortLabel,
+  getDifficultyShortLabel,
   maskJoinCode,
   normalizeRoomPlayerStatus,
+  resolveDifficultyPresentation,
 } from "./presentation-shared";
 
 test("maskJoinCode preserves length", () => {
@@ -36,9 +42,31 @@ test("formatRankLabel supports null ranks", () => {
   assert.equal(formatRankLabel(4), "4th");
 });
 
-test("difficulty badge helpers map known labels", () => {
+test("difficulty presentation helpers share a single canonical mapping", () => {
+  assert.equal(DIFFICULTY_PRESENTATIONS.length, 5);
+  assert.deepEqual(
+    DIFFICULTY_PRESENTATIONS.map((presentation) => [
+      presentation.difficulty,
+      presentation.shortLabel,
+    ]),
+    [
+      ["BEGINNER", "B"],
+      ["NORMAL", "N"],
+      ["HYPER", "H"],
+      ["ANOTHER", "A"],
+      ["LEGGENDARIA", "L"],
+    ],
+  );
+  assert.equal(getDifficultyPresentation("ANOTHER")?.shortLabel, "A");
+  assert.equal(getDifficultyPresentationByShortLabel("L")?.difficulty, "LEGGENDARIA");
+  assert.equal(resolveDifficultyPresentation("H")?.difficulty, "HYPER");
+  assert.equal(getDifficultyShortLabel("LEGGENDARIA"), "L");
+  assert.equal(getDifficultyFromShortLabel("B"), "BEGINNER");
   assert.equal(getDifficultyBadgeLabel("A"), "ANOTHER");
   assert.match(getDifficultyBadgeClass("A"), /bg-red-600/);
+  assert.equal(getDifficultyBadgeLabel("UNKNOWN"), "UNKNOWN");
+  assert.equal(getDifficultyShortLabel("UNKNOWN"), "-");
+  assert.equal(getDifficultyFromShortLabel("UNKNOWN"), null);
 });
 
 test("normalizeRoomPlayerStatus falls back to UNCONFIRMED", () => {
