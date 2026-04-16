@@ -56,6 +56,14 @@
 - design docs が期待動作を既に定義している場合、意図変更でない限り docs 追加より実装整合を優先する
 - docs 更新が必要なのは、仕様自体を変えるとき、または現行 docs が実態と食い違っていると確認できたときに限る
 
+### 1.5 Sticky User Constraints
+
+ルール:
+- 同一スレッドで user が明示した制約、順序、必須 skill、spawn 要求、禁止事項、修正指摘は、明示的に解除されるまで sticky hard constraint として扱う
+- user が同じ制約を再度指摘した場合、その制約は「見逃してはいけない運用ルール」に格上げし、以後の Phase / delegation / validation / close に持ち越す
+- sticky constraint は、後続の Entry Protocol / delegation packet / validation plan / close plan に影響する場合、出力へ再掲または織り込む
+- ローカル判断や慣例で sticky constraint を黙って上書きしない。成立不能なら `BLOCKED` / `ESCALATION` を返す
+
 ---
 
 ## 2. Sub-Agent Model (固定8役)
@@ -88,6 +96,15 @@
 ## 3. Delegation Contract
 
 委譲は常に bounded task で行う。
+
+用語:
+- `delegation execution plan`: spawn 前の実行意図。対象 role、ownership、spawn 条件、検証予定を示す計画情報
+- `delegation execution record`: spawn/no-spawn を実際に確定した後の実行記録。`spawned: yes` の場合は agent id / ownership / status を含める
+
+ルール:
+- 将来の spawn 意図や future tense の作業予定を `delegation execution record` と呼ばない
+- `delegation execution record` は実際に確定した yes/no と、その時点の根拠を持つ
+- user が spawn を要求した場合、plan の提示だけで代替しない。実際に spawn するか、できない理由で `BLOCKED/ESCALATION` を返す
 
 Delegation packet 必須項目:
 - `task label`

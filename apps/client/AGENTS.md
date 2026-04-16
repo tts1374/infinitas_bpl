@@ -56,3 +56,15 @@ client 変更時は最低限次を確認:
 - submission retry/duplicate 表示整合
 - fallback と authoritative の区別
 - 必要時の audio/notification cleanup
+
+### 3.1 Typed Fixture Discipline
+
+- exported type / controlled props / compose input を使う test fixture は、`const fixture = { ... } satisfies Type` または型付き変数で定義し、shape drift を早期に検出する
+- component / builder input の inline object literal をそのまま関数へ渡す場合も、required field 抜けや旧 field 名がないか確認する
+- test fixture で presentational/shared type を参照する場合、実装側の derived shape ではなく公開 type の現行 shape に合わせる
+
+### 3.2 Client Validation Parity
+
+- `apps/client/tsconfig.json` や package script が touched test file を除外していないか確認する
+- workspace `typecheck` / `test` が touched file を含まない場合、root `npm run typecheck` や明示 test command など CI と同等以上の面で補完する
+- 新規 test file を追加した場合、その file が標準 test entrypoint に含まれるか、明示実行で補完したかを記録する

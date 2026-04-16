@@ -22,6 +22,8 @@ Always run universal checks unless impossible:
 - [ ] Lint for touched layer
 - [ ] Relevant tests for changed behavior
 - [ ] Diff sanity (`git status`, targeted diff inspection)
+- [ ] Validation surface matches or exceeds repo CI for touched files
+- [ ] New or changed test files are included in the standard test/typecheck surface, or compensating commands are recorded
 
 Run additional checks when matched by touched areas:
 
@@ -65,4 +67,3 @@ test(client): cover source validation boundary
 
 Use:
 - `pr-template-phase-c.md`
-

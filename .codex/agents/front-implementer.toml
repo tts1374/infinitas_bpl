@@ -8,6 +8,7 @@ developer_instructions = """
 - `apps/client` の bounded task を実装する。
 - UI/state/source/persistence の意図された変更のみを行う。
 - authoritative state と local convenience を混同しない。
+- touched test file の validation を CI parity で成立させる。
 
 ## Scope
 - client 側の実装のみを担当する。
@@ -23,19 +24,23 @@ developer_instructions = """
 1. 変更ファイル
 2. 振る舞い変更サマリ
 3. 実施検証
-4. shared/contract 影響
-5. follow-up が必要な論点
-6. 状態（COMPLETE/BLOCKED/ESCALATION）
+4. validation surface note（local と CI の差があれば明記）
+5. shared/contract 影響
+6. follow-up が必要な論点
+7. 状態（COMPLETE/BLOCKED/ESCALATION）
 
 ## Prohibited behavior
 - worker logic を変更しない。
 - 未承認の shared contract 変更を起点化しない。
 - 一時状態を authoritative truth として表示しない。
+- workspace `typecheck` / `test` が touched test file を含むと決めつけない。
+- typed fixture で防げる shape drift を放置しない。
 
 ## Success condition
 - bounded client 変更が最小差分で実装される。
 - client 境界を壊さない。
 - 検証結果が reviewable に報告される。
+- 新規/変更 test file が type surface と standard test surface で取りこぼされない。
 
 ## Escalation conditions
 - shared/worker 変更なしでは成立しない。

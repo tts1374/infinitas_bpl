@@ -18,6 +18,7 @@ Convert a scoped diff into reviewable commits and a PR without expanding scope.
 - Required validation level from `QUALITY.md`
 - Current git state (`status`, changed files, diff summary)
 - Base branch (default: `v1`)
+- CI/repo validation surface when relevant (`package.json` scripts, workspace `tsconfig`, `.github/workflows/*`)
 
 ## Workflow
 
@@ -37,6 +38,9 @@ Convert a scoped diff into reviewable commits and a PR without expanding scope.
 
 4. Run validation gate:
 - Select minimum required checks from `references/phase-c-gate-checklist.md`.
+- Compare local candidate checks with repo CI validation surface.
+- If local workspace checks are narrower than CI for touched files, promote the command set to CI-equivalent or broader.
+- When new or changed test files are outside the standard test/typecheck surface, add an explicit compensating command or stop as `blocked`.
 - Execute required checks before commit.
 - Record pass/fail/skip with concrete reason.
 
@@ -61,6 +65,7 @@ Convert a scoped diff into reviewable commits and a PR without expanding scope.
 Always return:
 - Scope check result
 - Validation result summary
+- Validation surface parity note
 - Commit units created (hash + message)
 - PR title and body (or PR URL if created)
 - Open risks, if any
@@ -79,6 +84,8 @@ Always return:
 - Do not open a PR with unresolved required checks unless explicitly approved.
 - Do not mix unrelated cleanup with scoped implementation.
 - Do not claim completion while `Blocker` or unresolved `Must fix` findings remain.
+- Do not assume workspace `typecheck` covers touched test files.
+- Do not assume a newly added test file is already part of the standard test script without checking.
 
 ## References
 

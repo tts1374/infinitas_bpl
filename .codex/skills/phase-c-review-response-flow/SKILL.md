@@ -20,6 +20,7 @@ Do not treat the review thread itself as a new specification.
   - review URL
   - inline thread URL
   - unresolved review threads
+  - CI / validate output when the review signal comes from automation or failing checks
 - Current execution state:
   - touched layer
   - execution profile
@@ -35,6 +36,7 @@ Do not treat the review thread itself as a new specification.
 2. Inspect review context with thread-aware reads and separate:
    - actionable unresolved threads
    - informational or already-resolved threads
+   - CI-only actionable failures that have no human review thread yet
 3. Re-judge:
    - execution profile
    - contract-sensitive surface
@@ -42,10 +44,12 @@ Do not treat the review thread itself as a new specification.
 4. If the review fix stays in-scope, convert each actionable cluster into a bounded fix packet.
 5. For `High-Risk` work, rerun required implementer / contract audit / implementation audit on the current state.
 6. Run required validation from `QUALITY.md`.
+   - If the trigger was CI / validate output, rerun the same command surface or a broader one.
 7. Prepare GitHub write-back in this order:
    - thread reply
    - resolve addressed thread
    - re-review request after no unresolved actionable thread remains
+   - confirm each GitHub write via returned URL/id or read-back
 8. Use [references/review-response-checklist.md](references/review-response-checklist.md) to keep the loop stable.
 
 ## Output Contract
@@ -92,3 +96,5 @@ Final status:
 - Do not resolve a thread without a substantive response tied to the final implementation.
 - Do not request re-review while unresolved actionable threads remain.
 - If a review requires contract change, cross-layer expansion, dependency update, or CI change, stop with `ESCALATION`.
+- If there are no actionable unresolved threads, return a no-op `COMPLETE` with evidence instead of fabricating write-back work.
+- Do not treat a narrower local validation pass as equivalent to the originating CI failure surface.

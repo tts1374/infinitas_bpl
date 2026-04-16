@@ -10,3 +10,4 @@
 - Is milestone audit log required?
 - Is repository status vocabulary preserved?
 - Is the closure evidence comment ready before the close action?
+- Was the posted closure evidence comment confirmed via comment URL/id or read-back before close?

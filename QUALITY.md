@@ -23,6 +23,14 @@
 - 関連 test 成功
 - 不要な依存追加なし
 
+### 1.1 Validation Surface Parity
+
+- 選んだ validation は、touched files に対して repo CI の validate surface と同等以上でなければならない
+- workspace の typecheck/test が touched files を除外している場合、狭い pass を「十分な検証」として扱わない
+- `*.test.ts` / `*.test.tsx` を追加・変更した場合、標準 typecheck/test entrypoint がその file を含むか確認する
+- 標準 entrypoint に含まれない test file は、明示コマンドで実行するか、script へ追加する。どちらでもない場合は validation gap として扱う
+- CI 相当 command をローカルで再現できない場合、`skip reason` と residual risk を完了証跡へ残す
+
 Worker 変更時:
 - `wrangler` build 成功
 - DO/WS 系の基本起動性を確認
@@ -95,6 +103,8 @@ Client 変更時:
 - review response 実行時は、対応 thread / validation / reply / resolve / 再レビュー依頼の処理状況が追跡できる
 - Phase D で follow-up を作る場合は、次スレッドで再利用可能な `Issue-ready artifact` 粒度になっている
 - Issue を閉じる場合は `docs/issue_close_evidence_template.md` に準拠している
+- stateful GitHub write-back を行う場合は、comment/reply/resolve/close の反映結果を URL/id または read-back で確認している
+- review / PR / close 作業では、validation surface が CI より狭くないことを確認している
 
 ---
 

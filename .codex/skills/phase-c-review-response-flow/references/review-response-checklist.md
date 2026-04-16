@@ -25,9 +25,12 @@ Use this checklist when handling review feedback as a Phase C continuation.
 - [ ] Required validation from `QUALITY.md` is re-run for the final state.
 - [ ] Required audit is re-run when the work is `High-Risk`.
 - [ ] Pass/fail/skip evidence is recorded with concrete reason.
+- [ ] If the trigger was CI / validate output, the rerun command surface matches or exceeds the failing command surface.
+- [ ] If there are no actionable unresolved threads, the no-op conclusion is stated explicitly.
 
 ## 5. GitHub Write-back Gate
 
 - [ ] Thread reply explains the final implementation state, not an intermediate attempt.
 - [ ] Thread is resolved only after the reply is posted.
 - [ ] Re-review is requested only after no unresolved actionable thread remains.
+- [ ] Each GitHub write-back effect is confirmed by returned URL/id or read-back.

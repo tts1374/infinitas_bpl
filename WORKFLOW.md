@@ -25,6 +25,7 @@
 - 入口判定を省略したまま実装/再計画へ進まない
 - `Issue` / `tasks/*.md` / design docs が正本指定されている場合、Entry Protocol でその正本を明記する
 - Entry Protocol の出力は短くてよいが、後続の Phase 判断を再現できる粒度で残す
+- user が同一スレッドで再指摘した制約や順序がある場合、sticky constraint として以後の Phase 出力にも反映する
 
 ---
 
@@ -163,6 +164,16 @@ Plan Mode では `tasks/<branch-or-pr-name>.md` を作成する。
 - 非委譲時は理由を明示
 - open-ended 指示は禁止
 
+### 6.0 Delegation Execution Terms
+
+- `delegation execution plan`: kickoff / planning 時点の spawn 計画。actual execution evidence ではない
+- `delegation execution record`: spawn/no-spawn を実際に確定した後の記録。`spawned: yes` なら agent id / ownership / status を含める
+
+ルール:
+- future tense の予定や「後で spawn する」は `delegation execution record` として扱わない
+- user が spawn 実行を要求した場合、Phase C は spawn 実行または `BLOCKED/ESCALATION` で止まる
+- `delegation execution record` は後続監査や close で追跡可能な粒度で残す
+
 ### 6.1 Standard Spawn Gate
 
 適用条件:
@@ -212,6 +223,8 @@ Phase C 開始前に次を必ず出力する:
   - `role`
   - `spawned: yes/no`
   - `objective`
+  - `agent id`（`yes` の場合）
+  - `ownership scope`（`yes` の場合）
   - `no-delegate reason`（`no` の場合）
 
 ルール:
@@ -219,8 +232,24 @@ Phase C 開始前に次を必ず出力する:
 - 必須ロール未委譲の場合は `BLOCKED` で停止する
 - Plan成果物がない場合は、C Kickoff 冒頭で `A-lite` 合意サマリを再掲して境界を固定する
 - ひな型が必要な場合は `docs/c_kickoff_comment_template.md` を使用してよい
+- 将来の spawn 意図だけがある状態で `delegation execution record` を完了扱いしない
 
-### 6.4 Replan Gate
+### 6.4 Validation Parity Gate
+
+ローカル検証面と CI/repo の検証面が異なる場合は、狭い方に合わせず広い方へ寄せる。
+
+最低限の確認:
+- `package.json` scripts
+- 対象 workspace の `tsconfig` include/exclude
+- `.github/workflows/*` の validate job
+
+ルール:
+- touched files をカバーするローカル command より CI command の方が広い場合、PR 前 validation は CI と同等以上の command を優先する
+- `*.test.ts` / `*.test.tsx` を追加・変更した場合、workspace typecheck が test file を除外していないか確認する
+- 新規 test file を追加した場合、標準 test script に含まれるか確認する。含まれない場合は `1) script に追加` または `2) 明示コマンドで実行 + 理由記録` を必須とする
+- CI 相当の validation がローカルで再現できない場合、狭いローカル pass を CI pass 相当として扱わない。`skip reason` と residual risk を残す
+
+### 6.5 Replan Gate
 
 次のいずれかが発生した場合は Phase C/D を停止し、Phase A/B へ戻す:
 - 新たな contract-sensitive 変更が必要
@@ -232,7 +261,7 @@ Phase C 開始前に次を必ず出力する:
 - 戻し時の状態は `ESCALATION` または `WAITING_FOR_HUMAN_DECISION` を明示する
 - 合意が得られるまで Phase C/D を再開しない
 
-### 6.5 Phase D Follow-up Protocol
+### 6.6 Phase D Follow-up Protocol
 
 Phase D で follow-up を起票または起票準備する場合は、優先度だけで終わらせず `Issue-ready artifact` まで整える。
 
@@ -251,7 +280,7 @@ Phase D で follow-up を起票または起票準備する場合は、優先度�
 - 今サイクル外へ出す項目は、次スレッドでそのまま Phase A/B を再開できる粒度にする
 - ひな型が必要な場合は `docs/issue_ready_followup_template.md` を使用してよい
 
-### 6.6 Review Response Protocol
+### 6.7 Review Response Protocol
 
 PR review / inline thread への対応は、原則として元の `Issue` / `tasks/*.md` を正本にした `Phase C` 継続として扱う。
 
@@ -269,9 +298,12 @@ PR review / inline thread への対応は、原則として元の `Issue` / `tas
 - user が review URL/結果を提示して対応を依頼した場合、明示的に read-only 指示がない限り、fix / validation / thread 返信 / resolve / 再レビュー依頼まで同一依頼に含めてよい
 - `High-Risk` 変更の review fix では、current state に対して required audit を再実行する
 - review 指摘が in-scope 外の拡張、契約変更、依存変更、CI 変更を要求する場合は `Replan Gate` を適用する
+- CI / validate failure が review 起点の場合、review fix 後の validation は元の failure command と同等以上の面で再実行する
 - thread 返信なしの resolve はしない
 - unresolved actionable thread が残る状態で再レビュー依頼をしない
 - review fix の完了報告には、どの thread をどう処理したかを明示する
+- actionable unresolved thread が存在しない場合は、その no-op 判定根拠と current validation state を記録し、不要な write-back を行わない
+- GitHub write-back を行った場合は、reply / resolve / re-review request の反映結果を URL/id または read-back で確認する
 
 ---
 
@@ -317,6 +349,7 @@ follow-up 検出元:
 - 明示された follow-up が見つからない場合は `なし` と記載する
 - 推測しかできない場合は `BLOCKED` とし、番号を捏造しない
 - closure evidence comment を先に投稿し、その後に Issue を close する
+- closure evidence comment は、投稿後に comment URL/id または read-back で存在確認してから close する
 - milestone 管理 Issue では、closure evidence と同一コメント内に Milestone 監査ログを併記する
 
 ---
