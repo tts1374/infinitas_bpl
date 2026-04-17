@@ -29,7 +29,7 @@ export type RoomPageSharedComposeInput = {
   playingCountdownSeconds: number | null;
   isHost: boolean;
   selfPlayerId: string;
-  searchModal: ReactNode;
+  searchModal: RoomArenaControlledState["searchModal"];
   disablePrimaryAction: boolean;
   disableLeave: boolean;
   onCopyRoomId: () => void;
@@ -108,7 +108,7 @@ function buildSharedControlledProps(input: RoomPageSharedComposeInput) {
   return {
     ...shared,
     ...(input.selfPlayerId === undefined ? {} : { selfPlayerId: input.selfPlayerId }),
-    ...(input.searchModal === undefined ? {} : { searchModal: input.searchModal }),
+    searchModal: input.searchModal,
     ...(input.disablePrimaryAction === undefined ? {} : { disablePrimaryAction: input.disablePrimaryAction }),
     ...(input.disableLeave === undefined ? {} : { disableLeave: input.disableLeave }),
     ...(input.onCopyRoomId === undefined ? {} : { onCopyRoomId: input.onCopyRoomId }),

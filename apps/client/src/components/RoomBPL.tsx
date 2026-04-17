@@ -1,4 +1,3 @@
-import type { ReactNode } from 'react';
 import {
     User, CheckCircle2, Circle, LogOut,
     Database, Swords, Music, Copy, Check, Clock
@@ -15,6 +14,7 @@ import {
     type RoomSong
 } from '../features/room/presentation-shared';
 import { resolveSongVersionLabel } from './SongSearchModalView';
+import type { RoomSearchModalContent } from './RoomArena';
 
 export type Song = RoomSong;
 export type HistoryItem = RoomHistoryItem;
@@ -73,7 +73,7 @@ export interface RoomBPLControlledState {
     selfPlayerId?: string;
     disablePrimaryAction?: boolean;
     disableLeave?: boolean;
-    searchModal?: ReactNode;
+    searchModal: RoomSearchModalContent;
     onCopyRoomId?: () => void;
     onCopyJoinCode?: () => void;
     onOpenSearch?: () => void;

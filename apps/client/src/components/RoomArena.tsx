@@ -15,6 +15,7 @@ import { resolveSongVersionLabel } from './SongSearchModalView';
 
 export type Song = RoomSong;
 export type HistoryItem = RoomHistoryItem;
+export type RoomSearchModalContent = Exclude<ReactNode, null | undefined | boolean>;
 
 export interface RoomArenaPlayer {
     id: string;
@@ -88,7 +89,7 @@ export interface RoomArenaControlledState {
     allPlayers: RoomArenaPlayer[];
     selectedByName?: string | null;
     selfPlayerId?: string;
-    searchModal?: ReactNode;
+    searchModal: RoomSearchModalContent;
     disablePrimaryAction?: boolean;
     disableLeave?: boolean;
     onCopyRoomId?: () => void;
