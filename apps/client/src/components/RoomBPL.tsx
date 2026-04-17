@@ -1,10 +1,9 @@
-import React, { useState, useEffect, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import {
     User, CheckCircle2, Circle, LogOut,
     Database, Swords, Music, Copy, Check, Clock
 } from 'lucide-react';
 import { RoomPickDecisionCutIn, RoomSearchModalGate } from '../features/room/presentation-components';
-import { useClipboardFeedback, useResultPhaseTimer } from '../features/room/presentation-hooks';
 import {
     formatCountdown,
     formatOrdinal,
@@ -30,12 +29,6 @@ export interface ResultPhasePlayerSummary {
 export interface FinalResultPlayerSummary {
     totalPoints: number;
     isWinner: boolean;
-}
-
-interface RoomBPLProps {
-    onNavigate?: (screen: string) => void;
-    initialStatus?: 'WAITING' | 'SELECTING' | 'PLAYING' | 'RESULT' | 'CLOSED';
-    controlled?: RoomBPLControlledState;
 }
 
 export interface RoomBPLPlayer {
@@ -92,7 +85,7 @@ export interface RoomBPLControlledState {
 }
 
 export function RoomBPLPresentational(props: RoomBPLControlledState) {
-    return <RoomBPL controlled={props} />;
+    return <RoomBPL {...props} />;
 }
 
 const BPL_MUSIC_SELECT_SECONDS = 45;
@@ -101,97 +94,68 @@ const BPL_PLAY_BEGIN_SECONDS = BPL_MUSIC_SELECT_SECONDS + BPL_PLAY_START_SECONDS
 const BPL_STAGE_COUNT = 4;
 const BPL_REGULATION_LABEL = `${BPL_STAGE_COUNT} STAGES`;
 
-export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomBPLProps) {
-    const [roomStatusState, setRoomStatus] = useState<'WAITING' | 'SELECTING' | 'PLAYING' | 'RESULT' | 'CLOSED'>(initialStatus || 'WAITING');
-    const [isReadyState, setIsReady] = useState(initialStatus === 'SELECTING' || initialStatus === 'PLAYING' || initialStatus === 'RESULT' || initialStatus === 'CLOSED');
-    const [closeReasonState, setCloseReason] = useState<string>('ALL_ROUNDS_COMPLETED');
-    const [currentTurnState, setCurrentTurn] = useState(0); // 0: 1P, 1: 2P
-    const [roundCountState, setRoundCount] = useState(1);
-    const [picksState, setPicks] = useState<(Song | null)[]>(Array.from({ length: BPL_STAGE_COUNT }, () => null));
-    const [historyState, setHistory] = useState<HistoryItem[]>([]);
-    const [showSearchState, setShowSearch] = useState(false);
-    const [lastPickedSongState, setLastPickedSong] = useState<Song | null>(null);
-    const [showCutInState, setShowCutIn] = useState(false);
-    const [lobbyTimerState, setLobbyTimer] = useState(1200); // 20 minutes in seconds
-    const roomStatus = controlled?.roomStatus ?? roomStatusState;
-    const [resultTimerState] = useResultPhaseTimer(roomStatus === 'RESULT', finalizeRound);
-    const roomIdCopy = useClipboardFeedback();
-    const joinCodeCopy = useClipboardFeedback();
-
-    const roomId = controlled?.roomId ?? "";
-    const joinCode = controlled?.joinCode ?? "";
-    const battleModeLabel = controlled?.battleModeLabel ?? "";
+export default function RoomBPL({
+    roomStatus,
+    isReady,
+    closeReason,
+    resultTimer,
+    currentTurn,
+    roundCount,
+    picks,
+    history,
+    showSearch,
+    lastPickedSong,
+    showCutIn,
+    copiedId,
+    copiedCode,
+    lobbyTimer,
+    roomId,
+    joinCode,
+    battleModeLabel = '',
+    playTime,
+    playingPhase,
+    playingCountdownSeconds,
+    playerStatus,
+    playerMetrics,
+    metricLabel,
+    resultPlayers,
+    resultRegulationLabel,
+    finalResultPlayers,
+    finalWinningPlayerName,
+    isHost,
+    players,
+    roundPickerNames,
+    selfPlayerId,
+    disablePrimaryAction,
+    disableLeave,
+    searchModal,
+    onCopyRoomId,
+    onCopyJoinCode,
+    onOpenSearch,
+    onPrimaryAction,
+    onSkip,
+    onProceedToResult,
+    onLeaveRoom,
+    onRemakeStage,
+}: RoomBPLControlledState) {
     const hasJoinCode = joinCode.trim().length > 0;
     const maskedJoinCode = hasJoinCode ? maskJoinCode(joinCode) : '';
-
     const handleCopyRoomId = () => {
-        if (controlled?.onCopyRoomId) {
-            controlled.onCopyRoomId();
-            return;
-        }
-
-        roomIdCopy.copy(roomId);
+        onCopyRoomId?.();
     };
     const handleCopyJoinCode = () => {
-        if (controlled?.onCopyJoinCode) {
-            controlled.onCopyJoinCode();
-            return;
-        }
-
-        joinCodeCopy.copy(joinCode);
+        onCopyJoinCode?.();
     };
-
-    // PLAYING state logic
-    const [playTimeState, setPlayTime] = useState(0);
-    const [playingPhaseState, setPlayingPhase] = useState<'MUSIC_SELECT' | 'PLAY_START' | 'IN_PLAY'>('MUSIC_SELECT');
-    const [playerStatusState, setPlayerStatus] = useState<Record<string, RoomPlayerStatusLabel>>(
-        initialStatus === 'PLAYING' ? {
-            '1': 'PLAYED',
-            '2': 'UNCONFIRMED'
-        } : initialStatus === 'RESULT' ? {
-            '1': 'PLAYED',
-            '2': 'PLAYED'
-        } : {
-            '1': 'UNCONFIRMED',
-            '2': 'UNCONFIRMED'
-        }
-    );
-
-    // 初期化時にSELECTINGならモーダルを開く
-    useEffect(() => {
-        if (initialStatus === 'SELECTING') {
-            setShowSearch(true);
-        }
-    }, [initialStatus]);
-
-    const isHost = controlled?.isHost ?? true;
-
-    const isReady = controlled?.isReady ?? isReadyState;
-    const closeReason = controlled?.closeReason ?? closeReasonState;
-    const resultTimer = controlled?.resultTimer ?? resultTimerState;
-    const currentTurn = controlled?.currentTurn ?? currentTurnState;
-    const roundCount = controlled?.roundCount ?? roundCountState;
-    const picks = controlled?.picks ?? picksState;
-    const history = controlled?.history ?? historyState;
-    const showSearch = controlled?.showSearch ?? showSearchState;
-    const lastPickedSong = controlled?.lastPickedSong ?? lastPickedSongState;
-    const showCutIn = controlled?.showCutIn ?? showCutInState;
-    const copiedId = controlled?.copiedId ?? roomIdCopy.copied;
-    const copiedCode = controlled?.copiedCode ?? joinCodeCopy.copied;
-    const lobbyTimer = controlled?.lobbyTimer ?? lobbyTimerState;
-    const playTime = controlled?.playTime ?? playTimeState;
-    const playingPhase = controlled?.playingPhase ?? playingPhaseState;
-    const playingCountdownSeconds = controlled?.playingCountdownSeconds ?? (
+    const resolvedPlayingCountdownSeconds = playingCountdownSeconds ?? (
         playingPhase === 'MUSIC_SELECT' ? Math.max(0, BPL_MUSIC_SELECT_SECONDS - playTime) :
             playingPhase === 'PLAY_START' ? Math.max(0, BPL_PLAY_BEGIN_SECONDS - playTime) :
                 Math.max(0, playTime - BPL_PLAY_BEGIN_SECONDS)
     );
-    const playerStatus = controlled?.playerStatus ?? playerStatusState;
-    const playerMetrics = controlled?.playerMetrics ?? {};
-    const metricLabel = controlled?.metricLabel ?? 'EX SCORE';
-    const resultPlayers = controlled?.resultPlayers ?? {};
-    const resultRegulationLabel = controlled?.resultRegulationLabel ?? BPL_REGULATION_LABEL;
-    const finalResultPlayers = controlled?.finalResultPlayers ?? {};
+    const resolvedPlayerMetrics = playerMetrics ?? {};
+    const resolvedMetricLabel = metricLabel ?? 'EX SCORE';
+    const resolvedResultPlayers = resultPlayers ?? {};
+    const resolvedResultRegulationLabel = resultRegulationLabel ?? BPL_REGULATION_LABEL;
+    const resolvedFinalResultPlayers = finalResultPlayers ?? {};
     const totalStages = Math.max(1, picks.length);
     const currentPlayingSong = picks[roundCount - 1] || picks[totalStages - 1] || null;
     const currentResultSong = picks[roundCount - 1] || picks[totalStages - 1] || null;
@@ -204,148 +168,17 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
     const currentResultSongDifficulty = currentResultSong?.difficulty ?? 'A';
     const currentResultSongLevel = currentResultSong?.level ?? '12';
 
-    const players = controlled?.players ?? [
-        { id: '1', name: 'HOST', isReady: true, isHost: true, side: 'LEFT' },
-        { id: '2', name: 'GUEST', isReady: isReady, isHost: false, side: 'RIGHT' },
-    ];
-    const selfPlayerId = controlled?.selfPlayerId ?? (isHost ? '1' : '2');
-    const finalWinningPlayerName = controlled?.finalWinningPlayerName ?? players[0]?.name ?? '';
-
-    const handleStartMatch = () => {
-        if (controlled?.onPrimaryAction) {
-            controlled.onPrimaryAction();
-            return;
-        }
-
-        if (players.every(p => p.isReady)) {
-            setRoomStatus('SELECTING');
-            setCurrentTurn(0);
-        }
-    };
-
-    const handleSelectSong = (song: Song) => {
-        const newPicks = [...picks];
-        newPicks[currentTurn] = song;
-        setPicks(newPicks);
-        setShowSearch(false);
-        setLastPickedSong(song);
-        setShowCutIn(true);
-
-        // 3秒後にカットインを消し、次のターンへ（あるいは終了）
-        setTimeout(() => {
-            setShowCutIn(false);
-            const nextTurn = currentTurn + 1;
-            if (nextTurn < totalStages) {
-                setCurrentTurn(nextTurn);
-            } else {
-                // 両者の選曲が完了したら PLAYING へ
-                setRoomStatus('PLAYING');
-                setPlayTime(0);
-                setPlayingPhase('MUSIC_SELECT');
-            }
-        }, 3000);
-    };
-
-    // Lobby Timer management
-    useEffect(() => {
-        if (roomStatus !== 'WAITING') return;
-
-        const interval = setInterval(() => {
-            setLobbyTimer(prev => {
-                if (prev <= 1) {
-                    clearInterval(interval);
-                    setRoomStatus('CLOSED');
-                    setCloseReason('LOBBY_TIMEOUT');
-                    return 0;
-                }
-                return prev - 1;
-            });
-        }, 1000);
-
-        return () => clearInterval(interval);
-    }, [roomStatus]);
-
-    // PLAYING タイム管理
-    useEffect(() => {
-        if (roomStatus !== 'PLAYING') return;
-
-        const interval = setInterval(() => {
-            setPlayTime(prev => {
-                const next = prev + 1;
-
-                // フェーズ遷移
-                if (next < BPL_MUSIC_SELECT_SECONDS) setPlayingPhase('MUSIC_SELECT');
-                else if (next < BPL_PLAY_BEGIN_SECONDS) setPlayingPhase('PLAY_START');
-                else setPlayingPhase('IN_PLAY');
-
-                return next;
-            });
-        }, 1000);
-
-        return () => clearInterval(interval);
-    }, [roomStatus]);
-
-    const handleSkip = (playerId: string) => {
-        if (controlled?.onSkip) {
-            controlled.onSkip(playerId);
-            return;
-        }
-
-        setPlayerStatus(prev => ({ ...prev, [playerId]: 'SKIPPED' }));
-    };
-
-    function finalizeRound() {
-        const currentSong = picks[roundCount - 1] || picks[2];
-        if (!currentSong) return;
-
-        const mockScores: Record<string, number> = {
-            '1': Math.floor(Math.random() * 2000) + 1000,
-            '2': Math.floor(Math.random() * 2000) + 1000
-        };
-
-        const leftScore = mockScores['1'] ?? 0;
-        const rightScore = mockScores['2'] ?? 0;
-        const winnerId = leftScore > rightScore ? '1' : leftScore < rightScore ? '2' : 'DRAW';
-
-        const newItem: HistoryItem = {
-            round: roundCount,
-            song: currentSong,
-            scores: mockScores,
-            winnerId
-        };
-
-        setHistory(prev => [newItem, ...prev]);
-
-        if (roundCount < totalStages) {
-            setRoundCount(prev => prev + 1);
-            setRoomStatus('PLAYING');
-            setPlayTime(0);
-            setPlayerStatus({ '1': 'UNCONFIRMED', '2': 'UNCONFIRMED' });
-            setCurrentTurn(prev => (prev + 1) % 2); // ターン交代
-        } else {
-            setRoundCount(1);
-            setRoomStatus('CLOSED');
-            setCloseReason('ALL_ROUNDS_COMPLETED');
-        }
-    }
-
-    const handleProceedToResult = () => {
-        if (controlled?.onProceedToResult) {
-            controlled.onProceedToResult();
-            return;
-        }
-
-        setRoomStatus('RESULT');
-    };
-
-    const _currentSong = picks[0]; // TODO: 本来はラウンドに応じた曲を表示
-    const leftPlayer = players[0] ?? { id: '1', name: 'HOST', isReady: false, isHost: true, side: 'LEFT' as const };
-    const rightPlayer = players[1] ?? { id: '2', name: 'GUEST', isReady: false, isHost: false, side: 'RIGHT' as const };
-    const roundPickerNames = controlled?.roundPickerNames ?? Array.from(
+    const resolvedSelfPlayerId = selfPlayerId ?? (isHost ? '1' : '2');
+    const resolvedFinalWinningPlayerName = finalWinningPlayerName ?? players[0]?.name ?? '';
+    const primaryDisabled = disablePrimaryAction ?? false;
+    const leaveDisabled = disableLeave ?? (roomStatus === 'SELECTING' || roomStatus === 'PLAYING');
+    const leftPlayer = players[0] ?? { id: '1', name: '-', isReady: false, isHost: true, side: 'LEFT' as const };
+    const rightPlayer = players[1] ?? { id: '2', name: '-', isReady: false, isHost: false, side: 'RIGHT' as const };
+    const resolvedRoundPickerNames = roundPickerNames ?? Array.from(
         { length: totalStages },
         (_, index) => (index % 2 === 0 ? leftPlayer.name : rightPlayer.name),
     );
-    const currentRoundPickerName = roundPickerNames[roundCount - 1] ?? null;
+    const currentRoundPickerName = resolvedRoundPickerNames[roundCount - 1] ?? null;
 
     return (
         <div className="flex h-screen w-screen bg-[#0f0f10] text-white font-sans overflow-hidden">
@@ -353,10 +186,10 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
             {showCutIn ? <RoomPickDecisionCutIn song={lastPickedSong} /> : null}
 
             <RoomSearchModalGate
-                modal={controlled?.searchModal}
+                modal={searchModal}
                 isOpen={showSearch}
-                onClose={() => setShowSearch(false)}
-                onSelect={handleSelectSong}
+                onClose={() => undefined}
+                onSelect={() => undefined}
             />
 
             {/* メイン対峙エリア */}
@@ -415,7 +248,7 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
                         <div className="h-10 w-[1px] bg-white/10"></div>
                         <div className="text-left">
                             <p className="text-[10px] font-black text-gray-500 uppercase tracking-[0.3em]">Regulation</p>
-                            <h2 className="text-2xl font-black italic tracking-tighter text-gray-300 whitespace-nowrap">{resultRegulationLabel}</h2>
+                            <h2 className="text-2xl font-black italic tracking-tighter text-gray-300 whitespace-nowrap">{resolvedResultRegulationLabel}</h2>
                         </div>
                     </div>
                 </header>
@@ -456,14 +289,7 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
                         )}
                         {roomStatus === 'SELECTING' && currentTurn % 2 === 0 && (
                             <button
-                                onClick={() => {
-                                    if (controlled?.onOpenSearch) {
-                                        controlled.onOpenSearch();
-                                        return;
-                                    }
-
-                                    setShowSearch(true);
-                                }}
+                                onClick={() => onOpenSearch?.()}
                                 className="bg-cyan-500 text-black py-4 rounded-2xl font-black italic text-xl shadow-lg shadow-cyan-500/20 hover:scale-105 transition-transform active:scale-95"
                             >
                                 SELECT MUSIC
@@ -522,10 +348,10 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
                     >
                         {picks.map((pick, index) => {
                             const isHostTurn = index % 2 === 0;
-                            const fallbackLabel = roundPickerNames[index] === 'SYSTEM RANDOM'
+                            const fallbackLabel = resolvedRoundPickerNames[index] === 'SYSTEM RANDOM'
                                 ? 'SYSTEM RANDOM'
-                                : roundPickerNames[index]
-                                    ? `${roundPickerNames[index]}'S PICK`
+                                : resolvedRoundPickerNames[index]
+                                    ? `${resolvedRoundPickerNames[index]}'S PICK`
                                     : `${formatOrdinal(index + 1).toUpperCase()} PICK`;
                             return (
                                 <div
@@ -554,24 +380,14 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
                         })}
                         <div className="bg-white/5 rounded-2xl p-4 flex items-center justify-center">
                             <button
-                                onClick={() => {
-                                    if (controlled?.onPrimaryAction) {
-                                        controlled.onPrimaryAction();
-                                        return;
-                                    }
-
-                                    if (roomStatus === 'WAITING') {
-                                        if (isHost) handleStartMatch();
-                                        else setIsReady(!isReady);
-                                    }
-                                }}
-                                disabled={controlled?.disablePrimaryAction ?? false}
+                                onClick={() => onPrimaryAction?.()}
+                                disabled={primaryDisabled}
                                 className={`w-full h-full rounded-xl font-black italic text-xl transition-all active:scale-95 ${roomStatus === 'SELECTING'
                                     ? 'bg-gray-800 text-gray-600 cursor-not-allowed'
-                                    : ((controlled?.disablePrimaryAction ?? false)
+                                    : (primaryDisabled
                                         ? 'bg-gray-800 text-gray-500 cursor-not-allowed'
                                         : (isHost
-                                        ? (players.every(p => p.isReady) ? 'bg-cyan-500 text-black shadow-lg shadow-cyan-500/20 shadow-cyan-500/50' : 'bg-gray-800 text-gray-500 cursor-not-allowed')
+                                        ? 'bg-cyan-500 text-black shadow-lg shadow-cyan-500/20 shadow-cyan-500/50'
                                         : (isReady ? 'border-2 border-amber-500 text-amber-500' : 'bg-white text-black shadow-xl'))
                                         )
                                     }`}
@@ -636,7 +452,7 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
                                     </span>
                                     <div className="flex items-baseline gap-1">
                                         <span className="text-8xl font-black italic tracking-tighter font-mono">
-                                            {playingCountdownSeconds}
+                                            {resolvedPlayingCountdownSeconds}
                                         </span>
                                         <span className="text-2xl font-black text-gray-600 uppercase">sec</span>
                                     </div>
@@ -695,10 +511,10 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
                                     <div className="flex gap-4">
                                         {playerStatus[p.id] === 'UNCONFIRMED' && (
                                             <>
-                                                {p.id === selfPlayerId ? (
+                                                {p.id === resolvedSelfPlayerId ? (
                                                     <>
                                                         <button
-                                                            onClick={() => handleSkip(p.id)}
+                                                            onClick={() => onSkip?.(p.id)}
                                                             className="flex-1 bg-white/10 hover:bg-white/20 text-white py-3 rounded-2xl font-black italic tracking-widest transition-all text-sm"
                                                         >
                                                             SKIP
@@ -715,7 +531,7 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
                                             <div className="flex-1 flex flex-col items-center">
                                                 <span className="text-[8px] font-black text-green-500 uppercase tracking-[0.3em] mb-1">Match Statistics</span>
                                                 <div className="text-4xl font-black italic tracking-tighter text-white">
-                                                    {playerMetrics[p.id] ?? '-'} <span className="text-lg text-gray-500 font-sans">{metricLabel}</span>
+                                                    {resolvedPlayerMetrics[p.id] ?? '-'} <span className="text-lg text-gray-500 font-sans">{resolvedMetricLabel}</span>
                                                 </div>
                                             </div>
                                         )}
@@ -729,7 +545,7 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
                             <div className="mt-4 flex justify-center">
                                 <button
                                     className="bg-red-600/20 hover:bg-red-600 text-red-500 hover:text-white px-10 py-3 rounded-full border-2 border-red-500/30 text-xs font-black italic tracking-[0.3em] transition-all uppercase shadow-lg shadow-red-600/20"
-                                    onClick={handleProceedToResult}
+                                    onClick={() => onProceedToResult?.()}
                                 >
                                     FORCE FINALIZE MATCH
                                 </button>
@@ -786,14 +602,14 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
                                         <div className="w-[1px] h-10 bg-white/10" />
                                         <div className="text-left">
                                             <p className="text-[10px] font-black text-gray-500 uppercase">Regulation</p>
-                                            <p className="text-xl font-black italic tracking-tighter text-amber-400">{resultRegulationLabel}</p>
+                                            <p className="text-xl font-black italic tracking-tighter text-amber-400">{resolvedResultRegulationLabel}</p>
                                         </div>
                                     </div>
                                 </div>
                             </header>
                             <div className="flex-1 flex gap-6 items-center px-4 relative">
                                 {players.map((p) => {
-                                    const resultPlayer = resultPlayers[p.id];
+                                    const resultPlayer = resolvedResultPlayers[p.id];
                                     const isWinner = resultPlayer?.outcome === 'WINNER';
                                     const isDraw = resultPlayer?.outcome === 'DRAW';
                                     return (
@@ -816,7 +632,7 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
                                                 <p className="text-base font-bold text-gray-400 uppercase tracking-widest">{p.name}</p>
                                             </div>
                                             <div className="flex flex-col items-center">
-                                                <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">{metricLabel}</span>
+                                                <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">{resolvedMetricLabel}</span>
                                                 <span className={`text-5xl font-black italic leading-none ${isWinner || isDraw ? 'text-white' : 'text-gray-700'}`}>
                                                     {resultPlayer?.metricValue ?? '-'}
                                                 </span>
@@ -863,14 +679,14 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
                                     <p className="text-[10px] font-black text-cyan-500 uppercase tracking-[0.5em] mb-2">Official League Record</p>
                                     <div className="bg-white/5 px-6 py-4 rounded-2xl border border-white/10 backdrop-blur-3xl shadow-2xl">
                                         <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Winning Player</p>
-                                        <p className="text-3xl font-black italic tracking-tighter text-cyan-400">{finalWinningPlayerName || '-'}</p>
+                                        <p className="text-3xl font-black italic tracking-tighter text-cyan-400">{resolvedFinalWinningPlayerName || '-'}</p>
                                     </div>
                                 </div>
                             </header>
 
                             <div className="flex-1 flex gap-12 items-center px-10 relative">
                                 {players.map((p) => {
-                                    const finalResultPlayer = finalResultPlayers[p.id];
+                                    const finalResultPlayer = resolvedFinalResultPlayers[p.id];
                                     const totalPts = finalResultPlayer?.totalPoints ?? 0;
                                     const isWinner = finalResultPlayer?.isWinner ?? false;
                                     return (
@@ -894,28 +710,14 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
 
                             <footer className="mt-12 flex justify-center gap-8 relative z-10">
                                 <button
-                                    onClick={() => {
-                                        if (controlled?.onLeaveRoom) {
-                                            controlled.onLeaveRoom();
-                                            return;
-                                        }
-
-                                        onNavigate?.('BROWSER');
-                                    }}
+                                    onClick={() => onLeaveRoom?.()}
                                     className="px-12 py-4 bg-cyan-500 hover:bg-cyan-400 text-black font-black italic text-xl rounded-2xl transition-all active:scale-95 shadow-[0_0_40px_rgba(6,182,212,0.3)] uppercase tracking-tighter"
                                 >
                                     Leave Arena
                                 </button>
-                                {isHost && (controlled?.onRemakeStage !== undefined || controlled === undefined) && (
+                                {isHost && onRemakeStage !== undefined && (
                                     <button
-                                        onClick={() => {
-                                            if (controlled?.onRemakeStage) {
-                                                controlled.onRemakeStage();
-                                                return;
-                                            }
-
-                                            setRoomStatus('WAITING');
-                                        }}
+                                        onClick={() => onRemakeStage?.()}
                                         className="px-10 py-4 bg-white/5 hover:bg-white/10 text-white font-black italic text-base rounded-2xl transition-all border-2 border-white/10 uppercase tracking-tighter backdrop-blur-xl"
                                     >
                                         Remake Stage
@@ -950,7 +752,7 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
                                         <div key={idx} className="bg-white/5 border border-white/10 rounded-xl p-3 hover:border-cyan-500/50 transition-all group animate-in slide-in-from-right duration-500">
                                             <div className="flex justify-between items-start mb-2">
                                                 <span className="text-[9px] font-black text-cyan-500 uppercase tracking-tighter italic">RD {item.round}</span>
-                                                <span className="text-[9px] font-black text-gray-500 uppercase">{metricLabel}</span>
+                                                <span className="text-[9px] font-black text-gray-500 uppercase">{resolvedMetricLabel}</span>
                                             </div>
                                             <div className="mb-2">
                                                 <h4 className="font-bold text-xs text-white truncate group-hover:text-cyan-400 transition-colors italic">{item.song.title}</h4>
@@ -973,16 +775,9 @@ export default function RoomBPL({ onNavigate, initialStatus, controlled }: RoomB
                         </div>
 
                         <button
-                            onClick={() => {
-                                if (controlled?.onLeaveRoom) {
-                                    controlled.onLeaveRoom();
-                                    return;
-                                }
-
-                                onNavigate?.('BROWSER');
-                            }}
-                            disabled={controlled?.disableLeave ?? (roomStatus === 'SELECTING' || roomStatus === 'PLAYING')}
-                            className={`flex items-center justify-center gap-2 transition-colors text-xs font-bold py-2 mt-auto ${(controlled?.disableLeave ?? (roomStatus === 'SELECTING' || roomStatus === 'PLAYING'))
+                            onClick={() => onLeaveRoom?.()}
+                            disabled={leaveDisabled}
+                            className={`flex items-center justify-center gap-2 transition-colors text-xs font-bold py-2 mt-auto ${leaveDisabled
                                 ? 'text-gray-800 cursor-not-allowed'
                                 : 'text-gray-600 hover:text-red-400'
                                 }`}

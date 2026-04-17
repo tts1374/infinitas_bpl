@@ -1,7 +1,6 @@
-import React, { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { User, CircleCheck as CheckCircle2, Circle, Play, LogOut, MessageSquare, Info, ShieldCheck, Database, Zap, Music, Copy, Check, Clock } from 'lucide-react';
 import { RoomPickDecisionCutIn, RoomSearchModalGate } from '../features/room/presentation-components';
-import { useClipboardFeedback, useResultPhaseTimer } from '../features/room/presentation-hooks';
 import {
     formatCountdown,
     formatRankLabel,
@@ -46,12 +45,6 @@ export interface RoomArenaFinalResultPlayerSummary {
     rank: number | null;
     totalPoints: number;
     isWinner: boolean;
-}
-
-interface RoomProps {
-    onNavigate?: (screen: string) => void;
-    initialStatus?: 'WAITING' | 'SELECTING' | 'PLAYING' | 'RESULT' | 'CLOSED';
-    controlled?: RoomArenaControlledState;
 }
 
 export interface RoomArenaControlledState {
@@ -110,288 +103,118 @@ export interface RoomArenaControlledState {
 }
 
 export function RoomArenaPresentational(props: RoomArenaControlledState) {
-    return <RoomArena controlled={props} />;
+    return <RoomArena {...props} />;
 }
 
-export default function RoomArena({ onNavigate, initialStatus, controlled }: RoomProps) {
-    const [isReadyState, setIsReady] = useState(initialStatus === 'SELECTING' || initialStatus === 'PLAYING' || initialStatus === 'RESULT' || initialStatus === 'CLOSED');
-    const [roomStatusState, setRoomStatus] = useState<'WAITING' | 'SELECTING' | 'PLAYING' | 'RESULT' | 'CLOSED'>(initialStatus || 'WAITING');
-    const [closeReasonState, setCloseReason] = useState<string>('ALL_ROUNDS_COMPLETED');
-    const [roundCountState, setRoundCount] = useState(1);
-    const [historyState, setHistory] = useState<HistoryItem[]>([]);
-    const [playerPicksState, setPlayerPicks] = useState<Record<string, Song | null>>(initialStatus === 'PLAYING' || initialStatus === 'RESULT' ? {
-        '1': { title: 'Technophobia', artist: 'BEMANI Sound Team "Sota Fujimori"', level: '12' },
-        '2': { title: 'Illegal Function Call', artist: 'Umeboshi Chazuke', level: '12' },
-        '3': { title: 'Level 4', artist: 'Yamajet', level: '12' },
-        '4': { title: 'Beyond the Earth', artist: '猫叉Master', level: '12' }
-    } : {});
-    const [showSearchState, setShowSearch] = useState(false);
-    const [showCutInState, setShowCutIn] = useState(false);
-    const [lastPickedSongState, setLastPickedSong] = useState<Song | null>(null);
-    const [lobbyTimerState, setLobbyTimer] = useState(1200); // 20 minutes in seconds
-    const [currentPlayersState, _setCurrentPlayers] = useState(2); // Mock current players
-    const [maxPlayersState, _setMaxPlayers] = useState(4); // Mock room capacity
-    const roomStatus = controlled?.roomStatus ?? roomStatusState;
-    const [resultTimerState] = useResultPhaseTimer(roomStatus === 'RESULT', finalizeRound);
-    const roomIdCopy = useClipboardFeedback();
-    const joinCodeCopy = useClipboardFeedback();
-
-    const roomId = controlled?.roomId ?? "3f8e6f5d-9ba0-4268-936d-a5a2ebfd7ccd";
-    const joinCode = controlled?.joinCode ?? "ARENA123";
-    const roomName = controlled?.roomName ?? 'ARENA ROOM';
-    const battleModeLabel = controlled?.battleModeLabel ?? 'SP / NO LIMIT';
-    const regCount = controlled?.regCount ?? maxPlayersState;
-    const isPrivateRoom = controlled?.isPrivateRoom ?? false;
-
+export default function RoomArena({
+    isReady,
+    roomStatus,
+    closeReason,
+    resultTimer,
+    roundCount,
+    totalRounds,
+    history,
+    playerPicks,
+    showSearch,
+    showCutIn,
+    lastPickedSong,
+    copiedId,
+    copiedCode,
+    lobbyTimer,
+    currentPlayers,
+    maxPlayers,
+    roomName = '',
+    battleModeLabel = '',
+    regCount,
+    isPrivateRoom = false,
+    roomId,
+    joinCode,
+    pickingCountdownSeconds = 0,
+    logs,
+    matchInfoItems,
+    publicSharePanel,
+    playTime,
+    playingPhase,
+    playingCountdownSeconds,
+    playerStatus,
+    playerMetrics,
+    metricLabel,
+    resultSong,
+    resultPlayers,
+    durationLabel,
+    finalResultPlayers,
+    isHost,
+    allPlayers,
+    selectedByName,
+    selfPlayerId,
+    searchModal,
+    disablePrimaryAction,
+    disableLeave,
+    onCopyRoomId,
+    onCopyJoinCode,
+    onOpenSearch,
+    onPrimaryAction,
+    onToggleReady,
+    onSkip,
+    onProceedToResult,
+    onLeaveRoom,
+    onRemakeStage,
+}: RoomArenaControlledState) {
+    const players = allPlayers.slice(0, currentPlayers);
+    const resolvedSelfPlayerId = selfPlayerId ?? (isHost ? '1' : '2');
+    const hasJoinCode = joinCode.trim().length > 0;
+    const maskedJoinCode = hasJoinCode ? maskJoinCode(joinCode) : '';
     const handleCopyRoomId = () => {
-        if (controlled?.onCopyRoomId) {
-            controlled.onCopyRoomId();
-            return;
-        }
-
-        roomIdCopy.copy(roomId);
+        onCopyRoomId?.();
     };
     const handleCopyJoinCode = () => {
-        if (controlled?.onCopyJoinCode) {
-            controlled.onCopyJoinCode();
-            return;
-        }
-
-        joinCodeCopy.copy(joinCode);
+        onCopyJoinCode?.();
     };
-
-    // PLAYING state logic
-    const [playTimeState, setPlayTime] = useState(0);
-    const [playingPhaseState, setPlayingPhase] = useState<'MUSIC_SELECT' | 'PLAY_START' | 'IN_PLAY'>('MUSIC_SELECT');
-    const [playerStatusState, setPlayerStatus] = useState<Record<string, RoomPlayerStatusLabel>>(
-        initialStatus === 'PLAYING' ? {
-            '1': 'PLAYED',
-            '2': 'UNCONFIRMED',
-            '3': 'PLAYED',
-            '4': 'UNCONFIRMED'
-        } : initialStatus === 'RESULT' ? {
-            '1': 'PLAYED',
-            '2': 'PLAYED',
-            '3': 'PLAYED',
-            '4': 'PLAYED'
-        } : {
-            '1': 'UNCONFIRMED',
-            '2': 'UNCONFIRMED',
-            '3': 'UNCONFIRMED',
-            '4': 'UNCONFIRMED'
-        }
-    );
-
-    const isHost = controlled?.isHost ?? true;
-
-    const isReady = controlled?.isReady ?? isReadyState;
-    const closeReason = controlled?.closeReason ?? closeReasonState;
-    const resultTimer = controlled?.resultTimer ?? resultTimerState;
-    const roundCount = controlled?.roundCount ?? roundCountState;
-    const history = controlled?.history ?? historyState;
-    const playerPicks = controlled?.playerPicks ?? playerPicksState;
-    const showSearch = controlled?.showSearch ?? showSearchState;
-    const showCutIn = controlled?.showCutIn ?? showCutInState;
-    const lastPickedSong = controlled?.lastPickedSong ?? lastPickedSongState;
-    const copiedId = controlled?.copiedId ?? roomIdCopy.copied;
-    const copiedCode = controlled?.copiedCode ?? joinCodeCopy.copied;
-    const lobbyTimer = controlled?.lobbyTimer ?? lobbyTimerState;
-    const currentPlayers = controlled?.currentPlayers ?? currentPlayersState;
-    const maxPlayers = controlled?.maxPlayers ?? maxPlayersState;
-    const playTime = controlled?.playTime ?? playTimeState;
-    const playingPhase = controlled?.playingPhase ?? playingPhaseState;
-    const playingCountdownSeconds = controlled?.playingCountdownSeconds ?? (
+    const shortRoomId = roomId.length > 18 ? `${roomId.slice(0, 18)}…` : roomId;
+    const logsViewportRef = useRef<HTMLDivElement | null>(null);
+    const resolvedTotalRounds = totalRounds ?? currentPlayers;
+    const resolvedPlayingCountdownSeconds = playingCountdownSeconds ?? (
         playingPhase === 'MUSIC_SELECT' ? Math.max(0, 45 - playTime) :
             playingPhase === 'PLAY_START' ? Math.max(0, 55 - playTime) :
                 Math.max(0, playTime - 55)
     );
-    const playerStatus = controlled?.playerStatus ?? playerStatusState;
-    const playerMetrics = controlled?.playerMetrics ?? {};
-    const metricLabel = controlled?.metricLabel ?? 'EX SCORE';
-    const resultSong = controlled?.resultSong ?? null;
-    const resultPlayers = controlled?.resultPlayers ?? {};
-    const durationLabel = controlled?.durationLabel ?? '0M 00S';
-    const finalResultPlayers = controlled?.finalResultPlayers ?? {};
-    const logs = controlled?.logs ?? [];
-    const matchInfoItems = controlled?.matchInfoItems ?? [
+    const resolvedPlayerMetrics = playerMetrics ?? {};
+    const resolvedMetricLabel = metricLabel ?? 'EX SCORE';
+    const resolvedResultSong = resultSong ?? null;
+    const resolvedResultPlayers = resultPlayers ?? {};
+    const resolvedDurationLabel = durationLabel ?? '0M 00S';
+    const resolvedFinalResultPlayers = finalResultPlayers ?? {};
+    const resolvedLogs = logs ?? [];
+    const resolvedMatchInfoItems = matchInfoItems ?? [
         { label: 'Mode', value: 'ARENA' },
-        { label: 'Scoring', value: 'EX SCORE' },
+        { label: 'Scoring', value: resolvedMetricLabel },
     ];
-    const publicSharePanel = controlled?.publicSharePanel ?? null;
-
-    const allMockPlayers = controlled?.allPlayers ?? [
-        { id: '1', name: 'PLAYER_ONE (HOST)', isReady: true, isHost: true },
-        { id: '2', name: 'RIVAL_KUN', isReady: true, isHost: false },
-        { id: '3', name: 'IIDX_CHAMP', isReady: isReady, isHost: false },
-        { id: '4', name: 'ARENA_PRO', isReady: true, isHost: false },
-    ];
-
-    const players = allMockPlayers.slice(0, currentPlayers);
-    const selfPlayerId = controlled?.selfPlayerId ?? (isHost ? '1' : '2');
-    const hasJoinCode = joinCode.trim().length > 0;
-    const maskedJoinCode = hasJoinCode ? maskJoinCode(joinCode) : '';
-    const shortRoomId = roomId.length > 18 ? `${roomId.slice(0, 18)}…` : roomId;
-    const logsViewportRef = useRef<HTMLDivElement | null>(null);
-    const pickingCountdownSeconds = controlled?.pickingCountdownSeconds ?? 0;
-    const totalRounds = controlled?.totalRounds ?? currentPlayers;
-
-    useEffect(() => {
-        if (logsViewportRef.current) {
-            logsViewportRef.current.scrollTop = logsViewportRef.current.scrollHeight;
-        }
-    }, [logs]);
-
-    const handleSelectSong = (song: Song) => {
-        setPlayerPicks({ ...playerPicks, '1': song }); // Mock: Always picking for Player 1
-        setShowSearch(false);
-        setLastPickedSong(song);
-        setShowCutIn(true);
-
-        // 演出後にカットインを閉じるが、PLAYING へは遷移させない
-        // ユーザーが意図的に次の確認をするために、SELECTING 状態を維持する
-        setTimeout(() => {
-            setShowCutIn(false);
-            // setRoomStatus('PLAYING'); // <-- ここをコメントアウト
-        }, 3000);
-    };
-
-    // 初期化時・状態遷移時の処理
-    React.useEffect(() => {
-        if (roomStatus === 'SELECTING' && !playerPicks['1']) {
-            setShowSearch(true);
-        }
-        if (roomStatus === 'PLAYING') {
-            if (!playerPicks['1']) {
-                setPlayerPicks({
-                    '1': { id: '1', title: 'Everlasting Message', artist: '削除', level: '12' },
-                    '2': { id: '2', title: 'Stasis', artist: 'dAice', level: '12' },
-                    '3': { id: '3', title: '冥', artist: 'Amuro vs Killer', level: '12' },
-                    '4': { id: '4', title: 'IIDX RED Ending', artist: 'dj TAKA', level: '12' }
-                });
-            }
-            setPlayerStatus({
-                '1': 'PLAYED',
-                '2': 'PLAYED',
-                '3': 'PLAYED',
-                '4': 'PLAYED'
-            });
-        }
-        if (roomStatus === 'WAITING') {
-            setLobbyTimer(1200); // Reset timer when returning to lobby
-        }
-    }, [roomStatus]);
-
-    // Lobby Timer management
-    React.useEffect(() => {
-        if (roomStatus !== 'WAITING') return;
-
-        const interval = setInterval(() => {
-            setLobbyTimer(prev => {
-                if (prev <= 1) {
-                    clearInterval(interval);
-                    setRoomStatus('CLOSED');
-                    setCloseReason('LOBBY_TIMEOUT');
-                    return 0;
-                }
-                return prev - 1;
-            });
-        }, 1000);
-
-        return () => clearInterval(interval);
-    }, [roomStatus]);
-
-    // PLAYING タイム管理
-    React.useEffect(() => {
-        if (roomStatus !== 'PLAYING') return;
-
-        const interval = setInterval(() => {
-            setPlayTime(prev => {
-                const next = prev + 1;
-                if (next < 45) setPlayingPhase('MUSIC_SELECT');
-                else if (next < 55) setPlayingPhase('PLAY_START');
-                else setPlayingPhase('IN_PLAY');
-                return next;
-            });
-        }, 1000);
-
-        return () => clearInterval(interval);
-    }, [roomStatus]);
-
-    const handleSkip = (playerId: string) => {
-        if (controlled?.onSkip) {
-            controlled.onSkip(playerId);
-            return;
-        }
-
-        setPlayerStatus(prev => ({ ...prev, [playerId]: 'SKIPPED' }));
-    };
-
-    function finalizeRound() {
-        const currentSong = playerPicks['1'] || { title: 'Unknown', artist: 'Unknown', level: '?' };
-
-        const mockScores: Record<string, number> = {
-            '1': Math.floor(Math.random() * 2000) + 1500,
-            '2': Math.floor(Math.random() * 2000) + 1500,
-            '3': Math.floor(Math.random() * 2000) + 1500,
-            '4': Math.floor(Math.random() * 2000) + 1500
-        };
-
-        // Find winner
-        let maxScore = -1;
-        let winner = 'DRAW';
-        Object.entries(mockScores).forEach(([pid, score]) => {
-            if (score > maxScore) {
-                maxScore = score;
-                winner = pid;
-            }
-        });
-
-        const newItem: HistoryItem = {
-            round: roundCount,
-            song: currentSong,
-            scores: mockScores,
-            winnerId: winner
-        };
-
-        setHistory(prev => [newItem, ...prev]);
-
-        if (roundCount < 4) {
-            setRoundCount(prev => prev + 1);
-            setRoomStatus('PLAYING');
-            setPlayTime(0);
-            setPlayerStatus({
-                '1': 'UNCONFIRMED',
-                '2': 'UNCONFIRMED',
-                '3': 'UNCONFIRMED',
-                '4': 'UNCONFIRMED'
-            });
-        } else {
-            setRoundCount(1);
-            setRoomStatus('CLOSED');
-            setCloseReason('ALL_ROUNDS_COMPLETED');
-        }
-    }
-
-    const handleProceedToResult = () => {
-        if (controlled?.onProceedToResult) {
-            controlled.onProceedToResult();
-            return;
-        }
-
-        setRoomStatus('RESULT');
-    };
-    const currentRoundPlayer = players[roundCount - 1] ?? players[0];
-    const selectedByName = controlled?.selectedByName ?? currentRoundPlayer?.name ?? 'PLAYER_ONE';
+    const resolvedPublicSharePanel = publicSharePanel ?? null;
+    const currentRoundPlayer = players[roundCount - 1] ?? players[0] ?? null;
+    const resolvedSelectedByName = selectedByName ?? currentRoundPlayer?.name ?? '';
     const currentRoundSong = currentRoundPlayer ? playerPicks[currentRoundPlayer.id] ?? null : null;
     const currentRoundTitle = currentRoundSong?.title ?? 'Unknown Track';
     const currentRoundVersion = resolveSongVersionLabel(currentRoundSong?.version);
     const currentRoundPlayStyle = currentRoundSong?.playStyle ?? '-';
     const currentRoundDifficulty = currentRoundSong?.difficulty ?? '-';
     const currentRoundLevel = currentRoundSong?.level ?? '?';
-    const resultSongVersion = resolveSongVersionLabel(resultSong?.version);
-    const resultSongPlayStyle = resultSong?.playStyle ?? '-';
-    const resultSongDifficulty = resultSong?.difficulty ?? '-';
-    const resultSongLevel = resultSong?.level ?? '?';
+    const resultSongVersion = resolveSongVersionLabel(resolvedResultSong?.version);
+    const resultSongPlayStyle = resolvedResultSong?.playStyle ?? '-';
+    const resultSongDifficulty = resolvedResultSong?.difficulty ?? '-';
+    const resultSongLevel = resolvedResultSong?.level ?? '?';
+    const primaryDisabled = disablePrimaryAction ?? (
+        isHost
+            ? roomStatus !== 'WAITING' || !players.every((player) => player.isReady)
+            : roomStatus === 'SELECTING'
+    );
+    const leaveDisabled = disableLeave ?? (roomStatus === 'SELECTING' || roomStatus === 'PLAYING');
+    const resolvedRegCount = regCount ?? maxPlayers;
+
+    useEffect(() => {
+        if (logsViewportRef.current) {
+            logsViewportRef.current.scrollTop = logsViewportRef.current.scrollHeight;
+        }
+    }, [resolvedLogs]);
 
     return (
         <div className="flex h-screen w-screen bg-[#1a1a1b] text-white font-sans overflow-hidden">
@@ -399,10 +222,10 @@ export default function RoomArena({ onNavigate, initialStatus, controlled }: Roo
             {showCutIn ? <RoomPickDecisionCutIn song={lastPickedSong} /> : null}
 
             <RoomSearchModalGate
-                modal={controlled?.searchModal}
+                modal={searchModal}
                 isOpen={showSearch}
-                onClose={() => setShowSearch(false)}
-                onSelect={handleSelectSong}
+                onClose={() => undefined}
+                onSelect={() => undefined}
             />
 
             {/* メインエリア */}
@@ -421,7 +244,7 @@ export default function RoomArena({ onNavigate, initialStatus, controlled }: Roo
                                         playingPhase === 'PLAY_START' ? 'PLAY START' : 'IN PLAY'}
                                 </div>
                                 <div className="flex flex-col">
-                                    <span className="text-4xl font-black italic tracking-tighter font-mono">{playingCountdownSeconds}</span>
+                                    <span className="text-4xl font-black italic tracking-tighter font-mono">{resolvedPlayingCountdownSeconds}</span>
                                     <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Countdown</span>
                                 </div>
                             </div>
@@ -442,13 +265,13 @@ export default function RoomArena({ onNavigate, initialStatus, controlled }: Roo
                                     <span className={`${getDifficultyBadgeClass(currentRoundDifficulty)} rounded-full px-3 py-1 text-[11px] tracking-[0.2em]`}>{getDifficultyBadgeLabel(currentRoundDifficulty)}</span>
                                     <span className="text-cyan-500">Lv{currentRoundLevel}</span>
                                 </div>
-                                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Selected By {selectedByName}</p>
+                                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Selected By {resolvedSelectedByName}</p>
                             </div>
 
                             <div className="flex items-center gap-4">
                                 <div className="text-right">
                                     <p className="text-[10px] font-black text-cyan-500 uppercase tracking-widest mb-1 italic text-shadow-glow">Stage</p>
-                                    <h2 className="text-2xl font-black italic tracking-tighter text-white">ROUND {roundCount} / {totalRounds}</h2>
+                                    <h2 className="text-2xl font-black italic tracking-tighter text-white">ROUND {roundCount} / {resolvedTotalRounds}</h2>
                                 </div>
                                 <div className="w-12 h-12 bg-white/5 border border-white/10 rounded-xl flex items-center justify-center text-cyan-500">
                                     <Zap size={24} />
@@ -484,8 +307,8 @@ export default function RoomArena({ onNavigate, initialStatus, controlled }: Roo
                                     <div className="flex items-center gap-4">
                                         {playerStatus[p.id] === 'UNCONFIRMED' && (
                                             <>
-                                                {p.id === selfPlayerId ? (
-                                                    <button onClick={() => handleSkip(p.id)} className="flex-1 bg-white/5 hover:bg-white/10 border border-white/10 py-3 rounded-xl font-black italic text-sm transition-all">SKIP ROUND</button>
+                                                {p.id === resolvedSelfPlayerId ? (
+                                                    <button onClick={() => onSkip?.(p.id)} className="flex-1 bg-white/5 hover:bg-white/10 border border-white/10 py-3 rounded-xl font-black italic text-sm transition-all">SKIP ROUND</button>
                                                 ) : (
                                                     <div className="flex-1 h-12 bg-white/5 rounded-xl border border-white/5 flex items-center justify-center">
                                                         <span className="text-[10px] font-black text-gray-700 uppercase animate-pulse">Waiting for result...</span>
@@ -495,9 +318,9 @@ export default function RoomArena({ onNavigate, initialStatus, controlled }: Roo
                                         )}
                                         {playerStatus[p.id] === 'PLAYED' && (
                                             <div className="flex items-center gap-2">
-                                                <span className="text-sm font-bold text-gray-500 uppercase">{metricLabel}:</span>
+                                                <span className="text-sm font-bold text-gray-500 uppercase">{resolvedMetricLabel}:</span>
                                                 <span className="text-3xl font-black italic text-white tracking-widest">
-                                                    {playerMetrics[p.id] ?? '-'}
+                                                    {resolvedPlayerMetrics[p.id] ?? '-'}
                                                 </span>
                                             </div>
                                         )}
@@ -510,7 +333,7 @@ export default function RoomArena({ onNavigate, initialStatus, controlled }: Roo
                         {isHost && playingPhase === 'IN_PLAY' && playTime >= (240 + 55) && (
                             <div className="mt-8 flex justify-center">
                                 <button
-                                    onClick={handleProceedToResult}
+                                    onClick={() => onProceedToResult?.()}
                                     className="px-12 py-3 bg-red-600/10 hover:bg-red-600 border border-red-500/30 text-red-500 hover:text-white rounded-full font-black italic tracking-widest text-xs transition-all uppercase"
                                 >
                                     Force Finalize Match
@@ -536,8 +359,8 @@ export default function RoomArena({ onNavigate, initialStatus, controlled }: Roo
                                             </span>
                                         )}
                                     </div>
-                                    <h2 className={`max-w-[56rem] text-6xl font-black italic tracking-tighter text-white leading-tight whitespace-normal ${resultSong?.title && resultSong.title.length > 45 ? 'line-clamp-2 break-all' : 'break-all'}`}>
-                                        {resultSong?.title || 'Unknown Track'}
+                                    <h2 className={`max-w-[56rem] text-6xl font-black italic tracking-tighter text-white leading-tight whitespace-normal ${resolvedResultSong?.title && resolvedResultSong.title.length > 45 ? 'line-clamp-2 break-all' : 'break-all'}`}>
+                                        {resolvedResultSong?.title || 'Unknown Track'}
                                     </h2>
                                 </div>
                                 <div className="mt-3 flex flex-wrap items-center gap-3 text-lg font-black italic tracking-[0.2em] text-gray-300">
@@ -560,7 +383,7 @@ export default function RoomArena({ onNavigate, initialStatus, controlled }: Roo
 
                         <div className="flex-1 grid grid-cols-4 gap-8 mb-12">
                             {players.map((p) => {
-                                const summary = resultPlayers[p.id];
+                                const summary = resolvedResultPlayers[p.id];
                                 const rank = summary?.rank ?? null;
                                 const isWinner = summary?.isWinner ?? false;
 
@@ -589,7 +412,7 @@ export default function RoomArena({ onNavigate, initialStatus, controlled }: Roo
                                                 </div>
 
                                                 <div className="flex flex-col items-center">
-                                                    <span className="text-[10px] font-black text-gray-600 uppercase tracking-widest mb-1 font-mono">{metricLabel}</span>
+                                                    <span className="text-[10px] font-black text-gray-600 uppercase tracking-widest mb-1 font-mono">{resolvedMetricLabel}</span>
                                                     <div className={`text-4xl font-black italic tracking-tighter ${isWinner ? 'text-cyan-400' : 'text-white'}`}>
                                                         {summary?.metricValue ?? '-'}
                                                     </div>
@@ -624,7 +447,7 @@ export default function RoomArena({ onNavigate, initialStatus, controlled }: Roo
                                     <div className="w-[1px] h-12 bg-white/10" />
                                     <div className="text-left font-sans">
                                         <p className="text-xs font-black text-gray-500 uppercase">Duration</p>
-                                        <p className="text-2xl font-black italic tracking-tighter text-cyan-400">{durationLabel}</p>
+                                        <p className="text-2xl font-black italic tracking-tighter text-cyan-400">{resolvedDurationLabel}</p>
                                     </div>
                                 </div>
                             </div>
@@ -633,7 +456,7 @@ export default function RoomArena({ onNavigate, initialStatus, controlled }: Roo
                         <div className="flex-1 flex flex-col justify-center gap-8 relative px-10">
                             <div className="grid grid-cols-4 gap-8">
                                 {players.map((p) => {
-                                    const summary = finalResultPlayers[p.id];
+                                    const summary = resolvedFinalResultPlayers[p.id];
                                     const rank = summary?.rank ?? null;
                                     const isWinner = summary?.isWinner ?? false;
                                     return (
@@ -659,27 +482,15 @@ export default function RoomArena({ onNavigate, initialStatus, controlled }: Roo
                         <footer className="mt-12 flex justify-center gap-8 relative z-10">
                             <button
                                 onClick={() => {
-                                    if (controlled?.onLeaveRoom) {
-                                        controlled.onLeaveRoom();
-                                        return;
-                                    }
-
-                                    onNavigate?.('BROWSER');
+                                    onLeaveRoom?.();
                                 }}
                                 className="px-12 py-4 bg-cyan-500 hover:bg-cyan-400 text-black font-black italic text-2xl rounded-2xl transition-all active:scale-95 shadow-[0_0_60px_rgba(6,182,212,0.4)] uppercase tracking-tighter"
                             >
                                 Return to Lobby
                             </button>
-                            {isHost && (controlled?.onRemakeStage !== undefined || controlled === undefined) ? (
+                            {isHost && onRemakeStage !== undefined ? (
                                 <button
-                                    onClick={() => {
-                                        if (controlled?.onRemakeStage) {
-                                            controlled.onRemakeStage();
-                                            return;
-                                        }
-
-                                        setRoomStatus('WAITING');
-                                    }}
+                                    onClick={() => onRemakeStage?.()}
                                     className="px-10 py-4 bg-white/5 hover:bg-white/10 text-white font-black italic text-base rounded-2xl transition-all border-2 border-white/10 uppercase tracking-tighter"
                                 >
                                     Remake Room
@@ -746,7 +557,7 @@ export default function RoomArena({ onNavigate, initialStatus, controlled }: Roo
                                         </span>
                                         <div className="w-1 h-1 rounded-full bg-gray-600" />
                                         <span className="text-[10px] font-black text-gray-400 uppercase tracking-wider">
-                                            REG: {regCount} ROUNDS
+                                            REG: {resolvedRegCount} ROUNDS
                                         </span>
                                     </div>
                                 </div>
@@ -802,15 +613,14 @@ export default function RoomArena({ onNavigate, initialStatus, controlled }: Roo
                 }
                 <div className="grid grid-cols-2 grid-rows-2 gap-3 flex-1 overflow-hidden">
                     {[...Array(4)].map((_, idx) => {
-                        const p = allMockPlayers[idx] ?? { id: String(idx + 1), name: `PLAYER_${idx + 1}`, isReady: false, isHost: false };
-                        const isJoined = idx < currentPlayers;
+                        const p = players[idx] ?? null;
                         const isSlotAvailable = idx < maxPlayers;
-                        const pickedSong = playerPicks[p.id];
+                        const pickedSong = p ? playerPicks[p.id] : null;
                         const hasPicked = !!pickedSong;
                         const colors = ['border-cyan-500 shadow-cyan-500/20', 'border-amber-500 shadow-amber-500/20', 'border-crimson-500 shadow-crimson-500/20', 'border-purple-500 shadow-purple-500/20'];
                         const personalColor = colors[idx] || 'border-cyan-500';
 
-                        if (isJoined) {
+                        if (p) {
                             return (
                                 <div
                                     key={idx}
@@ -868,14 +678,7 @@ export default function RoomArena({ onNavigate, initialStatus, controlled }: Roo
                                     <div className="absolute right-4 bottom-2 text-6xl font-black italic text-white/[0.03] select-none pointer-events-none">0{idx + 1}</div>
                                     {idx === 0 && roomStatus === 'SELECTING' && !hasPicked && (
                                         <button
-                                            onClick={() => {
-                                                if (controlled?.onOpenSearch) {
-                                                    controlled.onOpenSearch();
-                                                    return;
-                                                }
-
-                                                setShowSearch(true);
-                                            }}
+                                            onClick={() => onOpenSearch?.()}
                                             className="absolute inset-0 bg-cyan-500/10 hover:bg-cyan-500/20 flex items-center justify-center group transition-all rounded-2xl"
                                         >
                                             <div className="bg-cyan-500 text-black px-6 py-2 rounded-full font-black italic tracking-widest scale-90 group-hover:scale-100 transition-transform shadow-xl">SELECT MUSIC</div>
@@ -923,9 +726,9 @@ export default function RoomArena({ onNavigate, initialStatus, controlled }: Roo
                             <span className="text-[10px] font-black uppercase tracking-widest">Chat / Logs</span>
                         </div>
                         <div ref={logsViewportRef} className="flex-1 text-sm overflow-y-auto custom-scrollbar pr-2 h-0 space-y-1">
-                            {logs.length === 0 ? (
+                            {resolvedLogs.length === 0 ? (
                                 <p className="text-gray-500 italic">System: 全員の準備完了を待っています...</p>
-                            ) : logs.map((entry) => (
+                            ) : resolvedLogs.map((entry) => (
                                 <p
                                     key={entry.id}
                                     className={entry.tone === 'accent' ? 'text-cyan-400/90 font-bold' : 'text-gray-300'}
@@ -938,18 +741,9 @@ export default function RoomArena({ onNavigate, initialStatus, controlled }: Roo
 
                     {isHost ? (
                         <button
-                            onClick={() => {
-                                if (controlled?.onPrimaryAction) {
-                                    controlled.onPrimaryAction();
-                                    return;
-                                }
-
-                                if (roomStatus === 'WAITING' && players.every(p => p.isReady)) {
-                                    setRoomStatus('SELECTING');
-                                }
-                            }}
-                            disabled={controlled?.disablePrimaryAction ?? (roomStatus !== 'WAITING' || !players.every(p => p.isReady))}
-                            className={`w-72 font-black text-lg italic tracking-tighter rounded-xl flex items-center justify-center gap-3 transition-all active:scale-95 shadow-[0_0_30px_rgba(6,182,212,0.3)] ${(controlled?.disablePrimaryAction ?? (roomStatus !== 'WAITING' || !players.every(p => p.isReady)))
+                            onClick={() => onPrimaryAction?.()}
+                            disabled={primaryDisabled}
+                            className={`w-72 font-black text-lg italic tracking-tighter rounded-xl flex items-center justify-center gap-3 transition-all active:scale-95 shadow-[0_0_30px_rgba(6,182,212,0.3)] ${primaryDisabled
                                 ? 'bg-gray-800 text-gray-600 cursor-not-allowed opacity-50'
                                 : 'bg-cyan-500 hover:bg-cyan-400 text-black shadow-cyan-500/50'
                                 }`}
@@ -958,19 +752,12 @@ export default function RoomArena({ onNavigate, initialStatus, controlled }: Roo
                         </button>
                     ) : (
                         <button
-                            onClick={() => {
-                                if (controlled?.onToggleReady) {
-                                    controlled.onToggleReady();
-                                    return;
-                                }
-
-                                setIsReady(!isReady);
-                            }}
-                            disabled={controlled?.disablePrimaryAction ?? (roomStatus === 'SELECTING')}
+                            onClick={() => onToggleReady?.()}
+                            disabled={primaryDisabled}
                             className={`w-72 font-black text-lg italic tracking-tighter rounded-xl flex items-center justify-center gap-3 transition-all active:scale-95 ${isReady
                                 ? 'bg-transparent border-2 border-cyan-500 text-cyan-500 hover:bg-cyan-500/10'
                                 : 'bg-white text-black hover:bg-gray-200 shadow-xl'
-                                } ${(controlled?.disablePrimaryAction ?? (roomStatus === 'SELECTING')) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                } ${primaryDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                         >
                             {isReady ? 'CANCEL READY' : 'READY UP'}
                         </button>
@@ -1017,18 +804,18 @@ export default function RoomArena({ onNavigate, initialStatus, controlled }: Roo
                     </div>
                 </section>
 
-                {publicSharePanel ? (
+                {resolvedPublicSharePanel ? (
                     <section className="pt-6 border-t border-white/5">
-                        {publicSharePanel}
+                        {resolvedPublicSharePanel}
                     </section>
                 ) : null}
 
-                <section className={publicSharePanel ? "pt-6" : "pt-6 border-t border-white/5"}>
+                <section className={resolvedPublicSharePanel ? "pt-6" : "pt-6 border-t border-white/5"}>
                     <h3 className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-4 flex items-center gap-2">
                         <Info size={14} /> Match Info
                     </h3>
                     <div className="grid grid-cols-2 gap-2">
-                        {matchInfoItems.map((item) => (
+                        {resolvedMatchInfoItems.map((item) => (
                             <div key={item.label} className="bg-[#1e1e1e] p-2 rounded-lg border border-white/5">
                                 <span className="block text-[8px] text-gray-600 font-bold uppercase">{item.label}</span>
                                 <span className="text-[11px] font-bold text-cyan-400">{item.value}</span>
@@ -1052,16 +839,9 @@ export default function RoomArena({ onNavigate, initialStatus, controlled }: Roo
                 ) : null}
 
                 <button
-                    onClick={() => {
-                        if (controlled?.onLeaveRoom) {
-                            controlled.onLeaveRoom();
-                            return;
-                        }
-
-                        onNavigate?.('BROWSER');
-                    }}
-                    disabled={controlled?.disableLeave ?? (roomStatus === 'SELECTING' || roomStatus === 'PLAYING')}
-                    className={`flex items-center justify-center gap-2 transition-colors text-xs font-bold py-2 mt-auto ${(controlled?.disableLeave ?? (roomStatus === 'SELECTING' || roomStatus === 'PLAYING'))
+                    onClick={() => onLeaveRoom?.()}
+                    disabled={leaveDisabled}
+                    className={`flex items-center justify-center gap-2 transition-colors text-xs font-bold py-2 mt-auto ${leaveDisabled
                         ? 'text-gray-800 cursor-not-allowed'
                         : 'text-gray-600 hover:text-red-400'
                         }`}
