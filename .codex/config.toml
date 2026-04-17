@@ -21,14 +21,8 @@ args = ["-y", "mcp-remote@latest", "https://bindings.mcp.cloudflare.com/mcp"]
 startup_timeout_sec = 30.0
 tool_timeout_sec = 60.0
 
-# Cloudflare Observability MCP (remote)
-
-[mcp_servers.cloudflareObservability]
-# Keep Observability on mcp-remote so OAuth state persists reliably in Codex desktop.
-command = "npx"
-args = ["-y", "mcp-remote@latest", "https://observability.mcp.cloudflare.com/mcp"]
-startup_timeout_sec = 30.0
-tool_timeout_sec = 60.0
+# Cloudflare Observability MCP is intentionally user-local.
+# Configure it in ~/.codex/config.toml with an account API token so OAuth loops stay out of repo config.
 
 # Playwright MCP (UI regression support)
 [mcp_servers.playwright]
