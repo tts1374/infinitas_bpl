@@ -41,8 +41,10 @@ Do not use it for generic progress reports.
 5. Load [docs/issue_close_evidence_template.md](C:/work/infinitas_arena/infinitas_arena/docs/issue_close_evidence_template.md).
 6. Fill the closure-evidence section.
 7. If the Issue is a milestone-management Issue, add the milestone audit table too.
-8. If executing the close, post the closure evidence comment and confirm its existence by returned comment URL/id or read-back before closing the Issue.
-9. Use [references/closure-checklist.md](references/closure-checklist.md) to verify status vocabulary, links, follow-up evidence completeness, and close ordering.
+8. If executing the close, prefer the structured connector/write path when available.
+9. Empty stdout / empty CLI response / confirmation absent response is not success evidence. If the first write path fails or cannot confirm creation, switch method and require exact read-back.
+10. Confirm the closure evidence comment exists by returned comment URL/id or exact-body read-back before closing the Issue.
+11. Use [references/closure-checklist.md](references/closure-checklist.md) to verify status vocabulary, links, follow-up evidence completeness, and close ordering.
 
 ## Output Contract
 
@@ -59,4 +61,5 @@ Rules:
 - If no explicit follow-up is found, write `なし`.
 - Do not invent follow-up numbers from implication alone.
 - Closure evidence comment must be ready before recommending the close action.
+- Empty or silent write-back responses are not closure evidence.
 - Do not close an Issue until the posted closure evidence comment is confirmed to exist.

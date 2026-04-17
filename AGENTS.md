@@ -203,6 +203,26 @@ Delegation packet 必須項目:
 - 生成物の直接編集はしない
 - 追加スコープが必要なら最小拡張 + 理由明示
 
+### 7.1 Source Worktree Reconciliation
+
+ルール:
+- clean worktree / 一時 branch / cherry-pick / file copy で scoped diff を別 worktree へ隔離した場合、元 worktree を in-scope residue のまま残して task 完了 / PR 完了を返してはならない
+- 元 worktree に残る in-scope dirty/untracked path が commit 済み branch または upstream と内容一致する場合、それは user WIP ではなく reconciliation 対象の residue として扱う
+- `v1` のような既定 base branch worktree を source にした場合、user の明示指示がない限り最終状態は clean を既定とする
+- user-owned unrelated diff は preserve するが、copy / isolate した in-scope path は targeted restore / clean / labeled stash で解消する
+- reconcile 不能、または source worktree に何を残すべきか判定不能なら `BLOCKED` / `ESCALATION` を返す
+
+### 7.2 Local Cleanup Boundary
+
+ルール:
+- `worktree削除` / `local branch削除` は destructive local operation として扱う
+- user が `close + cleanup` を明示した場合、または current request に local cleanup が含まれる場合、その cleanup は完了条件に含める
+- cleanup 対象は、その task に紐づく local worktree と対応する `codex/*` branch に限定する
+- `v1` のような既定 base branch、current branch、protected branch は cleanup 対象にしない
+- target branch の取り込み確認不能、target worktree が dirty、task-owned target と証明不能、または削除影響が曖昧な場合は `BLOCKED` / `ESCALATION` を返す
+- user-owned WIP を黙って stash / delete しない
+- cleanup 実行後は read-back で削除結果を確認する
+
 ---
 
 ## 8. Agent Definition Source of Truth

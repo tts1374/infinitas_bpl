@@ -15,6 +15,7 @@ Use this checklist before creating commits and PRs in Phase C.
 - [ ] Diff is minimal and task-focused.
 - [ ] Generated artifacts are isolated when present.
 - [ ] No accidental lockfile or build-output changes unless intended.
+- [ ] If clean worktree isolation was used, the source worktree reconciliation plan is known before commit/PR.
 
 ## 3. Validation Gate
 
@@ -66,6 +67,7 @@ test(client): cover source validation boundary
 - [ ] PR body lists impact area and validation evidence.
 - [ ] PR body lists regression checks.
 - [ ] High-risk work includes rollback and compatibility notes.
+- [ ] Source worktree final status is confirmed before returning `complete`.
 
 Use:
 - `pr-template-phase-c.md`

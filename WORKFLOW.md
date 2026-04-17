@@ -271,6 +271,43 @@ Phase C 開始前に次を必ず出力する:
 - 新規 test file を追加した場合、標準 test script に含まれるか確認する。含まれない場合は `1) script に追加` または `2) 明示コマンドで実行 + 理由記録` を必須とする
 - CI 相当の validation がローカルで再現できない場合、狭いローカル pass を CI pass 相当として扱わない。`skip reason` と residual risk を残す
 
+### 6.4.1 Source Worktree Reconciliation Gate
+
+適用条件:
+- commit / PR のために clean worktree または別 branch へ scoped diff を隔離した場合
+
+必須確認:
+- `source worktree path`
+- `isolated paths`
+- `post-isolation source status`
+- `reconciliation action`（`restore` / `clean` / `stash` / `none`）
+- `final source status`
+
+ルール:
+- source worktree に upstream-equivalent な in-scope dirty/untracked residue が残る状態で `COMPLETE` を返さない
+- `v1` のような既定 base branch source worktree では clean 終了を既定とする
+- temporary stash を作った場合は、用途 / 対象 path / keep or drop を追跡できるように残す
+- source worktree に user-owned unrelated diff がある場合は preserve するが、scoped copy / isolate の残骸と混同しない
+
+### 6.4.2 Base Branch Latest Sync Protocol
+
+`v1を最新化` のような default/base branch 同期依頼では、少なくとも次を確認する:
+- fetch 済み upstream tip
+- local vs upstream divergence
+- dirty path 分類
+  - `user WIP`
+  - `upstream-equivalent residue`
+  - `generated/untracked residue`
+- 選択した同期戦略（fast-forward / rebase / merge）
+- stash 作成時の対象 path と disposition
+- final `git status`
+
+ルール:
+- upstream-equivalent residue を active dirty と混同したまま終了しない
+- user WIP を黙って破棄しない
+- final 状態が clean でない場合は、残した理由と保持物を明示する
+- destructive reset/checkout で同期しない
+
 ### 6.5 Replan Gate
 
 次のいずれかが発生した場合は Phase C/D を停止し、Phase A/B へ戻す:
@@ -311,6 +348,8 @@ Phase D 終了時は、必要に応じて governance / agent / skill / prompt/sn
 - local validation と CI validation の面差で取りこぼしが起きたか
 - `delegation execution plan` / `delegation execution record` の語彙や運用が曖昧だったか
 - review / close の GitHub write-back で反映確認不足があったか
+- clean worktree / branch isolation 後の source worktree に in-scope residue が残らなかったか
+- default/base branch 最新化の際に dirty path 分類や stash disposition が曖昧でなかったか
 - 同種の `P1` / `P2` 指摘や運用ミスが再発したか
 - prompt/snippet の文面不足で planning-only / placeholder handoff / close ordering miss が起きたか
 - 広い user verb に引っ張られて、正本 artifact のより狭い phase ceiling を踏み越えなかったか
@@ -397,7 +436,41 @@ follow-up 検出元:
 - 推測しかできない場合は `BLOCKED` とし、番号を捏造しない
 - closure evidence comment を先に投稿し、その後に Issue を close する
 - closure evidence comment は、投稿後に comment URL/id または read-back で存在確認してから close する
+- write-back command の empty response / confirmation 不在は成功証跡として扱わない。別 write path へ切り替えるか read-back で補完する
 - milestone 管理 Issue では、closure evidence と同一コメント内に Milestone 監査ログを併記する
+
+### 7.2 Post-Merge Local Cleanup Protocol
+
+適用条件:
+- user が `close + cleanup` を要求した場合
+- current request boundary に local cleanup が含まれる場合
+
+必須確認:
+- `cleanup target worktree path`
+- `cleanup target branch name`
+- target branch が `codex/*` である
+- target branch の作業が base branch に取り込まれている
+- target worktree が clean である
+- target branch が current branch / protected branch ではない
+- target branch を参照する別 worktree がない
+
+推奨順序:
+1. cleanup target を特定する
+2. merged PR / reachability / closure evidence で base branch への取り込みを確認する
+3. target worktree が clean であることを確認する
+4. `$worktree-branch-cleanup-guard` を適用する
+5. target worktree を削除する
+6. target local branch を削除する
+7. `git worktree list` / `git branch --list` で read-back する
+8. current request に Issue close も含まれる場合は、closure evidence comment 投稿 -> Issue close の順を守る
+
+ルール:
+- dirty worktree は自動削除しない
+- base branch 取り込み未確認の branch は削除しない
+- current branch / protected branch / base branch を cleanup 対象にしない
+- user-owned WIP を黙って stash / delete しない
+- cleanup を current request に含めた場合、cleanup 未完了で `COMPLETE` を返さない
+- delete 失敗時は `BLOCKED` / `ESCALATION` を返す
 
 ---
 

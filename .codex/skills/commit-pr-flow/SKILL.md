@@ -31,6 +31,7 @@ Convert a scoped diff into reviewable commits and a PR without expanding scope.
 - If unrelated local changes exist, isolate the scoped work in a clean worktree or equivalent before staging.
 - Isolate or defer unrelated changes.
 - Keep `1 plan item = 1 logical commit` when practical.
+- If clean worktree isolation is used, record the source worktree path and plan how it will be reconciled before returning `complete`.
 
 3. Run commit gate:
 - Check staged diff matches the selected plan item.
@@ -56,7 +57,13 @@ Convert a scoped diff into reviewable commits and a PR without expanding scope.
 - Include objective, changes, non-changes, impact, validation evidence, and regression checks.
 - Add rollback and compatibility notes for high-risk changes.
 
-7. Final consistency gate:
+7. Run source worktree reconciliation gate:
+- If a clean worktree or equivalent isolation was used, inspect the original source worktree before returning.
+- If remaining dirty/untracked paths are limited to in-scope files that now match the committed branch or upstream, restore/clean them or place them in a labeled targeted stash.
+- Do not leave the default/base branch source worktree dirty with upstream-equivalent in-scope residue unless the user explicitly asked to preserve it.
+- Record the reconciliation action and final source worktree status.
+
+8. Final consistency gate:
 - Ensure diff remains within declared scope.
 - Ensure required validation evidence is present.
 - Ensure completion status is explicit (`complete` or `blocked`).
@@ -67,6 +74,7 @@ Always return:
 - Scope check result
 - Validation result summary
 - Validation surface parity note
+- Source worktree reconciliation summary
 - Commit units created (hash + message)
 - PR title and body (or PR URL if created)
 - Open risks, if any
@@ -87,6 +95,7 @@ Always return:
 - Do not claim completion while `Blocker` or unresolved `Must fix` findings remain.
 - Do not assume workspace `typecheck` covers touched test files.
 - Do not assume a newly added test file is already part of the standard test script without checking.
+- Do not finish with a dirty default/base branch source worktree when the remaining in-scope residue is already upstream-equivalent.
 
 ## References
 

@@ -107,7 +107,18 @@ Client 変更時:
 - Phase D で follow-up を作る場合は、次スレッドで再利用可能な `Issue-ready artifact` 粒度になっている
 - Issue を閉じる場合は `docs/issue_close_evidence_template.md` に準拠している
 - stateful GitHub write-back を行う場合は、comment/reply/resolve/close の反映結果を URL/id または read-back で確認している
+- write-back command の empty response / stdout 不在だけで成功扱いしていない
 - review / PR / close 作業では、validation surface が CI より狭くないことを確認している
+- clean worktree / branch isolation を使った場合、source worktree に in-scope upstream-equivalent residue が残っていない
+- base branch latest-sync 実行時は、final `git status` が clean であるか、保持した WIP / stash の理由が記録されている
+- temporary stash を作った場合は keep / drop と対象 path が追跡できる
+- local cleanup を行う場合、cleanup target worktree / branch が task-owned な `codex/*` と一致している
+- local cleanup を行う場合、target worktree が削除前に clean である
+- local cleanup を行う場合、target branch の作業が削除前に base branch へ取り込まれている
+- local cleanup を行う場合、`$worktree-branch-cleanup-guard` の必須確認を踏んでいる
+- local cleanup 後は `git worktree list` で対象 path が消えている
+- local cleanup 後は `git branch --list` で対象 branch が消えている
+- local cleanup で current branch / protected branch / base branch を削除していない
 
 ---
 

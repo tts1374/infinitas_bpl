@@ -18,6 +18,7 @@ This includes governance/process/prompt/snippet improvements when they are expli
 - Current constraints and non-goals
 - Release timing or cycle boundary, if known
 - Governance/process gaps, if any
+- Source worktree / branch hygiene incidents, if any
 
 ## Workflow
 
@@ -27,6 +28,7 @@ This includes governance/process/prompt/snippet improvements when they are expli
    - bounded maintenance work
    - optional polish
    - governance/process/prompt improvements
+   - branch/worktree hygiene improvements
 3. Decide which items deserve their own follow-up Issue versus a bundle.
 4. For promoted items, emit an `Issue-ready artifact` using [docs/issue_ready_followup_template.md](C:/work/infinitas_arena/infinitas_arena/docs/issue_ready_followup_template.md).
 5. Add:
@@ -52,3 +54,4 @@ Apply these rules:
 - If an item still needs a human product decision, mark it explicitly instead of pretending it is ready.
 - Do not auto-convert every governance observation into a docs patch. Promote only recurring or reusable gaps.
 - Governance/process follow-ups should identify the affected doc/skill/agent/prompt surface explicitly.
+- Source worktree residue on default/base branches is a promotable governance/process gap when it recurs or risks user confusion.
