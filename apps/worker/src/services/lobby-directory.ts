@@ -13,6 +13,12 @@ interface LobbyRemovePayload {
   expectedUpdatedAt?: number;
 }
 
+interface LobbyReadCleanupProbeResult {
+  room: LobbyRoomSummary;
+  keep: boolean;
+  stale: boolean;
+}
+
 function getLobbyDirectoryStub(env: WorkerEnv) {
   const doId = env.LOBBY_DIRECTORY_DO.idFromName(LOBBY_DIRECTORY_NAME);
   return env.LOBBY_DIRECTORY_DO.get(doId);
@@ -47,6 +53,68 @@ export async function listLobbyDirectoryRooms(env: WorkerEnv): Promise<LobbyList
     }),
     "Failed to fetch lobby list",
   );
+}
+
+async function probeLobbyRoomReadCleanup(
+  env: WorkerEnv,
+  room: LobbyRoomSummary,
+): Promise<LobbyReadCleanupProbeResult> {
+  try {
+    const eligibilityResponse = await fetchRoomLobbyEligibility(env, room.roomId);
+
+    if (eligibilityResponse.status === 404) {
+      const body = (await eligibilityResponse.json().catch(() => null)) as { error?: unknown } | null;
+      if (body?.error === "ROOM_STATE_LOST") {
+        return { room, keep: false, stale: true };
+      }
+      return { room, keep: true, stale: false };
+    }
+
+    if (!eligibilityResponse.ok) {
+      return { room, keep: true, stale: false };
+    }
+
+    const eligibility = (await eligibilityResponse.json()) as { eligible?: unknown };
+    if (eligibility.eligible === false) {
+      return { room, keep: false, stale: true };
+    }
+
+    return { room, keep: true, stale: false };
+  } catch {
+    return { room, keep: true, stale: false };
+  }
+}
+
+export async function listLobbyDirectoryRoomsWithReadCleanup(
+  env: WorkerEnv,
+): Promise<LobbyListResponse> {
+  const response = await listLobbyDirectoryRooms(env);
+  const probeResults = await Promise.all(
+    response.rooms.map((room) => probeLobbyRoomReadCleanup(env, room)),
+  );
+
+  const filteredRooms: Array<LobbyRoomSummary | null> = new Array(response.rooms.length).fill(null);
+  await Promise.all(
+    probeResults.map(async (result, index) => {
+      if (result.keep) {
+        filteredRooms[index] = result.room;
+        return;
+      }
+
+      if (result.stale) {
+        try {
+          await removeLobbyDirectoryRoom(env, result.room.roomId, result.room.updatedAt);
+        } catch {
+          // Best effort only: stale rooms must stay excluded from this response even if cleanup fails.
+        }
+      }
+    }),
+  );
+
+  return {
+    ...response,
+    rooms: filteredRooms.filter((room): room is LobbyRoomSummary => room !== null),
+  };
 }
 
 export async function upsertLobbyDirectoryRoom(
