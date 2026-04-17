@@ -119,6 +119,13 @@ Client 変更時:
 - local cleanup 後は `git worktree list` で対象 path が消えている
 - local cleanup 後は `git branch --list` で対象 branch が消えている
 - local cleanup で current branch / protected branch / base branch を削除していない
+- post-approval merge を行う場合、Codex が target PR を self-approve していない
+- post-approval merge を行う場合、human approval と required checks green が確認されている
+- post-approval merge を行う場合、unresolved actionable review thread が残っていない
+- `Standard` の bot-created PR を Approve で merge する場合、follow-up 判定と close prerequisites が完了している
+- `High-Risk` の post-approval merge では、approve に加えて explicit merge authorization または auto-merge 許可がある
+- post-approval merge 後は PR merged state が URL / merged flag / merge commit SHA で確認されている
+- `merge + close + cleanup` を行う場合、順序が `merge -> closure evidence -> Issue close -> local cleanup` になっている
 
 ---
 

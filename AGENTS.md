@@ -223,6 +223,15 @@ Delegation packet 必須項目:
 - user-owned WIP を黙って stash / delete しない
 - cleanup 実行後は read-back で削除結果を確認する
 
+### 7.3 Approval / Merge Authority Boundary
+
+ルール:
+- Codex は自分が作成または更新した PR を self-approve しない
+- bot-created PR では、human reviewer の `Approve` を `Standard` 変更の merge authorization として扱ってよい。ただし required checks が green で、unresolved actionable review thread がなく、follow-up 判定が完了し、current request に merge 後処理が含まれる場合に限る
+- `High-Risk` 変更では、human reviewer の `Approve` だけで merge authorization とみなさない。user の明示的な `mergeしてOK`、同等の merge 指示、または auto-merge 許可が必要
+- merge / Issue close / local cleanup を一連で任された場合、前段の merge gate が未充足なまま close / cleanup へ進まない
+- reviewer approval の意味や merge authority をローカル慣例で拡張しない。判断不能なら `BLOCKED` / `ESCALATION` を返す
+
 ---
 
 ## 8. Agent Definition Source of Truth

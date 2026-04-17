@@ -462,7 +462,7 @@ follow-up 検出元:
 5. target worktree を削除する
 6. target local branch を削除する
 7. `git worktree list` / `git branch --list` で read-back する
-8. current request に Issue close も含まれる場合は、closure evidence comment 投稿 -> Issue close の順を守る
+8. current request に merge / Issue close も含まれる場合は、merge 完了 -> closure evidence comment 投稿 -> Issue close の順を守る
 
 ルール:
 - dirty worktree は自動削除しない
@@ -471,6 +471,43 @@ follow-up 検出元:
 - user-owned WIP を黙って stash / delete しない
 - cleanup を current request に含めた場合、cleanup 未完了で `COMPLETE` を返さない
 - delete 失敗時は `BLOCKED` / `ESCALATION` を返す
+
+### 7.3 Post-Approval Merge Protocol
+
+適用条件:
+- user が human review / approval 後の PR merge を Codex に委任した場合
+- current request boundary に `merge + close` または `merge + close + cleanup` が含まれる場合
+
+必須確認:
+- `target PR`
+- 正本 `Issue` / `tasks/*.md` / merge 対象 scope
+- `execution profile`
+- reviewer approval state
+- required checks status
+- unresolved actionable review thread の有無
+- follow-up 判定状態
+- merge strategy または repo default merge method
+
+推奨順序:
+1. target PR と正本 scope を特定する
+2. human reviewer の approval を確認する
+3. required checks が green であることを確認する
+4. unresolved actionable review thread がないことを確認する
+5. follow-up の有無と close prerequisites を確認する
+6. `High-Risk` の場合は、approve に加えて user の明示 merge 許可または auto-merge 許可を確認する
+7. PR を merge する
+8. merged state を PR read-back / merge commit SHA / merged flag で確認する
+9. current request に Issue close が含まれる場合は `7.1 Post-Merge Issue Closure Protocol` を実行する
+10. current request に local cleanup が含まれる場合は `7.2 Post-Merge Local Cleanup Protocol` を実行する
+
+ルール:
+- Codex は self-approve で merge gate を満たした扱いにしない
+- bot-created PR の `Standard` 変更では、human `Approve` を merge authorization として扱ってよいが、checks / review threads / follow-up gate が揃っていることを前提とする
+- `High-Risk` 変更では、human `Approve` のみで merge しない
+- required checks が pending / failed の状態では merge しない。例外がある場合は skip reason と authority を明示する
+- unresolved actionable review thread が残る状態で merge しない
+- merge の write-back 実行後は merged state を read-back で確認する
+- merge + close + cleanup を current request に含めた場合、merge / close / cleanup のいずれかが未完了なら `COMPLETE` を返さない
 
 ---
 
