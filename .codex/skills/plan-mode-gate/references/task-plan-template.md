@@ -15,7 +15,7 @@ Create `tasks/<branch-or-pr-name>.md` before implementation.
 - Ceiling: <task authoring only / kickoff only / implementation ready / ...>
 - Allowed outputs now: <artifacts or phases allowed in this turn>
 - Forbidden outputs now: <phases or outputs not allowed in this turn>
-- Next unlock condition: <what explicit event allows the next phase>
+- Next unlock condition: <none when already implementation-ready / what explicit event allows the next phase>
 
 ## Changes
 - <implementation item 1>
@@ -54,6 +54,7 @@ Create `tasks/<branch-or-pr-name>.md` before implementation.
 * Keep the plan minimal and directly tied to the requested change.
 * Do not start implementation before this file exists.
 * Do not treat file existence alone as implementation authorization; honor the current request boundary.
+* If the same user request already authorizes `Phase C implementation` / `C〜D execution` and the source artifact does not declare a narrower ceiling, set `Ceiling` to `implementation ready` and `Next unlock condition` to `none` instead of synthesizing another explicit authorization step.
 * Keep one PR per purpose and avoid unrelated changes.
 * Use explicit non-goals to prevent scope drift.
 * If the task spans multiple layers, keep the dependency order visible.

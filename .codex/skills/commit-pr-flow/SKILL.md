@@ -19,6 +19,7 @@ Convert a scoped diff into reviewable commits and a PR without expanding scope.
 - Current git state (`status`, changed files, diff summary)
 - Base branch (default: `v1`)
 - CI/repo validation surface when relevant (`package.json` scripts, workspace `tsconfig`, `.github/workflows/*`)
+- If this flow opens a PR, post-publish read-back of `author.login` / `author.is_bot`
 
 ## Workflow
 
@@ -57,13 +58,19 @@ Convert a scoped diff into reviewable commits and a PR without expanding scope.
 - Include objective, changes, non-changes, impact, validation evidence, and regression checks.
 - Add rollback and compatibility notes for high-risk changes.
 
-7. Run source worktree reconciliation gate:
+7. Read back author identity when a PR is opened:
+- Read back `author.login` and `author.is_bot` after PR publication.
+- Record lane evidence as `bot-created PR` or `task-owned / user-authored PR`.
+- Do not assume the intended publish path or task ownership determines the lane.
+- If author identity cannot be read back, stop as `blocked` before handing off to merge / close flows.
+
+8. Run source worktree reconciliation gate:
 - If a clean worktree or equivalent isolation was used, inspect the original source worktree before returning.
 - If remaining dirty/untracked paths are limited to in-scope files that now match the committed branch or upstream, restore/clean them or place them in a labeled targeted stash.
 - Do not leave the default/base branch source worktree dirty with upstream-equivalent in-scope residue unless the user explicitly asked to preserve it.
 - Record the reconciliation action and final source worktree status.
 
-8. Final consistency gate:
+9. Final consistency gate:
 - Ensure diff remains within declared scope.
 - Ensure required validation evidence is present.
 - Ensure completion status is explicit (`complete` or `blocked`).
@@ -77,6 +84,7 @@ Always return:
 - Source worktree reconciliation summary
 - Commit units created (hash + message)
 - PR title and body (or PR URL if created)
+- PR author/lane evidence when a PR was created
 - Open risks, if any
 - Final status: `complete` or `blocked`
 
@@ -95,6 +103,7 @@ Always return:
 - Do not claim completion while `Blocker` or unresolved `Must fix` findings remain.
 - Do not assume workspace `typecheck` covers touched test files.
 - Do not assume a newly added test file is already part of the standard test script without checking.
+- Do not assume a published PR is `bot-created PR` without read-back of `author.login` / `author.is_bot`.
 - Do not finish with a dirty default/base branch source worktree when the remaining in-scope residue is already upstream-equivalent.
 
 ## References

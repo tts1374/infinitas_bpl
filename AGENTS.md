@@ -63,6 +63,8 @@
 - user の広い動詞（例: 「この plan を実施する」）は、正本 artifact にあるより狭い phase 境界や停止条件を自動では上書きしない
 - 正本 artifact が `task作成まで` / `kickoffまで` / `planning-only` を示している場合、その turn で blocker を解消しても downstream の実装/commit/PR を自動開始しない
 - 広い要求と狭い phase 指示が競合する場合、より狭い phase 指示を優先する
+- 正本 artifact に `kickoff-only` / `task-authoring-only` / `planning-only` などのより狭い ceiling が明示されていない場合、user が同一 request で `Phase C implementation` / `C〜D execution` / 同等の実装開始を明示したときは、その request を implementation authorization として扱ってよい
+- concrete な task artifact の不足だけが blocker で、同一 request が downstream 実装をすでに明示許可している場合、artifact 作成と C Kickoff 完了後は same turn で downstream phase へ進んでよい
 - downstream phase へ進むには、user の明示解除または正本 artifact 側の明示許可が必要
 
 ### 1.5 Sticky User Constraints
@@ -227,7 +229,10 @@ Delegation packet 必須項目:
 
 ルール:
 - Codex は自分が作成または更新した PR を self-approve しない
+- PR の merge authority lane は、publish path の想定ではなく PR read-back で確認した `author.login` / `author.is_bot` を正本として判定する
+- `author.is_bot` の read-back がない、または author identity が曖昧な PR を暗黙に `bot-created PR` 扱いしない。lane を確定できない場合は `BLOCKED` / `ESCALATION` を返す
 - bot-created PR では、human reviewer の `Approve` を `Standard` 変更の merge authorization として扱ってよい。ただし required checks が green で、unresolved actionable review thread がなく、follow-up 判定が完了し、current request に merge 後処理が含まれる場合に限る
+- `task-owned / user-authored PR` では、`Standard` 変更かつ single-maintainer same-account deadlock に限り strict fallback を使ってよい。ただし lane evidence read-back、required checks green、unresolved actionable review thread なし、follow-up 判定完了、user の明示的な `mergeしてOK` または同等の merge authorization を必須とし、human `Approve` 単独では merge authorization とみなさない
 - `High-Risk` 変更では、human reviewer の `Approve` だけで merge authorization とみなさない。user の明示的な `mergeしてOK`、同等の merge 指示、または auto-merge 許可が必要
 - merge / Issue close / local cleanup を一連で任された場合、前段の merge gate が未充足なまま close / cleanup へ進まない
 - reviewer approval の意味や merge authority をローカル慣例で拡張しない。判断不能なら `BLOCKED` / `ESCALATION` を返す

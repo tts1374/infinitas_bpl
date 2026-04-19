@@ -102,13 +102,16 @@ Client 変更時:
 - Phase C 実行時は C Kickoff 出力が実装開始前にある
 - 正本 artifact が `current request ceiling` / `stop condition` を持つ場合、実施内容がその ceiling を超えていない
 - `planning-only` / `kickoff-only` / `task-authoring-only` の turn では、許可された artifact 以外の product implementation diff がない
-- blocker 解消のための artifact 作成だけが許可されている turn では、same turn の downstream 実装差分がない
+- blocker 解消のための artifact 作成だけが許可されている turn では、same turn の downstream 実装差分がない。ただし同一 request が downstream 実装をすでに明示許可し、正本 artifact により狭い ceiling がない場合は除く
+- user が同一 request で `Phase C implementation` / `C〜D execution` を明示し、正本 artifact により狭い ceiling がない場合、task artifact / kickoff が synthetic な explicit implementation authorization を `next unlock condition` として追加していない
+- missing artifact が唯一の blocker だった場合でも、同一 request が downstream 実装を明示許可していれば、artifact 作成後の kickoff が `implementation-ready` / `Implementation authorization: YES` へ進めることを妨げていない
 - review response 実行時は、対応 thread / validation / reply / resolve / 再レビュー依頼の処理状況が追跡できる
 - Phase D で follow-up を作る場合は、次スレッドで再利用可能な `Issue-ready artifact` 粒度になっている
 - Issue を閉じる場合は `docs/issue_close_evidence_template.md` に準拠している
 - stateful GitHub write-back を行う場合は、comment/reply/resolve/close の反映結果を URL/id または read-back で確認している
 - write-back command の empty response / stdout 不在だけで成功扱いしていない
 - review / PR / close 作業では、validation surface が CI より狭くないことを確認している
+- PR publish / merge 作業では、`author.login` / `author.is_bot` の read-back と lane evidence が確認されるまで `bot-created PR` を前提にしていない
 - clean worktree / branch isolation を使った場合、source worktree に in-scope upstream-equivalent residue が残っていない
 - base branch latest-sync 実行時は、final `git status` が clean であるか、保持した WIP / stash の理由が記録されている
 - temporary stash を作った場合は keep / drop と対象 path が追跡できる
@@ -123,6 +126,7 @@ Client 変更時:
 - post-approval merge を行う場合、human approval と required checks green が確認されている
 - post-approval merge を行う場合、unresolved actionable review thread が残っていない
 - `Standard` の bot-created PR を Approve で merge する場合、follow-up 判定と close prerequisites が完了している
+- `Standard` の `task-owned / user-authored PR` strict fallback を使う場合、single-maintainer same-account deadlock の根拠、explicit `mergeしてOK` または同等の merge authorization、required checks green、unresolved actionable review thread なし、follow-up 判定完了が確認されている
 - `High-Risk` の post-approval merge では、approve に加えて explicit merge authorization または auto-merge 許可がある
 - post-approval merge 後は PR merged state が URL / merged flag / merge commit SHA で確認されている
 - `merge + close + cleanup` を行う場合、順序が `merge -> closure evidence -> Issue close -> local cleanup` になっている

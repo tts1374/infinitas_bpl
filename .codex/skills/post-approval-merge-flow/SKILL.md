@@ -18,10 +18,12 @@ This flow governs merge authorization, merged-state verification, and the option
   - `tasks/*.md`
   - accepted bounded scope
 - Execution profile (`Standard` or `High-Risk`)
-- Whether the PR is bot-created / task-owned
+- PR read-back of `author.login` / `author.is_bot`
+- Merge authority lane derived from read-back (`bot-created PR` / `task-owned / user-authored PR`)
 - Human approval state
 - Required checks state
 - Review thread state
+- Whether single-maintainer same-account deadlock is claimed
 - Whether current request includes:
   - merge only
   - merge + close
@@ -34,13 +36,16 @@ This flow governs merge authorization, merged-state verification, and the option
    - Keep scope anchored to the PR's source Issue / `tasks/*.md`.
 
 2. Confirm merge gate:
-   - Verify there is human reviewer approval.
+   - Verify the human reviewer approval state. If `Standard` + `task-owned / user-authored PR` strict fallback is claimed, record whether approval is unavailable because of same-account deadlock instead of pretending approval exists.
    - Verify required checks are green, or stop with `BLOCKED` unless explicit skip authority exists.
    - Verify unresolved actionable review threads do not remain.
    - Verify follow-up detection / close prerequisites are ready if close will follow.
+   - Read back `author.login` / `author.is_bot` and stop as `BLOCKED` if the merge lane cannot be fixed from evidence.
 
 3. Apply approval authority rule:
-   - `Standard`: a human `Approve` on a bot-created or task-owned PR may serve as merge authorization when all merge gates are green.
+   - Determine the merge authority lane from `author.login` / `author.is_bot`, not from the intended publish path.
+   - `Standard` + `bot-created PR`: a human `Approve` may serve as merge authorization when all merge gates are green.
+   - `Standard` + `task-owned / user-authored PR`: do not reuse the bot-created lane. If same-account single-maintainer deadlock is not proven, keep the normal approval requirement and stop as `BLOCKED` when it is missing. If deadlock is proven, require explicit user merge authorization (`mergeしてOK` or equivalent), required checks green, no unresolved actionable review threads, and follow-up detection / close prerequisites ready. Human `Approve` alone is not enough for this strict fallback.
    - `High-Risk`: require explicit user merge authorization or auto-merge permission in addition to approval.
 
 4. Merge the PR:
@@ -82,6 +87,8 @@ Missing merge evidence:
 Merge execution summary:
 - target PR: <pr>
 - execution profile: <profile>
+- author identity: <author.login / author.is_bot>
+- merge lane: <bot-created PR / task-owned / user-authored PR>
 - approval state: <summary>
 - required checks: <summary>
 - review threads: <summary>
@@ -98,6 +105,8 @@ Final status: <COMPLETE|BLOCKED|ESCALATION>
 ## Rules
 
 - Do not treat Codex-authored approval as merge authorization.
+- Do not infer `bot-created PR` from the intended publish path when read-back evidence says otherwise or is missing.
+- Do not use `task-owned / user-authored PR` strict fallback without explicit user merge authorization and deadlock evidence.
 - Do not merge a `High-Risk` PR on approval alone.
 - Do not merge with pending/failing required checks unless explicit authority exists and the skip is recorded.
 - Do not close the Issue before merged state is confirmed.

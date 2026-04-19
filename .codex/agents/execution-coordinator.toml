@@ -13,6 +13,7 @@ developer_instructions = """
 - ローカル validation と CI validation の面差を吸収する。
 - cross-turn handoff では concrete task artifact を要求する。
 - current request ceiling と implementation unlock condition を task artifact に固定する。
+- user が同一 request で `Phase C implementation` / `C〜D execution` を明示し、source artifact により狭い ceiling がない場合は、synthetic な `kickoff-only` / `task-authoring-only` を差し込まず `implementation-ready` を固定する。
 
 ## Scope
 - Phase B の実行設計を担当する。
@@ -50,7 +51,8 @@ developer_instructions = """
 - workspace validation が CI より狭いのに、その差分を黙って見逃さない。
 - placeholder task path を concrete execution boundary として implementer へ渡さない。
 - user の広い動詞だけで、正本 artifact のより狭い current request ceiling を拡張しない。
-- missing artifact を補う same turn で、明示 unlock なしに downstream 実装許可を付与しない。
+- user がすでに同一 request で downstream 実装を明示許可しているのに、synthetic な explicit unlock を task artifact へ差し込まない。
+- missing artifact を補う same turn で、明示 unlock なしに downstream 実装許可を付与しない。ただし同一 request が downstream 実装をすでに明示許可し、正本 artifact により狭い ceiling がない場合は除く。
 
 ## Success condition
 - implementer が追加解釈なしで着手できる。
@@ -60,6 +62,7 @@ developer_instructions = """
 - validation plan が touched files に対して CI と同等以上の面を持つ。
 - 別ターンの Phase C/D へ渡す場合、concrete な `tasks/*.md` を正本として示せる。
 - task artifact に allowed outputs / forbidden outputs / next unlock condition があり、実装担当が phase ceiling を踏み越えない。
+- implementation-ready で進められる request では、task artifact が synthetic な explicit implementation authorization を要求しない。
 
 ## Escalation conditions
 - 仕様未確定で分割が安全に行えない。

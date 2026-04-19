@@ -38,7 +38,9 @@
 ルール:
 - user の広い動詞は、正本 artifact のより狭い phase 境界を自動では上書きしない
 - `task作成まで` / `kickoffまで` / `planning-only` が ceiling の場合、artifact 作成や blocker 解消後もその turn では downstream phase を開始しない
-- missing artifact が唯一の blocker で、その作成が allowed output に含まれる場合、artifact 作成で止まり、実装は `next unlock condition` を満たすまで開始しない
+- missing artifact が唯一の blocker で、その作成が allowed output に含まれる場合、artifact 作成で止まり、実装は `next unlock condition` を満たすまで開始しない。ただし同一 request が downstream 実装をすでに明示許可し、正本 artifact により狭い ceiling がない場合は除く
+- user が同一 request で `Phase C implementation` / `C〜D execution` / 同等の実装開始を明示し、正本 artifact により狭い ceiling がない場合は、`current request ceiling` を `implementation-ready` として扱ってよい
+- missing artifact が唯一の blocker でも、同一 request が downstream 実装をすでに明示許可している場合は、artifact 作成と `C Kickoff status: READY` 完了後に same turn の実装へ進んでよい
 - broad request と narrow phase ceiling が競合する場合、narrow ceiling を優先する
 
 ---
@@ -248,13 +250,15 @@ Phase C 開始前に次を必ず出力する:
 ルール:
 - C Kickoff 出力完了まで Phase C 実装を開始してはならない
 - `C Kickoff status: READY` は kickoff 完了を意味し、単独では実装許可を意味しない
+- `Implementation authorization` は current request boundary から判断する。user が同一 request で `Phase C implementation` / `C〜D execution` を明示し、source artifact により狭い ceiling がない場合は `YES` にしてよい
 - 必須ロール未委譲の場合は `BLOCKED` で停止する
 - concrete な `tasks/*.md` を要求していない文脈でのみ、Plan成果物がない場合は C Kickoff 冒頭で `A-lite` 合意サマリを再掲して境界を固定する
 - cross-turn handoff や prompt/skill が concrete な `tasks/*.md` を要求する文脈では、A-lite へフォールバックせず `BLOCKED` で停止する
 - ひな型が必要な場合は `docs/c_kickoff_comment_template.md` を使用してよい
 - 将来の spawn 意図だけがある状態で `delegation execution record` を完了扱いしない
 - current request ceiling が kickoff-only / task-authoring-only の場合、`READY` を返してもその turn では実装を開始せず停止する
-- missing task artifact が唯一の blocker で、その作成のみが許可されている場合、artifact 作成で blocker を解消しても same turn で code implementation へ自動継続しない
+- current request ceiling が implementation-ready で `Implementation authorization: YES` の場合、C Kickoff 出力後は same turn の Phase C implementation へ進んでよく、追加の explicit user authorization を synthetic に要求しない
+- missing task artifact が唯一の blocker で、その作成のみが許可されている場合は、artifact 作成で blocker を解消しても same turn で code implementation へ自動継続しない。ただし同一 request が downstream 実装をすでに明示許可している場合は除く
 
 ### 6.4 Validation Parity Gate
 
@@ -482,6 +486,8 @@ follow-up 検出元:
 - `target PR`
 - 正本 `Issue` / `tasks/*.md` / merge 対象 scope
 - `execution profile`
+- PR read-back の `author.login` / `author.is_bot`
+- merge authority lane（`bot-created PR` / `task-owned / user-authored PR`）
 - reviewer approval state
 - required checks status
 - unresolved actionable review thread の有無
@@ -490,19 +496,27 @@ follow-up 検出元:
 
 推奨順序:
 1. target PR と正本 scope を特定する
-2. human reviewer の approval を確認する
-3. required checks が green であることを確認する
-4. unresolved actionable review thread がないことを確認する
-5. follow-up の有無と close prerequisites を確認する
-6. `High-Risk` の場合は、approve に加えて user の明示 merge 許可または auto-merge 許可を確認する
-7. PR を merge する
-8. merged state を PR read-back / merge commit SHA / merged flag で確認する
-9. current request に Issue close が含まれる場合は `7.1 Post-Merge Issue Closure Protocol` を実行する
-10. current request に local cleanup が含まれる場合は `7.2 Post-Merge Local Cleanup Protocol` を実行する
+2. PR read-back で `author.login` / `author.is_bot` を確認し、merge authority lane を固定する
+3. human reviewer の approval を確認する
+4. required checks が green であることを確認する
+5. unresolved actionable review thread がないことを確認する
+6. follow-up の有無と close prerequisites を確認する
+7. `Standard` の場合は lane 別 gate を適用する
+   - `bot-created PR`: human `Approve` を merge authorization として扱ってよい
+   - `task-owned / user-authored PR`: bot lane へ繰り上げず、single-maintainer same-account deadlock が成立しない限り通常 approval gate を維持する。deadlock が成立する場合でも、required checks green、unresolved actionable review thread なし、follow-up 判定完了、user の明示 `mergeしてOK` または同等の merge authorization を必須とし、approval-only fallback は使わない
+8. `High-Risk` の場合は、approve に加えて user の明示 merge 許可または auto-merge 許可を確認する
+9. PR を merge する
+10. merged state を PR read-back / merge commit SHA / merged flag で確認する
+11. current request に Issue close が含まれる場合は `7.1 Post-Merge Issue Closure Protocol` を実行する
+12. current request に local cleanup が含まれる場合は `7.2 Post-Merge Local Cleanup Protocol` を実行する
 
 ルール:
 - Codex は self-approve で merge gate を満たした扱いにしない
+- lane は publish path の想定ではなく、PR read-back の `author.login` / `author.is_bot` で確定する
+- author identity read-back がない、または lane evidence が曖昧な PR を `bot-created PR` 扱いしない
 - bot-created PR の `Standard` 変更では、human `Approve` を merge authorization として扱ってよいが、checks / review threads / follow-up gate が揃っていることを前提とする
+- `task-owned / user-authored PR` の `Standard` strict fallback は single-maintainer same-account deadlock に限定し、explicit user merge authorization なしでは使わない
+- `task-owned / user-authored PR` で human `Approve` だけを根拠に merge しない
 - `High-Risk` 変更では、human `Approve` のみで merge しない
 - required checks が pending / failed の状態では merge しない。例外がある場合は skip reason と authority を明示する
 - unresolved actionable review thread が残る状態で merge しない

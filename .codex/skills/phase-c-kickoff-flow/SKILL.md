@@ -95,10 +95,11 @@ Replan triggers:
 
 - Do not start implementation in the same output block.
 - `READY` kickoff does not by itself authorize implementation.
+- If the user already explicitly requested `Phase C implementation` / `C〜D execution` and the source artifact does not declare a narrower ceiling such as `kickoff-only` / `task-authoring-only` / `planning-only`, set the current request boundary to `implementation-ready`, set `Implementation authorization: YES`, and use `next unlock condition: none` instead of inventing another explicit authorization step.
 - Do not omit the source of truth.
 - Do not mark kickoff `READY` if a mandatory High-Risk spawn path is still missing.
 - Use `delegation execution record` consistently in kickoff output; do not replace it with `delegation execution plan`.
 - If governing context requires `tasks/*.md`, do not fall back to an A-lite agreement when the artifact is missing; return `BLOCKED`.
 - A-lite fallback is allowed only when the workflow explicitly permits no concrete task artifact.
 - If current request ceiling is kickoff-only / task-authoring-only / planning-only, stop after kickoff even when kickoff is `READY`.
-- If missing artifact is the only blocker and artifact creation is allowed, creating that artifact does not automatically authorize same-turn implementation.
+- If missing artifact is the only blocker and artifact creation is allowed, creating that artifact does not automatically authorize same-turn implementation unless the same request already explicitly authorizes downstream implementation.
