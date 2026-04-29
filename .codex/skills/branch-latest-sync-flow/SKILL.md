@@ -9,6 +9,7 @@ description: "Safely sync a base/default branch such as `v1` to the latest upstr
 
 Use this skill when the user asks to make a branch such as `v1` latest/current with upstream.
 This flow is for branch synchronization, not for cleanup of arbitrary worktrees or for destructive history rewrites.
+Return a sync decision and reconciliation artifact, not a generic git troubleshooting narrative.
 
 ## Inputs
 
@@ -37,6 +38,10 @@ This flow is for branch synchronization, not for cleanup of arbitrary worktrees 
    - preserve explicit user WIP
    - record keep/drop disposition for temporary stash entries
 8. Report final branch status and whether the target worktree is clean.
+
+Do not:
+- replace the caller's ownership of branch policy or WIP preservation decisions
+- treat procedural completion as success unless final branch/read-back evidence is clear
 
 ## Output Contract
 
@@ -87,6 +92,7 @@ Final status: <COMPLETE|BLOCKED|ESCALATION>
 - Empty status reporting is not enough; classify why paths are dirty before choosing stash/rebase/merge.
 - If final status is dirty, explain exactly what was preserved and why.
 - Do not use destructive reset/checkout unless the user explicitly requests it.
+- Do not invent extra sync steps when divergence, residue class, and final cleanliness are already proven.
 
 ## References
 

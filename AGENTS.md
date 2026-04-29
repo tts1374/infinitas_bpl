@@ -48,6 +48,16 @@
 - 判断ロジックを Skill に移譲しない
 - 定型処理を Agent 個別プロンプトへ重複実装しない
 
+### 1.3.1 Outcome-first Instruction Design
+
+ルール:
+- agent / skill / governance 文面は、細かい手順列挙より先に `objective` / `success criteria` / `stop condition` / `allowed side effects` を明示する
+- step-by-step 指示は、その順序自体が品質・安全・互換性に必要な場合だけ明示する
+- 共通ガバナンスは root/local 文書へ寄せ、agent 定義では role 固有の判断・停止条件を優先して書く
+- implementer / auditor には、「どこまで自走継続してよいか」と「どこで `BLOCKED` / `ESCALATION` へ切り替えるか」を明示する
+- tool 固有の使い分けや入出力注意は、可能な限り tool description / delegation packet / task artifact 側へ寄せる
+- user 由来の可変テキストを agent の developer instructions や skill 本文へ埋め込まない。必要情報は user message / task artifact / delegation packet として渡す
+
 ### 1.4 Scope / Norm Anchoring
 
 ルール:
@@ -121,11 +131,14 @@
 Delegation packet 必須項目:
 - `task label`
 - `objective`
+- `success criteria`
 - `in-scope files/layer`
 - `non-goals`
 - `forbidden scope`
+- `allowed side effects`
 - `expected output`
 - `validation`
+- `continue-without-escalation boundary`
 - `escalation`
 
 運用ルール:

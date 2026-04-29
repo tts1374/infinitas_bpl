@@ -9,6 +9,7 @@ description: "Merge a reviewed PR after human approval using repository merge ga
 
 Use this skill when the user wants Codex to take over after human review and approval.
 This flow governs merge authorization, merged-state verification, and the optional downstream sequence of Issue close and local cleanup.
+Return merge-gate evidence and downstream status, not a substitute for explicit merge authority.
 
 ## Inputs
 
@@ -65,6 +66,10 @@ This flow governs merge authorization, merged-state verification, and the option
    - `COMPLETE` only if every requested downstream step finished and was verified.
    - Otherwise return `BLOCKED` or `ESCALATION` with the exact missing gate.
 
+Do not:
+- replace user/approval authority with skill-local assumptions
+- treat an intended publish lane as evidence of the actual merge lane
+
 ## Output Contract
 
 Always return:
@@ -112,6 +117,7 @@ Final status: <COMPLETE|BLOCKED|ESCALATION>
 - Do not close the Issue before merged state is confirmed.
 - Do not run local cleanup before merged state is confirmed.
 - Do not claim completion while any requested merge/close/cleanup step lacks read-back evidence.
+- Do not invent extra process steps when merge authority, merged-state evidence, and requested downstream scope already determine the outcome.
 
 ## References
 

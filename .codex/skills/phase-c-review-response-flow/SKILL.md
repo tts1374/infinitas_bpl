@@ -9,6 +9,7 @@ description: "Handle a PR review iteration as a bounded Phase C continuation. Us
 
 Use this skill when a user brings PR review feedback and expects Phase C work to continue from the existing source of truth.
 Do not treat the review thread itself as a new specification.
+Return a bounded review-response artifact and write-back plan, not a broad redesign of the task.
 
 ## Inputs
 
@@ -51,6 +52,10 @@ Do not treat the review thread itself as a new specification.
    - re-review request after no unresolved actionable thread remains
    - confirm each GitHub write via returned URL/id or read-back
 8. Use [references/review-response-checklist.md](references/review-response-checklist.md) to keep the loop stable.
+
+Do not:
+- replace the source-of-truth artifact with review-thread-local assumptions
+- treat a review suggestion as automatic authorization for broader scope
 
 ## Output Contract
 
@@ -98,3 +103,4 @@ Final status:
 - If a review requires contract change, cross-layer expansion, dependency update, or CI change, stop with `ESCALATION`.
 - If there are no actionable unresolved threads, return a no-op `COMPLETE` with evidence instead of fabricating write-back work.
 - Do not treat a narrower local validation pass as equivalent to the originating CI failure surface.
+- Do not invent extra procedural gates when actionable threads, validation, and write-back confirmation already determine the next step.

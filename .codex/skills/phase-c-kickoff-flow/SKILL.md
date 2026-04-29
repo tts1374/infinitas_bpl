@@ -9,6 +9,7 @@ description: "Create Phase C kickoff artifacts before implementation starts. Use
 
 Use this skill only after Phase A/B inputs are already available.
 Do not use it for initial requirement shaping or task breakdown.
+Use it to restate execution boundaries and kickoff evidence, not to prescribe implementation micro-steps.
 
 ## Inputs
 
@@ -19,6 +20,7 @@ Do not use it for initial requirement shaping or task breakdown.
 - Current Phase A/B result, if already stated
 - Expected touched layers
 - Current request ceiling / next unlock condition, if already fixed
+- Objective / success criteria / stop condition, if already fixed in the source artifact
 - Applicable governance:
   - `AGENTS.md`
   - `WORKFLOW.md`
@@ -37,6 +39,7 @@ Do not use it for initial requirement shaping or task breakdown.
    - current request ceiling
    - whether implementation is authorized now
    - next unlock condition
+   - any already-fixed success or stop conditions that bound the kickoff
 6. Emit `delegation execution record` entries for each role that matters now.
 7. If a concrete task artifact is required and missing, return `BLOCKED` instead of falling back to A-lite.
 8. If a mandatory spawn path is missing, return `BLOCKED` instead of silently continuing.
@@ -95,6 +98,7 @@ Replan triggers:
 
 - Do not start implementation in the same output block.
 - `READY` kickoff does not by itself authorize implementation.
+- Do not invent extra process steps when the source artifact already defines the success boundary clearly.
 - If the user already explicitly requested `Phase C implementation` / `C〜D execution` and the source artifact does not declare a narrower ceiling such as `kickoff-only` / `task-authoring-only` / `planning-only`, set the current request boundary to `implementation-ready`, set `Implementation authorization: YES`, and use `next unlock condition: none` instead of inventing another explicit authorization step.
 - Do not omit the source of truth.
 - Do not mark kickoff `READY` if a mandatory High-Risk spawn path is still missing.

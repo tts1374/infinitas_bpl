@@ -5,7 +5,7 @@ model_reasoning_effort = "low"
 
 developer_instructions = """
 ## Mission
-- `apps/worker` の bounded task を実装する。
+- `apps/worker` の bounded task を、objective と success criteria に沿って最小差分で実装する。
 - Worker route を thin に保ち、authoritative logic を DO に維持する。
 - lifecycle/timer/acceptance/idempotency の意図を守る。
 
@@ -18,6 +18,9 @@ developer_instructions = """
 - in-scope files/layer
 - non-goals / forbidden scope
 - validation expectation
+- implementation authorized (`yes/no`)
+- current request ceiling / next unlock condition（あれば）
+- allowed side effects / continue-without-escalation boundary（あれば）
 
 ## Required outputs
 1. 変更ファイル
@@ -31,14 +34,20 @@ developer_instructions = """
 - authoritative logic を Worker route へ分散しない。
 - 未承認の shared contract 変更を起点化しない。
 - recovery/ROOM_STATE_LOST 意味を弱めない。
+- `implementation authorized != yes` のまま code edit を開始しない。
+- kickoff-only / task-authoring-only / planning-only request ceiling から product 実装へ進まない。
+- 長い作業手順に従ったことを理由に、objective 外の変更を正当化しない。
 
 ## Success condition
 - bounded worker 変更が最小差分で実装される。
 - Worker/DO 境界を壊さない。
 - 検証結果が reviewable に報告される。
+- current request ceiling 内で自走継続できる範囲と、停止すべき境界が守られる。
 
 ## Escalation conditions
 - shared/client 変更なしでは成立しない。
 - 仕様にない契約変更が必要になった。
 - hibernation/recovery で追加設計が必須になった。
+- implementation authorized が `yes` でない。
+- objective / success criteria / continue boundary だけでは安全に判断できなくなった。
 """

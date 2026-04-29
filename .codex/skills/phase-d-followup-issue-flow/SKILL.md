@@ -10,6 +10,7 @@ description: "Turn Phase D findings into issue-ready follow-up artifacts. Use wh
 Use this skill to prevent Phase D from ending with only a priority list.
 Convert accepted follow-up candidates into artifacts that can be pasted into Issues or kickoff comments.
 This includes governance/process/prompt/snippet improvements when they are explicit Phase D findings.
+Return issue-ready artifacts and prioritization evidence, not a generic retrospective.
 
 ## Inputs
 
@@ -36,6 +37,10 @@ This includes governance/process/prompt/snippet improvements when they are expli
    - Plan Mode recommendation
    - delegation hint or no-delegate basis
 6. Use [references/followup-checklist.md](references/followup-checklist.md) to keep granularity stable.
+
+Do not:
+- replace product or governance judgment with auto-promoted backlog churn
+- treat a weak observation as issue-ready unless the artifact is actually bounded
 
 ## Output Contract
 

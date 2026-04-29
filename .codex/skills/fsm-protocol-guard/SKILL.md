@@ -8,6 +8,7 @@ description: "Reference skill for high-risk Room FSM and WebSocket protocol revi
 ## Overview
 
 Use this skill only as a reference aid for `strategy_orchestrator`, `contract_design_reviewer`, `contract_auditor`, or `implementation_auditor` when a task may touch high-risk room flow behavior.
+Return risk evidence and invariant impact only; do not expand into execution ownership or implementation instructions.
 
 This skill does not:
 - replace stage classification
@@ -56,6 +57,7 @@ Do not:
 - create downstream handoff packets
 - proceed into implementation by yourself
 - declare the task complete by yourself
+- replace orchestrator/auditor judgment with skill-local verdicts
 
 ## Decision Rules
 

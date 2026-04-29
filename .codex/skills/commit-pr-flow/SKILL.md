@@ -9,6 +9,7 @@ description: "Run a Phase C commit and PR flow from bounded plan items with stri
 
 Use this skill after bounded implementation work is complete and ready to be finalized in Phase C.
 Convert a scoped diff into reviewable commits and a PR without expanding scope.
+Return publish-ready evidence and status, not broad workflow re-planning.
 
 ## Inputs
 
@@ -75,6 +76,10 @@ Convert a scoped diff into reviewable commits and a PR without expanding scope.
 - Ensure required validation evidence is present.
 - Ensure completion status is explicit (`complete` or `blocked`).
 
+Do not:
+- replace agent/user judgment about scope changes, merge authority, or unresolved product decisions
+- claim readiness from command execution alone when scope or evidence gates are still ambiguous
+
 ## Output Contract
 
 Always return:
@@ -105,6 +110,7 @@ Always return:
 - Do not assume a newly added test file is already part of the standard test script without checking.
 - Do not assume a published PR is `bot-created PR` without read-back of `author.login` / `author.is_bot`.
 - Do not finish with a dirty default/base branch source worktree when the remaining in-scope residue is already upstream-equivalent.
+- Do not let commit mechanics hide missing success criteria, missing validation evidence, or out-of-scope drift.
 
 ## References
 

@@ -8,6 +8,7 @@ description: "Reference skill for execution-profile and Plan Mode decision suppo
 ## Overview
 
 Use this skill only as a reference aid for `strategy_orchestrator` or `execution_coordinator` when deciding execution profile and whether work should run in Plan Mode.
+Return an outcome-first decision artifact, not a downstream execution plan.
 
 This skill does not:
 - replace stage classification
@@ -31,7 +32,7 @@ This skill should be invoked only after the orchestrating agent has already fram
 
 ## Workflow
 
-1. Summarize the requested change in 1 to 3 bullets.
+1. Summarize the requested change and expected outcome in 1 to 3 bullets.
 2. Classify risk with `references/plan-mode-decision-matrix.md`.
 3. Decide whether repository rules imply:
    - `Local-Fast`
@@ -55,6 +56,7 @@ Do not:
 - prepare team shape
 - create downstream handoff packets
 - proceed into implementation by yourself
+- replace the orchestrator's judgment with skill-local policy
 
 ## Decision Rules
 

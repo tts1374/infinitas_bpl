@@ -9,6 +9,7 @@ description: "Prepare compliant closure evidence comments for normal Issues and 
 
 Use this skill only when the work is actually ready to close or when you need to identify what evidence is still missing.
 Do not use it for generic progress reports.
+Return a close-ready evidence artifact or a concrete missing-evidence block, not a best-effort summary.
 
 ## Inputs
 
@@ -45,6 +46,10 @@ Do not use it for generic progress reports.
 9. Empty stdout / empty CLI response / confirmation absent response is not success evidence. If the first write path fails or cannot confirm creation, switch method and require exact read-back.
 10. Confirm the closure evidence comment exists by returned comment URL/id or exact-body read-back before closing the Issue.
 11. Use [references/closure-checklist.md](references/closure-checklist.md) to verify status vocabulary, links, follow-up evidence completeness, and close ordering.
+
+Do not:
+- replace the caller's readiness judgment with invented closure assumptions
+- infer follow-up ownership or completion from implication alone
 
 ## Output Contract
 

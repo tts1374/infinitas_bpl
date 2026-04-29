@@ -13,10 +13,12 @@
 
 新規着手時は、実作業の前に最低限次を固定する:
 - `Stage`
+- `objective / expected outcome`
 - `affected layers`
 - `contract-sensitive` 該当有無
 - `execution profile` (`Local-Fast / Standard / High-Risk`)
 - `Plan Mode` 要否
+- `success criteria / stop condition`
 - 適用した root/local `AGENTS.md`
 - `Spawn Gate` 適用結果
 - `No-delegate reason`（非委譲時のみ）
@@ -139,6 +141,7 @@ Plan Mode は「実装前に計画成果物を必須化するゲート」。
 必須:
 - implementer が再解釈なしで開始できる bounded packet
 - 依存順/検証期待が明示されている
+- `objective` / `success criteria` / `continue-without-escalation boundary` が明示されている
 
 ### 4.3 C -> D
 必須:
@@ -157,6 +160,9 @@ Plan Mode では `tasks/<branch-or-pr-name>.md` を作成する。
 - 目的
 - 非目的
 - 現リクエスト境界
+- success criteria
+- stop condition
+- allowed side effects
 - 今やってよい出力
 - 今やってはいけない出力
 - 次の解除条件
@@ -183,6 +189,8 @@ Plan Mode では `tasks/<branch-or-pr-name>.md` を作成する。
 - 委譲は必要時のみ
 - 非委譲時は理由を明示
 - open-ended 指示は禁止
+- delegation packet は outcome-first で記述し、micro-step 手順はその順序自体が必要な場合に限る
+- skill/checklist は判断の代替ではなく、必要入力・出力 shape・確認観点の補助として使う
 
 ### 6.0 Delegation Execution Terms
 

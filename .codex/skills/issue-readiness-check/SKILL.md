@@ -9,6 +9,7 @@ description: "Phase A exit-gate skill for deciding whether an issue is ready to 
 
 Use this skill to decide whether Phase 1 is closed and whether an issue can be handed to execution planning.
 Use this as a readiness gate only, not as execution planning or post-implementation audit.
+Return the smallest evidence-backed readiness decision that lets the caller continue or stop safely.
 
 ## Responsibilities
 
@@ -110,6 +111,7 @@ Apply these format rules:
 - Write concrete missing information, not abstract statements.
 - Keep next steps to 1 or 2 actions.
 - Use repository status vocabulary exactly as written.
+- Do not turn missing success criteria or stopping rules into assumed decisions.
 
 ## Success Criteria
 

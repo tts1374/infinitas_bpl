@@ -8,6 +8,7 @@ description: "Reference skill for validation-scope selection. Used by orchestrat
 ## Overview
 
 Use this skill only as a reference aid for `strategy_orchestrator`, `execution_coordinator`, implementers, or auditors when deciding which verification groups are required for a given change.
+Return a validation recommendation artifact, not a pass/fail judgment.
 
 This skill does not:
 - replace implementation ownership
@@ -51,6 +52,7 @@ Do not:
 - execute implementation work
 - declare completion by yourself
 - replace audit verdicts by yourself
+- infer task success from procedure completion alone
 
 ## Decision Rules
 

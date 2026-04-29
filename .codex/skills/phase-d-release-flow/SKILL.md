@@ -11,6 +11,7 @@ Run a repeatable Phase D release sequence with one script:
 `scripts/release/phase-d-release.mjs`.
 
 Use this skill only after Phase D is confirmed `complete`.
+Return a release execution/evidence summary, not a release-policy substitute.
 
 ## Inputs
 
@@ -54,6 +55,10 @@ Use this skill only after Phase D is confirmed `complete`.
   - `Deploy INFINITAS ARENA Web to GitHub Pages`
   - `Release Desktop`
 - update GitHub Release notes for `v<version>`
+
+Do not:
+- replace explicit release gating decisions with script-default assumptions
+- treat dispatched commands as success without post-run evidence
 
 5. Keep release-note body in this format:
 
@@ -137,3 +142,4 @@ Always report:
 - do not push unrelated files
 - do not bypass workflow failures as success
 - do not silently create a missing release unless explicitly requested
+- do not let the script path hide missing release evidence or ambiguous gate decisions
