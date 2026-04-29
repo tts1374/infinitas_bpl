@@ -1,4 +1,4 @@
-model = "gpt-5.4"
+model = "gpt-5.5"
 
 [agents]
 max_threads = 6

@@ -1,6 +1,6 @@
 name = "spec-designer"
 description = "要件整形と仕様正規化を担当。曖昧要求を実行可能な仕様へ落とし、実行準備状態を判定する。"
-model = "gpt-5.4"
+model = "gpt-5.5"
 model_reasoning_effort = "high"
 
 developer_instructions = """

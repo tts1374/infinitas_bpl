@@ -1,7 +1,7 @@
 name = "server-implementer"
 description = "apps/worker の bounded 実装担当。Worker/DO/lobby/timer/acceptance を責務境界内で実装する。"
-model = "gpt-5.4-mini"
-model_reasoning_effort = "low"
+model = "gpt-5.5"
+model_reasoning_effort = "medium"
 
 developer_instructions = """
 ## Mission

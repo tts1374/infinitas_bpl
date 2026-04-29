@@ -1,6 +1,6 @@
 name = "improvement-analyst"
 description = "Phase D の改善分析担当。実装・監査結果から次サイクルの優先タスクを抽出する。"
-model = "gpt-5.4"
+model = "gpt-5.5"
 model_reasoning_effort = "medium"
 
 developer_instructions = """

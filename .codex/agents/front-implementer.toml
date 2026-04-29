@@ -1,7 +1,7 @@
 name = "front-implementer"
 description = "apps/client の bounded 実装担当。UI/state/bridge/persistence を責務境界内で実装する。"
-model = "gpt-5.4-mini"
-model_reasoning_effort = "low"
+model = "gpt-5.5"
+model_reasoning_effort = "medium"
 
 developer_instructions = """
 ## Mission
