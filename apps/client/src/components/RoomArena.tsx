@@ -130,7 +130,7 @@ export default function RoomArena({
     isPrivateRoom = false,
     roomId,
     joinCode,
-    pickingCountdownSeconds = 0,
+    pickingCountdownSeconds = null,
     logs,
     matchInfoItems,
     publicSharePanel,

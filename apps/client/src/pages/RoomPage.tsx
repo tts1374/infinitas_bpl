@@ -1,13 +1,11 @@
 import {
   AUTO_REMATCH_RESULT_SECONDS,
-  BPL4_PICKING_TTL_SECONDS,
   BPL4_ROUNDS,
   BPL_ROUNDS,
   CHART_DIFFICULTIES,
   CHART_SEARCH_PAGE_SIZE,
   HOST_SKIP_UNLOCK_SECONDS,
   MATCH_TTL_MINUTES,
-  PICKING_TTL_SECONDS,
   ROUND_MUSIC_SELECT_SECONDS,
   ROUND_PLAY_BEGIN_AT_SECONDS,
   type ChartSearchEntry,
@@ -52,6 +50,7 @@ import {
   buildArenaControlledProps,
   buildBplControlledProps,
 } from "../features/room/room-page-compose";
+import { getAuthoritativePickingCountdownSeconds } from "../features/room/picking-countdown";
 import {
   resolveSongVersionDbValue,
   resolveSongVersionLabel,
@@ -1453,7 +1452,7 @@ export function RoomPage() {
   const lobbyStartIssues = snapshot.room_state === "LOBBY" ? getLobbyStartIssues(snapshot) : [];
   const currentRoundDisplay =
     currentRound === null ? null : snapshot.frozen_rounds.find((round) => round.round_index === currentRound.round_index) ?? null;
-  const pickingCountdown = getRemainingSeconds(getIsoTimeMs(snapshot.timers.picking_deadline), clockNowMs);
+  const pickingCountdown = getAuthoritativePickingCountdownSeconds(snapshot.timers.picking_deadline, clockNowMs);
   const playingCountdown = currentRound === null ? null : getPlayingCountdown(currentRound, clockNowMs);
   const resultCountdown = getRemainingSeconds(getIsoTimeMs(snapshot.timers.result_deadline), clockNowMs);
   const privateAutoRematchEnabled =
@@ -1953,12 +1952,7 @@ export function RoomPage() {
             }
           : {}
       )}
-      timeLeft={
-        pickingCountdown ??
-        (snapshot && isBplFourStageMode(snapshot.settings.mode)
-          ? BPL4_PICKING_TTL_SECONDS
-          : PICKING_TTL_SECONDS)
-      }
+      timeLeft={pickingCountdown}
       displayedSongs={pickerSongs}
       totalSongs={pickerSongs.length}
       hasMore={chartNextCursor !== null}
@@ -2780,7 +2774,7 @@ export function RoomPage() {
       battleModeLabel: arenaBattleModeLabel,
       regCount: arenaRegCount,
       isPrivateRoom: snapshot.settings.visibility === "PRIVATE",
-      pickingCountdownSeconds: pickingCountdown ?? 0,
+      pickingCountdownSeconds: pickingCountdown,
       logs: arenaLobbyLogs,
       matchInfoItems: arenaMatchInfoItems,
       publicSharePanel,

@@ -140,7 +140,7 @@ export interface SongSearchModalViewProps {
     selectedDiff: string | null;
     selectedLevel: number | null;
     selectedVersion: string | null;
-    timeLeft: number;
+    timeLeft: number | null;
     displayedSongs: SongSearchModalSong[];
     totalSongs: number;
     hasMore?: boolean;
@@ -260,16 +260,18 @@ export function SongSearchModalView({
                             </div>
                         </div>
 
-                        <div className={`flex flex-col items-end px-6 py-2 rounded-xl border-2 transition-all ${timeLeft <= 10 ? 'border-red-500 bg-red-500/10 shadow-[0_0_20px_rgba(239,68,68,0.2)] animate-pulse' :
-                            timeLeft <= 30 ? 'border-amber-500 bg-amber-500/10' :
+                        <div className={`flex flex-col items-end px-6 py-2 rounded-xl border-2 transition-all ${timeLeft !== null && timeLeft <= 10 ? 'border-red-500 bg-red-500/10 shadow-[0_0_20px_rgba(239,68,68,0.2)] animate-pulse' :
+                            timeLeft !== null && timeLeft <= 30 ? 'border-amber-500 bg-amber-500/10' :
                                 'border-cyan-500/30 bg-cyan-500/5'
                             }`}>
                             <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest leading-none mb-1">Time Left</span>
-                            <span className={`text-3xl font-mono font-black italic tracking-tighter leading-none ${timeLeft <= 10 ? 'text-red-500' :
-                                timeLeft <= 30 ? 'text-amber-500' :
+                            <span className={`text-3xl font-mono font-black italic tracking-tighter leading-none ${timeLeft !== null && timeLeft <= 10 ? 'text-red-500' :
+                                timeLeft !== null && timeLeft <= 30 ? 'text-amber-500' :
                                     'text-cyan-400'
                                 }`}>
-                                {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}
+                                {timeLeft === null
+                                    ? "--:--"
+                                    : `${Math.floor(timeLeft / 60)}:${(timeLeft % 60).toString().padStart(2, '0')}`}
                             </span>
                         </div>
                     </div>
