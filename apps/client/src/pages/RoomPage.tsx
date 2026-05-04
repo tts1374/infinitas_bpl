@@ -6,8 +6,6 @@ import {
   CHART_SEARCH_PAGE_SIZE,
   HOST_SKIP_UNLOCK_SECONDS,
   MATCH_TTL_MINUTES,
-  ROUND_MUSIC_SELECT_SECONDS,
-  ROUND_PLAY_BEGIN_AT_SECONDS,
   type ChartSearchEntry,
   type CurrentRoundSnapshot,
   type ResultReadyPayload,
@@ -50,6 +48,7 @@ import {
   buildArenaControlledProps,
   buildBplControlledProps,
 } from "../features/room/room-page-compose";
+import { resolvePlayingRoundPresentation } from "../features/room/round-phase";
 import { getAuthoritativePickingCountdownSeconds } from "../features/room/picking-countdown";
 import {
   resolveSongVersionDbValue,
@@ -203,43 +202,6 @@ function getNextClockTickDelayMs(nowMs: number, anchorAtMs: number | null): numb
   const elapsedFromAnchorMs = nowMs - anchorAtMs;
   const offset = ((elapsedFromAnchorMs % 1_000) + 1_000) % 1_000;
   return offset === 0 ? 1_000 : 1_000 - offset;
-}
-
-function getPlayingCountdown(round: CurrentRoundSnapshot, nowMs: number): {
-  label: string;
-  remainingSeconds: number;
-  detail: string;
-} | null {
-  const startedAtMs = getIsoTimeMs(round.round_started_at);
-  if (startedAtMs === null) {
-    return null;
-  }
-
-  const musicSelectEndsAtMs = startedAtMs + ROUND_MUSIC_SELECT_SECONDS * 1_000;
-  const playBeginAtMs = startedAtMs + ROUND_PLAY_BEGIN_AT_SECONDS * 1_000;
-  const playDeadlineAtMs = playBeginAtMs + round.soft_ttl_seconds * 1_000;
-
-  if (nowMs < musicSelectEndsAtMs) {
-    return {
-      label: "MUSIC SELECT",
-      remainingSeconds: getRemainingSeconds(musicSelectEndsAtMs, nowMs) ?? 0,
-      detail: "Chart select window.",
-    };
-  }
-
-  if (nowMs < playBeginAtMs) {
-    return {
-      label: "PLAY START",
-      remainingSeconds: getRemainingSeconds(playBeginAtMs, nowMs) ?? 0,
-      detail: "Start buffer before gameplay begins.",
-    };
-  }
-
-  return {
-    label: "IN PLAY",
-    remainingSeconds: getRemainingSeconds(playDeadlineAtMs, nowMs) ?? 0,
-    detail: "Soft TTL remaining after Let's go.",
-  };
 }
 
 function getDifficultyId(difficulty: string | null | undefined): string {
@@ -1453,7 +1415,6 @@ export function RoomPage() {
   const currentRoundDisplay =
     currentRound === null ? null : snapshot.frozen_rounds.find((round) => round.round_index === currentRound.round_index) ?? null;
   const pickingCountdown = getAuthoritativePickingCountdownSeconds(snapshot.timers.picking_deadline, clockNowMs);
-  const playingCountdown = currentRound === null ? null : getPlayingCountdown(currentRound, clockNowMs);
   const resultCountdown = getRemainingSeconds(getIsoTimeMs(snapshot.timers.result_deadline), clockNowMs);
   const privateAutoRematchEnabled =
     snapshot.settings.visibility === "PRIVATE" && snapshot.settings.auto_rematch === true;
@@ -1763,22 +1724,6 @@ export function RoomPage() {
     currentRound === null ||
     forceAdvanceRemainingSeconds === null ||
     forceAdvanceRemainingSeconds > 0;
-  const bplLeadInSeconds =
-    isBpl && currentRoundStartAtMs !== null && currentRoundStartAtMs > clockNowMs
-      ? Math.max(0, Math.ceil((currentRoundStartAtMs - clockNowMs) / 1_000))
-      : 0;
-  const arenaLeadInSeconds =
-    !isBpl && currentRoundStartAtMs !== null && currentRoundStartAtMs > clockNowMs
-      ? Math.max(0, Math.ceil((currentRoundStartAtMs - clockNowMs) / 1_000))
-      : 0;
-  const bplPrestartPhase =
-    isBpl && snapshot.room_state === "PLAYING" && currentRound !== null && bplLeadInSeconds > 0 && currentRound.round_index > 0
-      ? "RESULT_PHASE"
-      : null;
-  const arenaPrestartPhase =
-    !isBpl && snapshot.room_state === "PLAYING" && currentRound !== null && arenaLeadInSeconds > 0 && currentRound.round_index > 0
-      ? "RESULT_PHASE"
-      : null;
   const latestHistoryRound = historyRounds.reduce<ParsedResultRound | null>((latestRound, round) => {
     if (latestRound === null || round.roundIndex > latestRound.roundIndex) {
       return round;
@@ -1798,6 +1743,20 @@ export function RoomPage() {
       : !isBpl && currentRound !== null && currentRound.round_index > 0
         ? historyRounds.find((round) => round.roundIndex === currentRound.round_index - 1) ?? null
         : null;
+  const bplPlayingPresentation = resolvePlayingRoundPresentation({
+    roomState: snapshot.room_state,
+    currentRound,
+    nowMs: clockNowMs,
+    hasPreviousResultRound: bplResultRound !== null,
+    resultPhaseSeconds: BPL_RESULT_PHASE_SECONDS,
+  });
+  const arenaPlayingPresentation = resolvePlayingRoundPresentation({
+    roomState: snapshot.room_state,
+    currentRound,
+    nowMs: clockNowMs,
+    hasPreviousResultRound: arenaResultRound !== null,
+    resultPhaseSeconds: ARENA_RESULT_PHASE_SECONDS,
+  });
   const finalMatchResultCountdownSeconds =
     snapshot.room_state === "RESULT"
       ? Math.max(
@@ -1895,14 +1854,6 @@ export function RoomPage() {
     });
   }
 
-  const playElapsedSeconds =
-    currentRoundStartAtMs === null ? 0 : Math.max(0, Math.floor((clockNowMs - currentRoundStartAtMs) / 1_000));
-  const mockPlayingPhase =
-    playingCountdown?.label === "PLAY START"
-      ? "PLAY_START"
-      : playingCountdown?.label === "IN PLAY"
-        ? "IN_PLAY"
-        : "MUSIC_SELECT";
   const chartResultsByKey = new Map(chartResults.map((chart) => [chart.chart_key, chart]));
   const getResolvedPickChart = (pickChartKey: string): ChartSearchEntry | null => (
     chartResultsByKey.get(pickChartKey) ??
@@ -2627,14 +2578,12 @@ export function RoomPage() {
           ? "WAITING"
           : snapshot.room_state === "PICKING"
             ? "SELECTING"
-            : snapshot.room_state === "PLAYING" && bplPrestartPhase === "RESULT_PHASE" && bplResultRound
-              ? "RESULT"
             : snapshot.room_state === "PLAYING"
-                ? "PLAYING"
-                : snapshot.room_state === "RESULT" && bplResultRound
-                  ? (finalMatchResultCountdownSeconds ?? BPL_RESULT_PHASE_SECONDS) > 0
-                    ? "RESULT"
-                    : "CLOSED"
+              ? bplPlayingPresentation.roomStatus
+              : snapshot.room_state === "RESULT" && bplResultRound
+                ? (finalMatchResultCountdownSeconds ?? BPL_RESULT_PHASE_SECONDS) > 0
+                  ? "RESULT"
+                  : "CLOSED"
                 : "CLOSED";
       const bplRoundCount =
         bplRoomStatus === "RESULT"
@@ -2652,7 +2601,7 @@ export function RoomPage() {
           bplRoomStatus === "RESULT"
             ? snapshot.room_state === "RESULT"
               ? finalMatchResultCountdownSeconds ?? BPL_RESULT_PHASE_SECONDS
-              : bplLeadInSeconds
+              : bplPlayingPresentation.resultTimer ?? BPL_RESULT_PHASE_SECONDS
             : resultCountdown ?? BPL_RESULT_PHASE_SECONDS,
         showSearch: showPickerModal,
         showCutIn: ownPickCutInChart !== null,
@@ -2662,9 +2611,9 @@ export function RoomPage() {
         lobbyTimer: getRemainingSeconds(getIsoTimeMs(snapshot.timers.ready_check_deadline), clockNowMs) ?? 0,
         roomId: roomIdLabel,
         joinCode: joinCodeLabel,
-        playTime: playElapsedSeconds,
-        playingPhase: mockPlayingPhase,
-        playingCountdownSeconds: playingCountdown?.remainingSeconds ?? null,
+        playTime: bplPlayingPresentation.playElapsedSeconds,
+        playingPhase: bplPlayingPresentation.playingPhase,
+        playingCountdownSeconds: bplPlayingPresentation.playingCountdownSeconds,
         isHost,
         selfPlayerId: selfMockPlayerId ?? (isHost ? "1" : "2"),
         searchModal: pickerModal,
@@ -2708,14 +2657,12 @@ export function RoomPage() {
         ? "WAITING"
         : snapshot.room_state === "PICKING"
           ? "SELECTING"
-          : snapshot.room_state === "PLAYING" && arenaPrestartPhase === "RESULT_PHASE" && arenaResultRound
-            ? "RESULT"
-            : snapshot.room_state === "PLAYING"
-              ? "PLAYING"
-              : snapshot.room_state === "RESULT" && arenaResultRound
-                ? (finalMatchResultCountdownSeconds ?? ARENA_RESULT_PHASE_SECONDS) > 0
-                  ? "RESULT"
-                  : "CLOSED"
+          : snapshot.room_state === "PLAYING"
+            ? arenaPlayingPresentation.roomStatus
+            : snapshot.room_state === "RESULT" && arenaResultRound
+              ? (finalMatchResultCountdownSeconds ?? ARENA_RESULT_PHASE_SECONDS) > 0
+                ? "RESULT"
+                : "CLOSED"
               : "CLOSED";
     const arenaRoundCount =
       arenaRoomStatus === "RESULT"
@@ -2733,7 +2680,7 @@ export function RoomPage() {
         arenaRoomStatus === "RESULT"
           ? snapshot.room_state === "RESULT"
             ? finalMatchResultCountdownSeconds ?? ARENA_RESULT_PHASE_SECONDS
-            : arenaLeadInSeconds
+            : arenaPlayingPresentation.resultTimer ?? ARENA_RESULT_PHASE_SECONDS
           : resultCountdown ?? ARENA_RESULT_PHASE_SECONDS,
       showSearch: showPickerModal,
       showCutIn: ownPickCutInChart !== null,
@@ -2743,9 +2690,9 @@ export function RoomPage() {
       lobbyTimer: getRemainingSeconds(getIsoTimeMs(snapshot.timers.ready_check_deadline), clockNowMs) ?? 0,
       roomId: roomIdLabel,
       joinCode: joinCodeLabel,
-      playTime: playElapsedSeconds,
-      playingPhase: mockPlayingPhase,
-      playingCountdownSeconds: playingCountdown?.remainingSeconds ?? null,
+      playTime: arenaPlayingPresentation.playElapsedSeconds,
+      playingPhase: arenaPlayingPresentation.playingPhase,
+      playingCountdownSeconds: arenaPlayingPresentation.playingCountdownSeconds,
       isHost,
       selfPlayerId: selfMockPlayerId ?? (isHost ? "1" : "2"),
       searchModal: pickerModal,
