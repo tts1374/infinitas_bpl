@@ -77,6 +77,7 @@ const RECONNECT_WINDOW_SECONDS = REJOIN_COOLDOWN_SECONDS;
 const RECONNECT_MAX_ATTEMPTS = Math.ceil((RECONNECT_WINDOW_SECONDS * 1_000) / RECONNECT_DELAY_MS);
 const ROOM_EXPIRED_MESSAGE = "部屋の有効期限が切れました。一覧に戻って再参加してください。";
 const ROOM_STATE_CHANGED_MESSAGE = "部屋の状態が変わりました。一覧に戻ってください。";
+const QUICK_CHAT_POST_MESSAGE_TYPE = "QUICK_CHAT_POST" as ClientMessageType;
 let reconnectContext: RoomReconnectContext | null = null;
 let reconnectTimer: number | null = null;
 let reconnectAttempts = 0;
@@ -1311,6 +1312,21 @@ export const roomStore = {
       request_id: getOrCreateRequestId(`PICK_SUBMIT:${pickChartKey}`),
       pick_chart_key: pickChartKey,
     });
+  },
+  sendQuickChat(input: { phraseIds: string[]; message: string }): boolean {
+    const snapshot = internalStore.getState().snapshot;
+    if (
+      snapshot === null ||
+      (snapshot.room_state !== "LOBBY" && snapshot.room_state !== "PICKING")
+    ) {
+      return false;
+    }
+
+    const requestId = `QUICK_CHAT_POST:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+    return this.send(QUICK_CHAT_POST_MESSAGE_TYPE, {
+      request_id: requestId,
+      phrase_ids: input.phraseIds,
+    } as ClientMessagePayloadMap[ClientMessageType]);
   },
   submitResult(input: {
     round_index: number;

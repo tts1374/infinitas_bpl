@@ -73,6 +73,8 @@ export interface RoomArenaControlledState {
     joinCode: string;
     pickingCountdownSeconds?: number | null;
     logs?: RoomArenaLogEntry[];
+    quickChat?: ReactNode;
+    quickChatBubbles?: Record<string, string>;
     matchInfoItems?: RoomArenaMatchInfoItem[];
     publicSharePanel?: ReactNode;
     playTime: number;
@@ -132,6 +134,8 @@ export default function RoomArena({
     joinCode,
     pickingCountdownSeconds = null,
     logs,
+    quickChat,
+    quickChatBubbles,
     matchInfoItems,
     publicSharePanel,
     playTime,
@@ -186,6 +190,8 @@ export default function RoomArena({
     const resolvedDurationLabel = durationLabel ?? '0M 00S';
     const resolvedFinalResultPlayers = finalResultPlayers ?? {};
     const resolvedLogs = logs ?? [];
+    const resolvedQuickChat = quickChat ?? null;
+    const resolvedQuickChatBubbles = quickChatBubbles ?? {};
     const resolvedMatchInfoItems = matchInfoItems ?? [
         { label: 'Mode', value: 'ARENA' },
         { label: 'Scoring', value: resolvedMetricLabel },
@@ -664,6 +670,11 @@ export default function RoomArena({
                                             )
                                         )}
                                     </div>
+                                    {resolvedQuickChatBubbles[p.id] ? (
+                                        <div className="absolute left-20 top-20 z-20 min-w-max max-w-[240px] rounded-xl border border-cyan-500/30 bg-black/85 px-3 py-2 text-xs font-bold text-white shadow-xl shadow-cyan-500/10">
+                                            {resolvedQuickChatBubbles[p.id]}
+                                        </div>
+                                    ) : null}
                                     {hasPicked && (
                                         <div className="mt-4 p-4 bg-black/40 rounded-xl border border-white/5 flex items-center gap-4">
                                             <div className="w-12 h-12 bg-white/5 rounded border border-white/10 flex items-center justify-center">
@@ -720,7 +731,12 @@ export default function RoomArena({
                 </div>
 
                 {/* 下部アクションバー */}
-                <footer className="flex gap-4 h-20">
+                <footer className="flex gap-4 h-52">
+                    {resolvedQuickChat ? (
+                        <div className="w-[360px] bg-[#252526] rounded-xl border border-white/5 p-3 overflow-hidden">
+                            {resolvedQuickChat}
+                        </div>
+                    ) : null}
                     <div className="flex-1 bg-[#252526] rounded-xl border border-white/5 p-3 flex flex-col gap-2 overflow-hidden">
                         <div className="flex items-center gap-4 text-gray-500 border-b border-white/5 pb-1">
                             <MessageSquare size={14} />

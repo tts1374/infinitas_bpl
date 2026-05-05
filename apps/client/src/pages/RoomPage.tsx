@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { useDeferredValue, useEffect, useRef, useState, type ReactNode } from "react";
 import { DebugInjectionPanel } from "../components/DebugInjectionPanel";
+import { QuickChat } from "../components/QuickChat";
 import {
   findVisualScenarioChart,
   findVisualScenarioChartByChartKey,
@@ -50,6 +51,11 @@ import {
 } from "../features/room/room-page-compose";
 import { getServerTimeCorrectedNowMs, resolvePlayingRoundPresentation } from "../features/room/round-phase";
 import { getAuthoritativePickingCountdownSeconds } from "../features/room/picking-countdown";
+import {
+  getVisibleQuickChatBubbles,
+  readQuickChatMessages,
+  type QuickChatMessage,
+} from "../features/room/quick-chat";
 import {
   resolveSongVersionDbValue,
   resolveSongVersionLabel,
@@ -1947,6 +1953,39 @@ export function RoomPage() {
     actualToMockId.set(player.player_id, mockId);
     mockIdToActualId.set(mockId, player.player_id);
   });
+  const quickChatMessages: QuickChatMessage[] = readQuickChatMessages(snapshot);
+  const visibleQuickChatBubbles = getVisibleQuickChatBubbles(quickChatMessages, correctedClockNowMs);
+  const quickChatBubblesByPresentationId = Object.entries(visibleQuickChatBubbles).reduce<Record<string, string>>(
+    (bubbles, [actualPlayerId, message]) => {
+      const presentationPlayerId = actualToMockId.get(actualPlayerId);
+      if (presentationPlayerId === undefined) {
+        return bubbles;
+      }
+
+      bubbles[presentationPlayerId] = message.message;
+      return bubbles;
+    },
+    {},
+  );
+  const quickChatAvailable = me !== null && (snapshot.room_state === "LOBBY" || snapshot.room_state === "PICKING");
+  const quickChatDisabledReason =
+    me === null
+      ? "観戦中は送信できません"
+      : snapshot.room_state === "LOBBY" || snapshot.room_state === "PICKING"
+        ? undefined
+        : "ロビーまたは選曲中のみ送信できます";
+  const quickChatLogEntries: RoomArenaLogEntry[] = quickChatMessages.map((message) => ({
+    id: `quick-chat-${message.id}`,
+    text: `${message.displayName}: ${message.message}`,
+  }));
+  const quickChat = (
+    <QuickChat
+      available={quickChatAvailable}
+      messages={quickChatMessages}
+      onSubmit={(input) => roomStore.sendQuickChat(input)}
+      {...(quickChatDisabledReason === undefined ? {} : { disabledReason: quickChatDisabledReason })}
+    />
+  );
 
   const roundSongsByIndex = new Map<number, {
     selectionTitle: string;
@@ -2650,6 +2689,9 @@ export function RoomPage() {
         finalResultPlayers: bplFinalResultPlayers,
         finalWinningPlayerName: bplWinningPlayerName,
         players: bplPlayers,
+        logs: quickChatLogEntries,
+        quickChat,
+        quickChatBubbles: quickChatBubblesByPresentationId,
         roundPickerNames: bplRoundPickerNames,
       });
 
@@ -2726,7 +2768,9 @@ export function RoomPage() {
       regCount: arenaRegCount,
       isPrivateRoom: snapshot.settings.visibility === "PRIVATE",
       pickingCountdownSeconds: pickingCountdown,
-      logs: arenaLobbyLogs,
+      logs: [...arenaLobbyLogs, ...quickChatLogEntries],
+      quickChat,
+      quickChatBubbles: quickChatBubblesByPresentationId,
       matchInfoItems: arenaMatchInfoItems,
       publicSharePanel,
       playerStatus: arenaPlayerStatus,

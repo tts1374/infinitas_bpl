@@ -1,7 +1,8 @@
 import {
     User, CheckCircle2, Circle, LogOut,
-    Database, Swords, Music, Copy, Check, Clock
+    Database, Swords, Music, Copy, Check, Clock, MessageSquare
 } from 'lucide-react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { RoomPickDecisionCutIn, RoomSearchModalGate } from '../features/room/presentation-components';
 import {
     formatCountdown,
@@ -39,6 +40,12 @@ export interface RoomBPLPlayer {
     side: 'LEFT' | 'RIGHT';
 }
 
+export interface RoomBPLLogEntry {
+    id: string;
+    text: string;
+    tone?: 'default' | 'accent';
+}
+
 export interface RoomBPLControlledState {
     roomStatus: 'WAITING' | 'SELECTING' | 'PLAYING' | 'RESULT' | 'CLOSED';
     isReady: boolean;
@@ -69,6 +76,9 @@ export interface RoomBPLControlledState {
     finalWinningPlayerName?: string;
     isHost: boolean;
     players: RoomBPLPlayer[];
+    logs?: RoomBPLLogEntry[];
+    quickChat?: ReactNode;
+    quickChatBubbles?: Record<string, string>;
     roundPickerNames?: Array<string | null>;
     selfPlayerId?: string;
     disablePrimaryAction?: boolean;
@@ -124,6 +134,9 @@ export default function RoomBPL({
     finalWinningPlayerName,
     isHost,
     players,
+    logs,
+    quickChat,
+    quickChatBubbles,
     roundPickerNames,
     selfPlayerId,
     disablePrimaryAction,
@@ -155,7 +168,11 @@ export default function RoomBPL({
     const resolvedMetricLabel = metricLabel ?? 'EX SCORE';
     const resolvedResultPlayers = resultPlayers ?? {};
     const resolvedResultRegulationLabel = resultRegulationLabel ?? BPL_REGULATION_LABEL;
+    const resolvedLogs = logs ?? [];
+    const resolvedQuickChat = quickChat ?? null;
+    const resolvedQuickChatBubbles = quickChatBubbles ?? {};
     const resolvedFinalResultPlayers = finalResultPlayers ?? {};
+    const logsViewportRef = useRef<HTMLDivElement | null>(null);
     const totalStages = Math.max(1, picks.length);
     const currentPlayingSong = picks[roundCount - 1] || picks[totalStages - 1] || null;
     const currentResultSong = picks[roundCount - 1] || picks[totalStages - 1] || null;
@@ -179,6 +196,12 @@ export default function RoomBPL({
         (_, index) => (index % 2 === 0 ? leftPlayer.name : rightPlayer.name),
     );
     const currentRoundPickerName = resolvedRoundPickerNames[roundCount - 1] ?? null;
+
+    useEffect(() => {
+        if (logsViewportRef.current) {
+            logsViewportRef.current.scrollTop = logsViewportRef.current.scrollHeight;
+        }
+    }, [resolvedLogs]);
 
     return (
         <div className="flex h-screen w-screen bg-[#0f0f10] text-white font-sans overflow-hidden">
@@ -261,7 +284,12 @@ export default function RoomBPL({
                     </div>
 
                     {/* 左プレイヤー (1P) */}
-                    <div className={`flex-1 max-w-[400px] flex flex-col gap-4 transition-all ${leftPlayer.isReady ? 'scale-105' : ''}`}>
+                    <div className={`relative flex-1 max-w-[400px] flex flex-col gap-4 transition-all ${leftPlayer.isReady ? 'scale-105' : ''}`}>
+                        {resolvedQuickChatBubbles[leftPlayer.id] ? (
+                            <div className="absolute left-24 top-28 z-30 min-w-max max-w-[240px] rounded-xl border border-cyan-500/30 bg-black/85 px-3 py-2 text-xs font-bold text-white shadow-xl shadow-cyan-500/10">
+                                {resolvedQuickChatBubbles[leftPlayer.id]}
+                            </div>
+                        ) : null}
                         <div className={`h-[320px] rounded-3xl border-4 relative overflow-hidden flex flex-col items-center justify-center transition-all ${leftPlayer.isReady
                             ? (roomStatus === 'SELECTING' && currentTurn % 2 === 0 ? 'bg-cyan-500/20 border-white shadow-[0_0_80px_rgba(6,182,212,0.4)] ring-4 ring-cyan-500 ring-opacity-50' : 'bg-cyan-500/10 border-cyan-500 shadow-[0_0_50px_rgba(6,182,212,0.2)]')
                             : 'bg-[#252526] border-white/10'
@@ -303,7 +331,12 @@ export default function RoomBPL({
                     </div>
 
                     {/* 右プレイヤー (2P) */}
-                    <div className={`flex-1 max-w-[400px] flex flex-col gap-4 transition-all ${rightPlayer.isReady ? 'scale-105' : ''}`}>
+                    <div className={`relative flex-1 max-w-[400px] flex flex-col gap-4 transition-all ${rightPlayer.isReady ? 'scale-105' : ''}`}>
+                        {resolvedQuickChatBubbles[rightPlayer.id] ? (
+                            <div className="absolute right-24 top-28 z-30 min-w-max max-w-[240px] rounded-xl border border-amber-500/30 bg-black/85 px-3 py-2 text-xs font-bold text-white shadow-xl shadow-amber-500/10">
+                                {resolvedQuickChatBubbles[rightPlayer.id]}
+                            </div>
+                        ) : null}
                         <div className={`h-[320px] rounded-3xl border-4 relative overflow-hidden flex flex-col items-center justify-center transition-all ${rightPlayer.isReady
                             ? (roomStatus === 'SELECTING' && currentTurn % 2 === 1 ? 'bg-amber-500/20 border-white shadow-[0_0_80px_rgba(245,158,11,0.4)] ring-4 ring-amber-500 ring-opacity-50' : 'bg-amber-500/10 border-amber-500 shadow-[0_0_50px_rgba(245,158,11,0.2)]')
                             : 'bg-[#252526] border-white/10'
@@ -342,43 +375,72 @@ export default function RoomBPL({
 
                 {/* 下部：ストラテジーエリア */}
                 {roomStatus !== 'PLAYING' ? (
-                    <footer
-                        className="mt-4 grid h-28 gap-4 px-2 md:px-4"
-                        style={{ gridTemplateColumns: `repeat(${totalStages + 1}, minmax(0, 1fr))` }}
-                    >
-                        {picks.map((pick, index) => {
-                            const isHostTurn = index % 2 === 0;
-                            const fallbackLabel = resolvedRoundPickerNames[index] === 'SYSTEM RANDOM'
-                                ? 'SYSTEM RANDOM'
-                                : resolvedRoundPickerNames[index]
-                                    ? `${resolvedRoundPickerNames[index]}'S PICK`
-                                    : `${formatOrdinal(index + 1).toUpperCase()} PICK`;
-                            return (
-                                <div
-                                    key={`pick-slot-${index}`}
-                                    className={`rounded-2xl border p-3 flex flex-col justify-center transition-all ${pick
-                                        ? (isHostTurn ? 'bg-cyan-500/10 border-cyan-500' : 'bg-amber-500/10 border-amber-500')
-                                        : (isHostTurn ? 'bg-[#1a1a1b] border-white/5' : 'bg-[#1a1a1b] border-white/5 border-dashed')
-                                        }`}
-                                >
-                                    <span className="text-[9px] font-black text-gray-500 uppercase mb-0.5">{formatOrdinal(index + 1)} Match</span>
-                                    <div className="flex flex-col font-bold">
-                                        <span className={pick
-                                            ? 'text-white text-lg font-black italic truncate'
-                                            : (isHostTurn ? 'text-cyan-400/50' : 'text-amber-500/50')}
+                    <footer className="mt-4 flex h-52 gap-4 px-2 md:px-4">
+                        <div className="flex min-w-0 flex-1 flex-col gap-3">
+                            <div
+                                className="grid h-24 gap-3"
+                                style={{ gridTemplateColumns: `repeat(${totalStages}, minmax(0, 1fr))` }}
+                            >
+                                {picks.map((pick, index) => {
+                                    const isHostTurn = index % 2 === 0;
+                                    const fallbackLabel = resolvedRoundPickerNames[index] === 'SYSTEM RANDOM'
+                                        ? 'SYSTEM RANDOM'
+                                        : resolvedRoundPickerNames[index]
+                                            ? `${resolvedRoundPickerNames[index]}'S PICK`
+                                            : `${formatOrdinal(index + 1).toUpperCase()} PICK`;
+                                    return (
+                                        <div
+                                            key={`pick-slot-${index}`}
+                                            className={`rounded-2xl border p-3 flex flex-col justify-center transition-all ${pick
+                                                ? (isHostTurn ? 'bg-cyan-500/10 border-cyan-500' : 'bg-amber-500/10 border-amber-500')
+                                                : (isHostTurn ? 'bg-[#1a1a1b] border-white/5' : 'bg-[#1a1a1b] border-white/5 border-dashed')
+                                                }`}
                                         >
-                                            {pick ? pick.title : fallbackLabel}
-                                        </span>
-                                        {pick?.artist ? (
-                                            <span className={`text-[10px] font-black italic tracking-widest leading-none truncate ${isHostTurn ? 'text-cyan-500' : 'text-amber-500'}`}>
-                                                {pick.artist}
-                                            </span>
-                                        ) : null}
+                                            <span className="text-[9px] font-black text-gray-500 uppercase mb-0.5">{formatOrdinal(index + 1)} Match</span>
+                                            <div className="flex flex-col font-bold">
+                                                <span className={pick
+                                                    ? 'text-white text-lg font-black italic truncate'
+                                                    : (isHostTurn ? 'text-cyan-400/50' : 'text-amber-500/50')}
+                                                >
+                                                    {pick ? pick.title : fallbackLabel}
+                                                </span>
+                                                {pick?.artist ? (
+                                                    <span className={`text-[10px] font-black italic tracking-widest leading-none truncate ${isHostTurn ? 'text-cyan-500' : 'text-amber-500'}`}>
+                                                        {pick.artist}
+                                                    </span>
+                                                ) : null}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                            <div className="flex min-h-0 flex-1 gap-3">
+                                {resolvedQuickChat ? (
+                                    <div className="w-[360px] rounded-xl border border-white/5 bg-[#1a1a1b] p-3 overflow-hidden">
+                                        {resolvedQuickChat}
+                                    </div>
+                                ) : null}
+                                <div className="flex min-w-0 flex-1 flex-col gap-2 rounded-xl border border-white/5 bg-[#1a1a1b] p-3 overflow-hidden">
+                                    <div className="flex items-center gap-3 text-gray-500 border-b border-white/5 pb-1">
+                                        <MessageSquare size={14} />
+                                        <span className="text-[10px] font-black uppercase tracking-widest">Chat / Logs</span>
+                                    </div>
+                                    <div ref={logsViewportRef} className="min-h-0 flex-1 overflow-y-auto pr-2 text-sm custom-scrollbar space-y-1">
+                                        {resolvedLogs.length === 0 ? (
+                                            <p className="text-gray-500 italic">System: 全員の準備完了を待っています...</p>
+                                        ) : resolvedLogs.map((entry) => (
+                                            <p
+                                                key={entry.id}
+                                                className={entry.tone === 'accent' ? 'text-cyan-400/90 font-bold' : 'text-gray-300'}
+                                            >
+                                                {entry.text}
+                                            </p>
+                                        ))}
                                     </div>
                                 </div>
-                            );
-                        })}
-                        <div className="bg-white/5 rounded-2xl p-4 flex items-center justify-center">
+                            </div>
+                        </div>
+                        <div className="w-56 rounded-2xl bg-white/5 p-4 flex items-center justify-center">
                             <button
                                 onClick={() => onPrimaryAction?.()}
                                 disabled={primaryDisabled}
