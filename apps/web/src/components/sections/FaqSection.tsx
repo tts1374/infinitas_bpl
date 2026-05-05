@@ -1,4 +1,4 @@
-import { HelpCircle } from "lucide-react";
+import { HelpCircle, Sparkles } from "lucide-react";
 import type { FC } from "react";
 
 interface FaqItem {
@@ -46,6 +46,19 @@ export const FaqSection: FC = () => (
           </article>
         ))}
       </div>
+
+      <article className="mt-10 rounded-2xl border border-cyan-400/10 bg-[#1C1C22] p-6 text-center">
+        <h3 className="mb-3 flex items-center justify-center gap-2 text-lg font-bold text-white">
+          <Sparkles size={20} className="shrink-0 text-cyan-400" />
+          Special Thanks
+        </h3>
+        <p className="text-sm leading-relaxed text-gray-400">
+          アイコン/画像作成者:{" "}
+          <a href="https://x.com/LotusRoad_" target="_blank" rel="noreferrer" className="font-semibold text-cyan-300 hover:text-cyan-200">
+            Lotus*
+          </a>
+        </p>
+      </article>
     </div>
   </section>
 );
