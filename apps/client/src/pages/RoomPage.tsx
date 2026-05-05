@@ -751,6 +751,7 @@ export function RoomPage() {
   const [includeJoinCodeInXShare, setIncludeJoinCodeInXShare] = useState(false);
   const [showHostLeaveConfirm, setShowHostLeaveConfirm] = useState(false);
   const [showRoomAudioMenu, setShowRoomAudioMenu] = useState(false);
+  const [debugPanelsVisible, setDebugPanelsVisible] = useState(true);
   const [roomPresentationSeEnabled, setRoomPresentationSeEnabled] = useState(savedSettings.enablePresentationSe);
   const [arenaLobbyLogs, setArenaLobbyLogs] = useState<RoomArenaLogEntry[]>([]);
   const [pendingOwnPickCutIn, setPendingOwnPickCutIn] = useState<ChartSearchEntry | null>(null);
@@ -2888,7 +2889,17 @@ export function RoomPage() {
         </div>
       ) : null}
 
-      {runtimeConfig.debugUiEnabled && snapshot.room_state === "PLAYING" && currentRound ? (
+      {import.meta.env.DEV && runtimeConfig.debugUiEnabled ? (
+        <button
+          type="button"
+          onClick={() => setDebugPanelsVisible((visible) => !visible)}
+          className="fixed bottom-6 left-6 z-[170] rounded-full border border-cyan-500/40 bg-[#252526]/95 px-4 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.2)] transition-colors hover:bg-cyan-500/10"
+        >
+          {debugPanelsVisible ? "Hide Debug" : "Show Debug"}
+        </button>
+      ) : null}
+
+      {runtimeConfig.debugUiEnabled && debugPanelsVisible && snapshot.room_state === "PLAYING" && currentRound ? (
         <div className="fixed bottom-6 right-6 z-[160] w-[320px]">
           <DebugRoundPanel
             currentRound={currentRound}
@@ -2936,7 +2947,7 @@ export function RoomPage() {
         </div>
       ) : null}
 
-      {import.meta.env.DEV && runtimeConfig.debugUiEnabled ? (
+      {import.meta.env.DEV && runtimeConfig.debugUiEnabled && debugPanelsVisible ? (
         <section className="space-y-4">
           <DebugSection title="Debug Actions">
             <div className="space-y-5">
