@@ -132,7 +132,7 @@ function createJoinMessage(playerId, clientMessageId, payloadOverrides = {}) {
     payload: {
       display_name: playerId.toUpperCase(),
       source: "inf-notebook",
-      client_version: "1.2.0",
+      client_version: "1.4.0",
       ...payloadOverrides,
     },
   };

@@ -9,7 +9,7 @@ enabled = true
 REPO_OWNER_GITHUB = "tts1374"
 REPO_NAME_GITHUB = "infinitas_arena"
 APP_ENV = "production"
-MIN_SUPPORTED_CLIENT_VERSION = "1.2.0"
+MIN_SUPPORTED_CLIENT_VERSION = "1.4.0"
 
 [[kv_namespaces]]
 binding = "FEEDBACK_KV"

@@ -65,7 +65,7 @@ Ph1で固定するタイマー値、制約値、表示/運用上の定数を整�
   - v1 のロビー一覧同期周期（polling）
 
 ## 2.3 クライアント version gate
-- `MIN_SUPPORTED_CLIENT_VERSION = "1.2.0"`
+- `MIN_SUPPORTED_CLIENT_VERSION = "1.4.0"`
   - `ROOM_JOIN` 時に `client_version` がこの値未満、または未送信の場合は参加拒否
 - `CLIENT_VERSION_UNSUPPORTED`
   - `ROOM_JOIN_REJECTED.reason` の先頭識別子として利用（更新案内文を後続に含める）
