@@ -39,6 +39,7 @@
 - `close_reason: ALL_ROUNDS_COMPLETED|MATCH_TTL_EXPIRED|READY_CHECK_TTL_EXPIRED|HOST_DISCONNECTED|HOST_ABORTED|PICKING_ABORTED|FORCE_CLOSED|null`
 - `result_ready_payload: object|null`（`RESULT` 中は保持し、`RESULT -> LOBBY` 復帰時にクリア。`summary.is_rated / rated_block_reason / rating_*` を含む）
 - `match_song_unlock_filter: { include_bit: bool, include_djp: bool, include_leggendaria: bool, common_pack_ids: int[] }|null`（`START_MATCH` 成功時に固定し、マッチ中の選曲候補抽出へ適用）
+- `quick_chat_messages: QuickChatMessage[]`（ルーム内 quick-chat の直近30件。任意 free-text は保持しない）
 - `event_seq: int`
 - `room_recreate_window_ms: 1800000`（30分。最後のHOSTのみ同一 `room_id` 再作成可）
 
@@ -71,6 +72,18 @@
   - `player_id` は接続識別子として利用可
 - spectator 接続は `max_players` / `currentPlayers` / 勝敗集計へ影響しない
 - spectator 向け `RoomStateSnapshot` は redacted 形で返す（少なくとも `settings.join_code=null`）
+
+### 2.3.2 QuickChatMessage
+- `message_id: string`（UUID）
+- `player_id: string`
+- `phrase_ids: QuickChatPhraseId[]`（共有 catalog の phrase ID）
+- `message: string`（`phrase_ids` を catalog 表示文字列で `join("")` した値。最大20文字）
+- `posted_at: datetime`
+
+備考:
+- 投稿可能状態は `LOBBY` / `PICKING` のみ
+- spectator は投稿不可だが、snapshot / broadcast の閲覧は可
+- 履歴は RoomDO state に直近30件だけ保持し、reconnect / hibernation 復帰後も snapshot に含める
 
 ### 2.4 Pick（指名）
 - `player_id: string`

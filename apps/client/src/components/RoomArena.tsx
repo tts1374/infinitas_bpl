@@ -73,6 +73,8 @@ export interface RoomArenaControlledState {
     joinCode: string;
     pickingCountdownSeconds?: number | null;
     logs?: RoomArenaLogEntry[];
+    quickChat?: ReactNode;
+    quickChatBubbles?: Record<string, string>;
     matchInfoItems?: RoomArenaMatchInfoItem[];
     publicSharePanel?: ReactNode;
     playTime: number;
@@ -132,6 +134,8 @@ export default function RoomArena({
     joinCode,
     pickingCountdownSeconds = null,
     logs,
+    quickChat,
+    quickChatBubbles,
     matchInfoItems,
     publicSharePanel,
     playTime,
@@ -186,6 +190,9 @@ export default function RoomArena({
     const resolvedDurationLabel = durationLabel ?? '0M 00S';
     const resolvedFinalResultPlayers = finalResultPlayers ?? {};
     const resolvedLogs = logs ?? [];
+    const resolvedQuickChat = quickChat ?? null;
+    const resolvedQuickChatBubbles = quickChatBubbles ?? {};
+    const latestLogId = resolvedLogs[resolvedLogs.length - 1]?.id ?? '';
     const resolvedMatchInfoItems = matchInfoItems ?? [
         { label: 'Mode', value: 'ARENA' },
         { label: 'Scoring', value: resolvedMetricLabel },
@@ -215,7 +222,7 @@ export default function RoomArena({
         if (logsViewportRef.current) {
             logsViewportRef.current.scrollTop = logsViewportRef.current.scrollHeight;
         }
-    }, [resolvedLogs]);
+    }, [resolvedLogs.length, latestLogId]);
 
     return (
         <div className="flex h-screen w-screen bg-[#1a1a1b] text-white font-sans overflow-hidden">
@@ -664,6 +671,12 @@ export default function RoomArena({
                                             )
                                         )}
                                     </div>
+                                    {resolvedQuickChatBubbles[p.id] ? (
+                                        <div className="absolute left-20 top-20 z-20 min-w-max max-w-[240px] rounded-2xl border-2 border-cyan-500 bg-white px-4 py-2 text-left text-sm font-bold text-black shadow-xl animate-in fade-in slide-in-from-top-2 duration-300">
+                                            {resolvedQuickChatBubbles[p.id]}
+                                            <div className="absolute -top-2 left-4 border-solid border-b-8 border-x-8 border-t-0 border-b-white border-x-transparent" />
+                                        </div>
+                                    ) : null}
                                     {hasPicked && (
                                         <div className="mt-4 p-4 bg-black/40 rounded-xl border border-white/5 flex items-center gap-4">
                                             <div className="w-12 h-12 bg-white/5 rounded border border-white/10 flex items-center justify-center">
@@ -765,6 +778,7 @@ export default function RoomArena({
                     )}
                 </footer>
             </main >
+            {resolvedQuickChat}
 
             {/* 右サイドバー: ルール詳細やヘルプ */}
             <aside className="w-[300px] bg-[#252526] border-l border-white/5 p-6 flex flex-col gap-6">

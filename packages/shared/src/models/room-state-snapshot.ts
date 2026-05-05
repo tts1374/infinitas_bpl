@@ -4,6 +4,7 @@ import type { ExpectedKey } from "./expected-key";
 import type { FrozenRound } from "./frozen-round";
 import type { RoomPick } from "./room-pick";
 import type { RoomSettings } from "./room-settings";
+import type { QuickChatMessage } from "./quick-chat";
 import type { MatchSongUnlockFilter, SongUnlockSettings } from "./song-unlock";
 import type { SubmissionReason } from "./submission";
 
@@ -62,6 +63,7 @@ export interface RoomStateSnapshot {
   host_player_id: string;
   players: RoomPlayerSnapshot[];
   match_song_unlock_filter?: MatchSongUnlockFilter | null;
+  quick_chat_messages?: QuickChatMessage[];
   picks: RoomPick[];
   frozen_rounds: FrozenRound[];
   current_round: CurrentRoundSnapshot | null;

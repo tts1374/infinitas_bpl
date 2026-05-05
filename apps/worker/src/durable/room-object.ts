@@ -6,6 +6,7 @@ import {
   MAX_PLAYERS_OPTIONS,
   MODES,
   PLAY_STYLES,
+  QUICK_CHAT_MAX_COMPOSED_LENGTH,
   READY_CHECK_TTL_MS,
   ROOM_RECREATE_WINDOW_MINUTES,
   SKIP_REASONS,
@@ -631,6 +632,34 @@ function parseSourceStatusSetPayload(payload: unknown): { request_id: string; av
   return {
     request_id: requestId,
     available: payload.available,
+  };
+}
+
+function parseQuickChatPostPayload(payload: unknown): { request_id: string; phrase_ids: string[] } | null {
+  if (!isRecord(payload)) {
+    return null;
+  }
+
+  const requestId = asOptionalString(payload.request_id)?.trim() ?? "";
+  if (requestId.length === 0 || !Array.isArray(payload.phrase_ids)) {
+    return null;
+  }
+
+  const phraseIds: string[] = [];
+  for (const rawPhraseId of payload.phrase_ids) {
+    const phraseId = typeof rawPhraseId === "string" ? rawPhraseId.trim() : "";
+    if (phraseId.length === 0) {
+      return null;
+    }
+    phraseIds.push(phraseId);
+    if (phraseIds.length > QUICK_CHAT_MAX_COMPOSED_LENGTH) {
+      return null;
+    }
+  }
+
+  return {
+    request_id: requestId,
+    phrase_ids: phraseIds,
   };
 }
 
@@ -1544,6 +1573,9 @@ export class RoomDurableObject {
         case "SOURCE_STATUS_SET":
           await this.handleSourceStatusSet(session, message as ClientMessage<"SOURCE_STATUS_SET">);
           return;
+        case "QUICK_CHAT_POST":
+          await this.handleQuickChatPost(session, message as ClientMessage<"QUICK_CHAT_POST">);
+          return;
         case "PICK_SUBMIT":
           await this.handlePickSubmit(session, message as ClientMessage<"PICK_SUBMIT">);
           return;
@@ -2396,6 +2428,66 @@ export class RoomDurableObject {
         changed: result.changed,
       },
     }));
+  }
+
+  private async handleQuickChatPost(
+    session: RoomSocketSession,
+    message: ClientMessage<"QUICK_CHAT_POST">,
+  ): Promise<void> {
+    if (session.playerId === null) {
+      this.sendError(session.socket, "INVALID_STATE", "Send ROOM_JOIN before this message.", this.buildMessageLogInput(message));
+      return;
+    }
+
+    const payload = parseQuickChatPostPayload(message.payload);
+    if (payload === null) {
+      this.sendError(session.socket, "INVALID_STATE", "QUICK_CHAT_POST payload is invalid.", this.buildMessageLogInput(message, {
+        detail: {
+          validation: "invalid_quick_chat_post_payload",
+        },
+      }));
+      return;
+    }
+
+    if (this.isDuplicateRequest(session.playerId, message.type, payload.request_id)) {
+      this.logRoomEvent(this.buildMessageLogInput(message, {
+        event: "ws.duplicate",
+        request_id: payload.request_id,
+        outcome: "duplicate",
+        detail: {
+          dedupe_key: "request_id",
+        },
+      }));
+      this.sendStateSnapshot(session.socket);
+      return;
+    }
+
+    const result = this.roomState.postQuickChat(session.playerId, payload.phrase_ids, new Date());
+    if (!result.ok || result.message === undefined) {
+      this.sendError(session.socket, "INVALID_STATE", "QUICK_CHAT_POST is unavailable or invalid.", this.buildMessageLogInput(message, {
+        request_id: payload.request_id,
+        detail: {
+          reason: result.reason ?? "INVALID_STATE",
+        },
+      }));
+      return;
+    }
+
+    this.rememberRequest(session.playerId, message.type, payload.request_id);
+    await this.persistRoomRecord();
+    this.logRoomEvent(this.buildMessageLogInput(message, {
+      event: "quick_chat.post",
+      request_id: payload.request_id,
+      outcome: "ok",
+      detail: {
+        message_id: result.message.message_id,
+        phrase_count: result.message.phrase_ids.length,
+      },
+    }));
+    this.broadcast("QUICK_CHAT_POSTED", {
+      message: result.message,
+    });
+    this.broadcastRoomUpdated();
   }
 
   private async handlePickSubmit(session: RoomSocketSession, message: ClientMessage<"PICK_SUBMIT">): Promise<void> {

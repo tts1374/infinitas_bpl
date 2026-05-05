@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { useDeferredValue, useEffect, useRef, useState, type ReactNode } from "react";
 import { DebugInjectionPanel } from "../components/DebugInjectionPanel";
+import { QuickChat } from "../components/QuickChat";
 import {
   findVisualScenarioChart,
   findVisualScenarioChartByChartKey,
@@ -50,6 +51,11 @@ import {
 } from "../features/room/room-page-compose";
 import { getServerTimeCorrectedNowMs, resolvePlayingRoundPresentation } from "../features/room/round-phase";
 import { getAuthoritativePickingCountdownSeconds } from "../features/room/picking-countdown";
+import {
+  getVisibleQuickChatBubbles,
+  readQuickChatMessages,
+  type QuickChatMessage,
+} from "../features/room/quick-chat";
 import {
   resolveSongVersionDbValue,
   resolveSongVersionLabel,
@@ -745,6 +751,7 @@ export function RoomPage() {
   const [includeJoinCodeInXShare, setIncludeJoinCodeInXShare] = useState(false);
   const [showHostLeaveConfirm, setShowHostLeaveConfirm] = useState(false);
   const [showRoomAudioMenu, setShowRoomAudioMenu] = useState(false);
+  const [debugPanelsVisible, setDebugPanelsVisible] = useState(true);
   const [roomPresentationSeEnabled, setRoomPresentationSeEnabled] = useState(savedSettings.enablePresentationSe);
   const [arenaLobbyLogs, setArenaLobbyLogs] = useState<RoomArenaLogEntry[]>([]);
   const [pendingOwnPickCutIn, setPendingOwnPickCutIn] = useState<ChartSearchEntry | null>(null);
@@ -1947,6 +1954,40 @@ export function RoomPage() {
     actualToMockId.set(player.player_id, mockId);
     mockIdToActualId.set(mockId, player.player_id);
   });
+  const quickChatMessages: QuickChatMessage[] = readQuickChatMessages(snapshot);
+  const visibleQuickChatBubbles = getVisibleQuickChatBubbles(quickChatMessages, correctedClockNowMs);
+  const quickChatBubblesByPresentationId = Object.entries(visibleQuickChatBubbles).reduce<Record<string, string>>(
+    (bubbles, [actualPlayerId, message]) => {
+      const presentationPlayerId = actualToMockId.get(actualPlayerId);
+      if (presentationPlayerId === undefined) {
+        return bubbles;
+      }
+
+      bubbles[presentationPlayerId] = message.message;
+      return bubbles;
+    },
+    {},
+  );
+  const quickChatVisible = snapshot.room_state === "LOBBY" || snapshot.room_state === "PICKING";
+  const quickChatAvailable = me !== null && quickChatVisible;
+  const quickChatDisabledReason =
+    me === null
+      ? "観戦中は送信できません"
+      : quickChatVisible
+        ? undefined
+        : "ロビーまたは選曲中のみ送信できます";
+  const quickChatLogEntries: RoomArenaLogEntry[] = quickChatMessages.map((message) => ({
+    id: `quick-chat-${message.id}`,
+    text: `${message.displayName}: ${message.message}`,
+  }));
+  const quickChat = quickChatVisible ? (
+    <QuickChat
+      available={quickChatAvailable}
+      messages={quickChatMessages}
+      onSubmit={(input) => roomStore.sendQuickChat(input)}
+      {...(quickChatDisabledReason === undefined ? {} : { disabledReason: quickChatDisabledReason })}
+    />
+  ) : null;
 
   const roundSongsByIndex = new Map<number, {
     selectionTitle: string;
@@ -2650,6 +2691,9 @@ export function RoomPage() {
         finalResultPlayers: bplFinalResultPlayers,
         finalWinningPlayerName: bplWinningPlayerName,
         players: bplPlayers,
+        logs: quickChatLogEntries,
+        quickChat,
+        quickChatBubbles: quickChatBubblesByPresentationId,
         roundPickerNames: bplRoundPickerNames,
       });
 
@@ -2726,7 +2770,9 @@ export function RoomPage() {
       regCount: arenaRegCount,
       isPrivateRoom: snapshot.settings.visibility === "PRIVATE",
       pickingCountdownSeconds: pickingCountdown,
-      logs: arenaLobbyLogs,
+      logs: [...arenaLobbyLogs, ...quickChatLogEntries],
+      quickChat,
+      quickChatBubbles: quickChatBubblesByPresentationId,
       matchInfoItems: arenaMatchInfoItems,
       publicSharePanel,
       playerStatus: arenaPlayerStatus,
@@ -2843,7 +2889,17 @@ export function RoomPage() {
         </div>
       ) : null}
 
-      {runtimeConfig.debugUiEnabled && snapshot.room_state === "PLAYING" && currentRound ? (
+      {import.meta.env.DEV && runtimeConfig.debugUiEnabled ? (
+        <button
+          type="button"
+          onClick={() => setDebugPanelsVisible((visible) => !visible)}
+          className="fixed bottom-6 left-6 z-[170] rounded-full border border-cyan-500/40 bg-[#252526]/95 px-4 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.2)] transition-colors hover:bg-cyan-500/10"
+        >
+          {debugPanelsVisible ? "Hide Debug" : "Show Debug"}
+        </button>
+      ) : null}
+
+      {runtimeConfig.debugUiEnabled && debugPanelsVisible && snapshot.room_state === "PLAYING" && currentRound ? (
         <div className="fixed bottom-6 right-6 z-[160] w-[320px]">
           <DebugRoundPanel
             currentRound={currentRound}
@@ -2891,7 +2947,7 @@ export function RoomPage() {
         </div>
       ) : null}
 
-      {import.meta.env.DEV && runtimeConfig.debugUiEnabled ? (
+      {import.meta.env.DEV && runtimeConfig.debugUiEnabled && debugPanelsVisible ? (
         <section className="space-y-4">
           <DebugSection title="Debug Actions">
             <div className="space-y-5">

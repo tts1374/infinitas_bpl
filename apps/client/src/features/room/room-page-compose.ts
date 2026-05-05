@@ -7,6 +7,7 @@ import type {
 } from "../../components/RoomArena";
 import type {
   RoomBPLControlledState,
+  RoomBPLLogEntry,
   RoomBPLPlayer,
 } from "../../components/RoomBPL";
 import type { RoomSong } from "./presentation-shared";
@@ -39,6 +40,8 @@ export type RoomPageSharedComposeInput = {
   onProceedToResult: () => void;
   onLeaveRoom: () => void;
   onRemakeStage?: () => void;
+  quickChat?: ReactNode;
+  quickChatBubbles?: Record<string, string>;
 };
 
 export type RoomPageBplComposeInput = RoomPageSharedComposeInput & {
@@ -56,6 +59,7 @@ export type RoomPageBplComposeInput = RoomPageSharedComposeInput & {
   players: RoomBPLPlayer[];
   roundPickerNames?: RoomBPLControlledState["roundPickerNames"];
   battleModeLabel?: string;
+  logs?: RoomBPLLogEntry[];
 };
 
 export type RoomPageArenaComposeInput = RoomPageSharedComposeInput & {
@@ -118,6 +122,8 @@ function buildSharedControlledProps(input: RoomPageSharedComposeInput) {
     ...(input.onProceedToResult === undefined ? {} : { onProceedToResult: input.onProceedToResult }),
     ...(input.onLeaveRoom === undefined ? {} : { onLeaveRoom: input.onLeaveRoom }),
     ...(input.onRemakeStage === undefined ? {} : { onRemakeStage: input.onRemakeStage }),
+    ...(input.quickChat === undefined ? {} : { quickChat: input.quickChat }),
+    ...(input.quickChatBubbles === undefined ? {} : { quickChatBubbles: input.quickChatBubbles }),
   };
 }
 
@@ -144,6 +150,7 @@ export function buildBplControlledProps(
     ...(input.finalWinningPlayerName === undefined ? {} : { finalWinningPlayerName: input.finalWinningPlayerName }),
     ...(input.roundPickerNames === undefined ? {} : { roundPickerNames: input.roundPickerNames }),
     ...(input.battleModeLabel === undefined ? {} : { battleModeLabel: input.battleModeLabel }),
+    ...(input.logs === undefined ? {} : { logs: input.logs }),
   };
 }
 

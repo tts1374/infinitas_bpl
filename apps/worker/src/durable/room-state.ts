@@ -6,17 +6,23 @@ import {
   HOST_SKIP_UNLOCK_SECONDS,
   MATCH_TTL_MINUTES,
   PICKING_TTL_SECONDS,
+  QUICK_CHAT_HISTORY_LIMIT,
+  QUICK_CHAT_MAX_COMPOSED_LENGTH,
   READY_CHECK_TTL_MINUTES,
   REJOIN_COOLDOWN_SECONDS,
   ROUND_PLAY_BEGIN_AT_SECONDS,
   ROUND_SOFT_TTL_SECONDS,
   START_MIN_PLAYERS,
+  composeQuickChatMessage,
+  isQuickChatPhraseId,
   type CloseReason,
   type CurrentRoundSnapshot,
   type ExpectedKey,
   type FrozenRound,
   type JsonObject,
   type PlayerRole,
+  type QuickChatMessage,
+  type QuickChatPhraseId,
   type ResultReadyPayload,
   type ResultReadyArenaRoundPlayerResult,
   type ResultReadyBplRoundPlayerResult,
@@ -150,6 +156,12 @@ export interface SourceAvailabilityResult {
   reason?: "PLAYER_NOT_FOUND";
 }
 
+export interface QuickChatPostResult {
+  ok: boolean;
+  reason?: "INVALID_STATE" | "PLAYER_NOT_FOUND" | "INVALID_PHRASE_IDS" | "MESSAGE_EMPTY" | "MESSAGE_TOO_LONG";
+  message?: QuickChatMessage;
+}
+
 export interface AutoRematchDueResult {
   kind: "STARTED" | "CANCELLED";
   generation: number;
@@ -265,6 +277,14 @@ interface PersistedRoundConfirmations {
   confirmations: RoundConfirmationEvent[];
 }
 
+interface PersistedQuickChatMessage {
+  message_id: string;
+  player_id: string;
+  phrase_ids: string[];
+  message: string;
+  posted_at: string;
+}
+
 export interface RoomStatePersistenceRecord {
   version: 1;
   initialized: boolean;
@@ -301,6 +321,7 @@ export interface RoomStatePersistenceRecord {
   next_match_opt_out_player_ids?: string[];
   source_unavailable_player_ids?: string[];
   last_match_end_reason?: string | null;
+  quick_chat_messages?: PersistedQuickChatMessage[];
 }
 
 const DEFAULT_SETTINGS: RoomSettings = {
@@ -516,6 +537,16 @@ function cloneRoundConfirmation(entry: RoundConfirmationEvent): RoundConfirmatio
   };
 }
 
+function cloneQuickChatMessage(message: QuickChatMessage): QuickChatMessage {
+  return {
+    message_id: message.message_id,
+    player_id: message.player_id,
+    phrase_ids: [...message.phrase_ids],
+    message: message.message,
+    posted_at: message.posted_at,
+  };
+}
+
 function getSourceMetric(sourceMeta: JsonObject | null, key: "score"): number | null {
   if (sourceMeta === null) {
     return null;
@@ -611,6 +642,7 @@ export class RoomLobbyState {
   private readonly nextMatchOptOutPlayerIds = new Set<string>();
   private readonly sourceUnavailablePlayerIds = new Set<string>();
   private lastMatchEndReason: string | null = null;
+  private quickChatMessages: QuickChatMessage[] = [];
 
   constructor(private readonly chartMaster: RoomChartMaster) {}
 
@@ -909,6 +941,7 @@ export class RoomLobbyState {
     this.players.clear();
     this.sourceUnavailablePlayerIds.clear();
     this.nextMatchOptOutPlayerIds.clear();
+    this.quickChatMessages = [];
     return { ok: true, generation: this.generation };
   }
 
@@ -969,6 +1002,44 @@ export class RoomLobbyState {
     }
 
     return { ok: true, changed: true };
+  }
+
+  postQuickChat(playerId: string, phraseIds: string[], now: Date): QuickChatPostResult {
+    if (this.roomState !== "LOBBY" && this.roomState !== "PICKING") {
+      return { ok: false, reason: "INVALID_STATE" };
+    }
+
+    const player = this.players.get(playerId);
+    if (player === undefined || !player.connected) {
+      return { ok: false, reason: "PLAYER_NOT_FOUND" };
+    }
+
+    if (phraseIds.length === 0 || phraseIds.some((phraseId) => !isQuickChatPhraseId(phraseId))) {
+      return { ok: false, reason: "INVALID_PHRASE_IDS" };
+    }
+
+    const messageText = composeQuickChatMessage(phraseIds);
+    if (messageText === null) {
+      return { ok: false, reason: "INVALID_PHRASE_IDS" };
+    }
+
+    if (messageText.length === 0) {
+      return { ok: false, reason: "MESSAGE_EMPTY" };
+    }
+
+    if (messageText.length > QUICK_CHAT_MAX_COMPOSED_LENGTH) {
+      return { ok: false, reason: "MESSAGE_TOO_LONG" };
+    }
+
+    const message: QuickChatMessage = {
+      message_id: crypto.randomUUID(),
+      player_id: playerId,
+      phrase_ids: phraseIds as QuickChatPhraseId[],
+      message: messageText,
+      posted_at: now.toISOString(),
+    };
+    this.quickChatMessages = [...this.quickChatMessages, message].slice(-QUICK_CHAT_HISTORY_LIMIT);
+    return { ok: true, message: cloneQuickChatMessage(message) };
   }
 
   submitPick(playerId: string, pickChartKey: string, now: Date): PickSubmitResult {
@@ -1603,6 +1674,7 @@ export class RoomLobbyState {
       players,
       match_song_unlock_filter:
         this.matchSongUnlockFilter === null ? null : cloneMatchSongUnlockFilter(this.matchSongUnlockFilter),
+      quick_chat_messages: this.quickChatMessages.map(cloneQuickChatMessage),
       picks: this.picks.map((pick) => ({
         player_id: pick.player_id,
         pick_chart_key: pick.pick_chart_key,
@@ -1709,6 +1781,13 @@ export class RoomLobbyState {
         .map((player) => player.player_id)
         .filter((playerId) => this.sourceUnavailablePlayerIds.has(playerId)),
       last_match_end_reason: this.lastMatchEndReason,
+      quick_chat_messages: this.quickChatMessages.map((message) => ({
+        message_id: message.message_id,
+        player_id: message.player_id,
+        phrase_ids: [...message.phrase_ids],
+        message: message.message,
+        posted_at: message.posted_at,
+      })),
     };
   }
 
@@ -1833,6 +1912,37 @@ export class RoomLobbyState {
       }
     }
     this.lastMatchEndReason = record.last_match_end_reason ?? null;
+    this.quickChatMessages = (record.quick_chat_messages ?? [])
+      .filter((message): message is PersistedQuickChatMessage => {
+        if (
+          typeof message.message_id !== "string" ||
+          typeof message.player_id !== "string" ||
+          typeof message.message !== "string" ||
+          typeof message.posted_at !== "string" ||
+          !Array.isArray(message.phrase_ids)
+        ) {
+          return false;
+        }
+
+        const postedAt = new Date(message.posted_at);
+        return (
+          message.message_id.length > 0 &&
+          message.player_id.length > 0 &&
+          message.message.length > 0 &&
+          message.message.length <= QUICK_CHAT_MAX_COMPOSED_LENGTH &&
+          Number.isFinite(postedAt.getTime()) &&
+          message.phrase_ids.length > 0 &&
+          message.phrase_ids.every((phraseId) => typeof phraseId === "string" && isQuickChatPhraseId(phraseId))
+        );
+      })
+      .slice(-QUICK_CHAT_HISTORY_LIMIT)
+      .map((message) => ({
+        message_id: message.message_id,
+        player_id: message.player_id,
+        phrase_ids: message.phrase_ids as QuickChatPhraseId[],
+        message: message.message,
+        posted_at: message.posted_at,
+      }));
   }
 
   private getCurrentRoundDeadline(): Date | null {

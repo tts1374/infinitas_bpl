@@ -3,6 +3,7 @@ import type { CloseReason, SubmissionStatus, SubmittedBy } from "../enums";
 import type { JsonObject, ISO8601String } from "../models/common";
 import type { ExpectedKey } from "../models/expected-key";
 import type { FrozenRound } from "../models/frozen-round";
+import type { QuickChatMessage } from "../models/quick-chat";
 import type { RoomStateSnapshot } from "../models/room-state-snapshot";
 import type { SubmissionReason } from "../models/submission";
 import type { SoundEffectKey } from "../constants/audio";
@@ -41,6 +42,10 @@ export interface RoomNotificationPayload {
 export interface ReadyStatusChangedPayload {
   player_id: string;
   ready: boolean;
+}
+
+export interface QuickChatPostedPayload {
+  message: QuickChatMessage;
 }
 
 export interface PickAcceptedPayload {
@@ -197,6 +202,7 @@ export interface ServerMessagePayloadMap {
   ROOM_CLOSED: RoomClosedPayload;
   ROOM_NOTIFICATION: RoomNotificationPayload;
   READY_STATUS_CHANGED: ReadyStatusChangedPayload;
+  QUICK_CHAT_POSTED: QuickChatPostedPayload;
   START_MATCH_REJECTED: RoomRejectedPayload;
   PICK_ACCEPTED: PickAcceptedPayload;
   PICK_REJECTED: PickRejectedPayload;
