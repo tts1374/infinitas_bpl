@@ -31,6 +31,10 @@ export type PlayingRoundPresentationInput = {
   resultPhaseSeconds: number;
 };
 
+export function getServerTimeCorrectedNowMs(localNowMs: number, serverTimeOffsetMs: number | null): number {
+  return serverTimeOffsetMs === null ? localNowMs : localNowMs + serverTimeOffsetMs;
+}
+
 function getIsoTimeMs(value: string | null | undefined): number | null {
   if (!value) {
     return null;
