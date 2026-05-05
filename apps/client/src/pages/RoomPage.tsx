@@ -48,7 +48,7 @@ import {
   buildArenaControlledProps,
   buildBplControlledProps,
 } from "../features/room/room-page-compose";
-import { resolvePlayingRoundPresentation } from "../features/room/round-phase";
+import { getServerTimeCorrectedNowMs, resolvePlayingRoundPresentation } from "../features/room/round-phase";
 import { getAuthoritativePickingCountdownSeconds } from "../features/room/picking-countdown";
 import {
   resolveSongVersionDbValue,
@@ -699,6 +699,7 @@ function DebugSection(props: { title: string; children: ReactNode; defaultOpen?:
 export function RoomPage() {
   const snapshot = useRoomStore((state) => state.snapshot);
   const resultReady = useRoomStore((state) => state.resultReady);
+  const serverTimeOffsetMs = useRoomStore((state) => state.serverTimeOffsetMs);
   const connectionPlayerId = useRoomStore((state) => state.connectionPlayerId);
   const connectionStatus = useRoomStore((state) => state.connectionStatus);
   const connectionDetail = useRoomStore((state) => state.connectionDetail);
@@ -734,6 +735,7 @@ export function RoomPage() {
   const [chartLoading, setChartLoading] = useState(false);
   const [chartNextCursor, setChartNextCursor] = useState<string | null>(null);
   const [clockNowMs, setClockNowMs] = useState(() => Date.now());
+  const correctedClockNowMs = getServerTimeCorrectedNowMs(clockNowMs, serverTimeOffsetMs);
   const roomIdCopy = useClipboardFeedback();
   const joinCodeCopy = useClipboardFeedback();
   const shareUrlCopy = useClipboardFeedback();
@@ -1083,7 +1085,8 @@ export function RoomPage() {
     const tickClock = () => {
       const nowMs = Date.now();
       setClockNowMs(nowMs);
-      timeoutId = window.setTimeout(tickClock, getNextClockTickDelayMs(nowMs, anchorAtMs));
+      const displayNowMs = getServerTimeCorrectedNowMs(nowMs, serverTimeOffsetMs);
+      timeoutId = window.setTimeout(tickClock, getNextClockTickDelayMs(displayNowMs, anchorAtMs));
     };
 
     tickClock();
@@ -1098,6 +1101,7 @@ export function RoomPage() {
     snapshot?.timers.picking_deadline,
     snapshot?.timers.ready_check_deadline,
     snapshot?.timers.result_deadline,
+    serverTimeOffsetMs,
   ]);
 
   useEffect(() => {
@@ -1112,7 +1116,7 @@ export function RoomPage() {
     const previousRoomId = previousRoomIdRef.current;
     if (snapshot.room_state === "RESULT") {
       if (previousRoomState !== "RESULT" || previousRoomId !== snapshot.room_id) {
-        setMatchResultStartedAtMs(clockNowMs);
+        setMatchResultStartedAtMs(correctedClockNowMs);
       }
     } else if (matchResultStartedAtMs !== null) {
       setMatchResultStartedAtMs(null);
@@ -1120,7 +1124,7 @@ export function RoomPage() {
 
     previousRoomStateRef.current = snapshot.room_state;
     previousRoomIdRef.current = snapshot.room_id;
-  }, [clockNowMs, matchResultStartedAtMs, snapshot]);
+  }, [correctedClockNowMs, matchResultStartedAtMs, snapshot]);
 
   useEffect(() => {
     const roomHost =
@@ -1414,13 +1418,13 @@ export function RoomPage() {
   const lobbyStartIssues = snapshot.room_state === "LOBBY" ? getLobbyStartIssues(snapshot) : [];
   const currentRoundDisplay =
     currentRound === null ? null : snapshot.frozen_rounds.find((round) => round.round_index === currentRound.round_index) ?? null;
-  const pickingCountdown = getAuthoritativePickingCountdownSeconds(snapshot.timers.picking_deadline, clockNowMs);
-  const resultCountdown = getRemainingSeconds(getIsoTimeMs(snapshot.timers.result_deadline), clockNowMs);
+  const pickingCountdown = getAuthoritativePickingCountdownSeconds(snapshot.timers.picking_deadline, correctedClockNowMs);
+  const resultCountdown = getRemainingSeconds(getIsoTimeMs(snapshot.timers.result_deadline), correctedClockNowMs);
   const privateAutoRematchEnabled =
     snapshot.settings.visibility === "PRIVATE" && snapshot.settings.auto_rematch === true;
   const autoRematchDueAtMs = getIsoTimeMs(snapshot.auto_rematch_due_at);
   const autoRematchCountdownSeconds =
-    getRemainingSeconds(autoRematchDueAtMs, clockNowMs) ??
+    getRemainingSeconds(autoRematchDueAtMs, correctedClockNowMs) ??
     (privateAutoRematchEnabled && snapshot.room_state === "RESULT" && snapshot.auto_rematch_cancelled !== true
       ? AUTO_REMATCH_RESULT_SECONDS
       : null);
@@ -1719,7 +1723,7 @@ export function RoomPage() {
   const currentRoundStartAtMs = getIsoTimeMs(currentRound?.round_started_at);
   const forceAdvanceUnlockAtMs =
     currentRoundStartAtMs === null ? null : currentRoundStartAtMs + HOST_SKIP_UNLOCK_SECONDS * 1_000;
-  const forceAdvanceRemainingSeconds = getRemainingSeconds(forceAdvanceUnlockAtMs, clockNowMs);
+  const forceAdvanceRemainingSeconds = getRemainingSeconds(forceAdvanceUnlockAtMs, correctedClockNowMs);
   const forceAdvanceDisabled =
     currentRound === null ||
     forceAdvanceRemainingSeconds === null ||
@@ -1746,14 +1750,14 @@ export function RoomPage() {
   const bplPlayingPresentation = resolvePlayingRoundPresentation({
     roomState: snapshot.room_state,
     currentRound,
-    nowMs: clockNowMs,
+    nowMs: correctedClockNowMs,
     hasPreviousResultRound: bplResultRound !== null,
     resultPhaseSeconds: BPL_RESULT_PHASE_SECONDS,
   });
   const arenaPlayingPresentation = resolvePlayingRoundPresentation({
     roomState: snapshot.room_state,
     currentRound,
-    nowMs: clockNowMs,
+    nowMs: correctedClockNowMs,
     hasPreviousResultRound: arenaResultRound !== null,
     resultPhaseSeconds: ARENA_RESULT_PHASE_SECONDS,
   });
@@ -1762,7 +1766,7 @@ export function RoomPage() {
       ? Math.max(
           0,
           BPL_RESULT_PHASE_SECONDS -
-          Math.floor((clockNowMs - (matchResultStartedAtMs ?? clockNowMs)) / 1_000),
+          Math.floor((correctedClockNowMs - (matchResultStartedAtMs ?? correctedClockNowMs)) / 1_000),
         )
       : null;
   const ownPickCutInTitle =
@@ -2462,9 +2466,9 @@ export function RoomPage() {
   const arenaFinalEndAtMs =
     arenaFinalDurationMsCandidates.length > 0
       ? Math.max(...arenaFinalDurationMsCandidates)
-      : clockNowMs;
+      : correctedClockNowMs;
   const arenaFinalDurationReferenceMs =
-    snapshot.room_state === "RESULT" ? clockNowMs : arenaFinalEndAtMs;
+    snapshot.room_state === "RESULT" ? correctedClockNowMs : arenaFinalEndAtMs;
   const arenaMatchStartedAtMs = resolveArenaMatchStartAtMs(snapshot);
   const arenaFinalDurationLabel = formatDurationLabel(
     arenaMatchStartedAtMs === null
@@ -2608,7 +2612,7 @@ export function RoomPage() {
         lastPickedSong: lastMockPickedSong,
         copiedId: copiedRoomId,
         copiedCode: copiedJoinCode,
-        lobbyTimer: getRemainingSeconds(getIsoTimeMs(snapshot.timers.ready_check_deadline), clockNowMs) ?? 0,
+        lobbyTimer: getRemainingSeconds(getIsoTimeMs(snapshot.timers.ready_check_deadline), correctedClockNowMs) ?? 0,
         roomId: roomIdLabel,
         joinCode: joinCodeLabel,
         playTime: bplPlayingPresentation.playElapsedSeconds,
@@ -2687,7 +2691,7 @@ export function RoomPage() {
       lastPickedSong: lastMockPickedSong,
       copiedId: copiedRoomId,
       copiedCode: copiedJoinCode,
-      lobbyTimer: getRemainingSeconds(getIsoTimeMs(snapshot.timers.ready_check_deadline), clockNowMs) ?? 0,
+      lobbyTimer: getRemainingSeconds(getIsoTimeMs(snapshot.timers.ready_check_deadline), correctedClockNowMs) ?? 0,
       roomId: roomIdLabel,
       joinCode: joinCodeLabel,
       playTime: arenaPlayingPresentation.playElapsedSeconds,

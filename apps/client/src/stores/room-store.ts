@@ -40,6 +40,7 @@ export interface RoomStoreState {
   connectionDetail: string;
   snapshot: RoomStateSnapshot | null;
   resultReady: ResultReadyPayload | null;
+  serverTimeOffsetMs: number | null;
   errorDialog: RoomDialogState | null;
   roundConfirmations: Record<number, Array<ServerMessagePayloadMap["PLAYER_ROUND_CONFIRMED"]>>;
   endedRoundIndices: number[];
@@ -90,6 +91,7 @@ export interface MockRoomStoreState {
   connectionDetail: string;
   snapshot: RoomStateSnapshot | null;
   resultReady: ResultReadyPayload | null;
+  serverTimeOffsetMs?: number | null;
   errorDialog?: RoomDialogState | null;
   roundConfirmations: Record<number, Array<ServerMessagePayloadMap["PLAYER_ROUND_CONFIRMED"]>>;
   endedRoundIndices: number[];
@@ -112,6 +114,7 @@ const initialState: RoomStoreState = {
   connectionDetail: "No active room.",
   snapshot: null,
   resultReady: null,
+  serverTimeOffsetMs: null,
   errorDialog: null,
   roundConfirmations: {},
   endedRoundIndices: [],
@@ -145,6 +148,18 @@ function appendEventLog(message: string): void {
 function clearRequestIds(): void {
   requestIdsByKey.clear();
   lastSourceAvailability = null;
+}
+
+function updateServerTimeOffset(serverTime: string, receivedAtMs: number): void {
+  const serverTimeMs = Date.parse(serverTime);
+  if (Number.isNaN(serverTimeMs)) {
+    return;
+  }
+
+  internalStore.setState((state) => ({
+    ...state,
+    serverTimeOffsetMs: serverTimeMs - receivedAtMs,
+  }));
 }
 
 function clearReconnectTimer(): void {
@@ -750,6 +765,7 @@ function handleServerMessage(client: RoomSocketClient, message: ServerMessage): 
   if (activeClient !== client) {
     return;
   }
+  updateServerTimeOffset(message.server_time, Date.now());
   void logE2EEvent("websocket_message_received", {
     messageType: message.type,
   });
@@ -1015,6 +1031,7 @@ export const roomStore = {
       connectionDetail: input.connectionDetail,
       snapshot: input.snapshot,
       resultReady: input.resultReady,
+      serverTimeOffsetMs: input.serverTimeOffsetMs ?? null,
       errorDialog: input.errorDialog ?? null,
       roundConfirmations: input.roundConfirmations,
       endedRoundIndices: input.endedRoundIndices,
