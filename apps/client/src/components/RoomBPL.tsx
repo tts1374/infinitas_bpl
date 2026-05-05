@@ -171,6 +171,7 @@ export default function RoomBPL({
     const resolvedLogs = logs ?? [];
     const resolvedQuickChat = quickChat ?? null;
     const resolvedQuickChatBubbles = quickChatBubbles ?? {};
+    const latestLogId = resolvedLogs[resolvedLogs.length - 1]?.id ?? '';
     const resolvedFinalResultPlayers = finalResultPlayers ?? {};
     const logsViewportRef = useRef<HTMLDivElement | null>(null);
     const totalStages = Math.max(1, picks.length);
@@ -201,7 +202,7 @@ export default function RoomBPL({
         if (logsViewportRef.current) {
             logsViewportRef.current.scrollTop = logsViewportRef.current.scrollHeight;
         }
-    }, [resolvedLogs]);
+    }, [resolvedLogs.length, latestLogId]);
 
     return (
         <div className="flex h-screen w-screen bg-[#0f0f10] text-white font-sans overflow-hidden">

@@ -192,6 +192,7 @@ export default function RoomArena({
     const resolvedLogs = logs ?? [];
     const resolvedQuickChat = quickChat ?? null;
     const resolvedQuickChatBubbles = quickChatBubbles ?? {};
+    const latestLogId = resolvedLogs[resolvedLogs.length - 1]?.id ?? '';
     const resolvedMatchInfoItems = matchInfoItems ?? [
         { label: 'Mode', value: 'ARENA' },
         { label: 'Scoring', value: resolvedMetricLabel },
@@ -221,7 +222,7 @@ export default function RoomArena({
         if (logsViewportRef.current) {
             logsViewportRef.current.scrollTop = logsViewportRef.current.scrollHeight;
         }
-    }, [resolvedLogs]);
+    }, [resolvedLogs.length, latestLogId]);
 
     return (
         <div className="flex h-screen w-screen bg-[#1a1a1b] text-white font-sans overflow-hidden">
