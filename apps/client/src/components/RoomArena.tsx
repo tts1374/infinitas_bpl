@@ -672,8 +672,9 @@ export default function RoomArena({
                                         )}
                                     </div>
                                     {resolvedQuickChatBubbles[p.id] ? (
-                                        <div className="absolute left-20 top-20 z-20 min-w-max max-w-[240px] rounded-xl border border-cyan-500/30 bg-black/85 px-3 py-2 text-xs font-bold text-white shadow-xl shadow-cyan-500/10">
+                                        <div className="absolute left-20 top-20 z-20 min-w-max max-w-[240px] rounded-2xl border-2 border-cyan-500 bg-white px-4 py-2 text-left text-sm font-bold text-black shadow-xl animate-in fade-in slide-in-from-top-2 duration-300">
                                             {resolvedQuickChatBubbles[p.id]}
+                                            <div className="absolute -top-2 left-4 border-solid border-b-8 border-x-8 border-t-0 border-b-white border-x-transparent" />
                                         </div>
                                     ) : null}
                                     {hasPicked && (
@@ -732,12 +733,7 @@ export default function RoomArena({
                 </div>
 
                 {/* 下部アクションバー */}
-                <footer className="flex gap-4 h-52">
-                    {resolvedQuickChat ? (
-                        <div className="w-[360px] bg-[#252526] rounded-xl border border-white/5 p-3 overflow-hidden">
-                            {resolvedQuickChat}
-                        </div>
-                    ) : null}
+                <footer className="flex gap-4 h-20">
                     <div className="flex-1 bg-[#252526] rounded-xl border border-white/5 p-3 flex flex-col gap-2 overflow-hidden">
                         <div className="flex items-center gap-4 text-gray-500 border-b border-white/5 pb-1">
                             <MessageSquare size={14} />
@@ -782,6 +778,7 @@ export default function RoomArena({
                     )}
                 </footer>
             </main >
+            {resolvedQuickChat}
 
             {/* 右サイドバー: ルール詳細やヘルプ */}
             <aside className="w-[300px] bg-[#252526] border-l border-white/5 p-6 flex flex-col gap-6">

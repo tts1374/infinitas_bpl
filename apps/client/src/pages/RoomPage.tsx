@@ -1967,25 +1967,26 @@ export function RoomPage() {
     },
     {},
   );
-  const quickChatAvailable = me !== null && (snapshot.room_state === "LOBBY" || snapshot.room_state === "PICKING");
+  const quickChatVisible = snapshot.room_state === "LOBBY" || snapshot.room_state === "PICKING";
+  const quickChatAvailable = me !== null && quickChatVisible;
   const quickChatDisabledReason =
     me === null
       ? "観戦中は送信できません"
-      : snapshot.room_state === "LOBBY" || snapshot.room_state === "PICKING"
+      : quickChatVisible
         ? undefined
         : "ロビーまたは選曲中のみ送信できます";
   const quickChatLogEntries: RoomArenaLogEntry[] = quickChatMessages.map((message) => ({
     id: `quick-chat-${message.id}`,
     text: `${message.displayName}: ${message.message}`,
   }));
-  const quickChat = (
+  const quickChat = quickChatVisible ? (
     <QuickChat
       available={quickChatAvailable}
       messages={quickChatMessages}
       onSubmit={(input) => roomStore.sendQuickChat(input)}
       {...(quickChatDisabledReason === undefined ? {} : { disabledReason: quickChatDisabledReason })}
     />
-  );
+  ) : null;
 
   const roundSongsByIndex = new Map<number, {
     selectionTitle: string;

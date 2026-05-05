@@ -287,8 +287,9 @@ export default function RoomBPL({
                     {/* 左プレイヤー (1P) */}
                     <div className={`relative flex-1 max-w-[400px] flex flex-col gap-4 transition-all ${leftPlayer.isReady ? 'scale-105' : ''}`}>
                         {resolvedQuickChatBubbles[leftPlayer.id] ? (
-                            <div className="absolute left-24 top-28 z-30 min-w-max max-w-[240px] rounded-xl border border-cyan-500/30 bg-black/85 px-3 py-2 text-xs font-bold text-white shadow-xl shadow-cyan-500/10">
+                            <div className="absolute top-[240px] left-[60%] z-30 min-w-max max-w-[240px] rounded-2xl border-2 border-cyan-500 bg-white px-4 py-2 text-left text-sm font-bold text-black shadow-[0_0_20px_rgba(0,0,0,0.5)] animate-in fade-in slide-in-from-top-2 duration-300">
                                 {resolvedQuickChatBubbles[leftPlayer.id]}
+                                <div className="absolute -top-2 left-4 border-solid border-b-8 border-x-8 border-t-0 border-b-white border-x-transparent" />
                             </div>
                         ) : null}
                         <div className={`h-[320px] rounded-3xl border-4 relative overflow-hidden flex flex-col items-center justify-center transition-all ${leftPlayer.isReady
@@ -334,8 +335,9 @@ export default function RoomBPL({
                     {/* 右プレイヤー (2P) */}
                     <div className={`relative flex-1 max-w-[400px] flex flex-col gap-4 transition-all ${rightPlayer.isReady ? 'scale-105' : ''}`}>
                         {resolvedQuickChatBubbles[rightPlayer.id] ? (
-                            <div className="absolute right-24 top-28 z-30 min-w-max max-w-[240px] rounded-xl border border-amber-500/30 bg-black/85 px-3 py-2 text-xs font-bold text-white shadow-xl shadow-amber-500/10">
+                            <div className="absolute top-[240px] right-[60%] z-30 min-w-max max-w-[240px] rounded-2xl border-2 border-amber-500 bg-white px-4 py-2 text-left text-sm font-bold text-black shadow-[0_0_20px_rgba(0,0,0,0.5)] animate-in fade-in slide-in-from-top-2 duration-300">
                                 {resolvedQuickChatBubbles[rightPlayer.id]}
+                                <div className="absolute -top-2 right-4 border-solid border-b-8 border-x-8 border-t-0 border-b-white border-x-transparent" />
                             </div>
                         ) : null}
                         <div className={`h-[320px] rounded-3xl border-4 relative overflow-hidden flex flex-col items-center justify-center transition-all ${rightPlayer.isReady
@@ -416,11 +418,6 @@ export default function RoomBPL({
                                 })}
                             </div>
                             <div className="flex min-h-0 flex-1 gap-3">
-                                {resolvedQuickChat ? (
-                                    <div className="w-[360px] rounded-xl border border-white/5 bg-[#1a1a1b] p-3 overflow-hidden">
-                                        {resolvedQuickChat}
-                                    </div>
-                                ) : null}
                                 <div className="flex min-w-0 flex-1 flex-col gap-2 rounded-xl border border-white/5 bg-[#1a1a1b] p-3 overflow-hidden">
                                     <div className="flex items-center gap-3 text-gray-500 border-b border-white/5 pb-1">
                                         <MessageSquare size={14} />
@@ -850,6 +847,7 @@ export default function RoomBPL({
                     </aside>
                 )
             }
+            {resolvedQuickChat}
         </div >
     );
 }
