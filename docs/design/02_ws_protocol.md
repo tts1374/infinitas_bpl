@@ -68,6 +68,12 @@
 - `SOURCE_STATUS_SET`（本人）
   - payload: `{ request_id: string, available: boolean }`
 
+### 3.2.2 LOBBY / PICKING（クイックチャット）
+- `QUICK_CHAT_POST`（本人）
+  - payload: `{ request_id: string, phrase_ids: QuickChatPhraseId[] }`
+  - 備考: `phrase_ids` は共有 quick-chat catalog の ID のみ受理する。DO が ID 順に表示文字列を結合し、空文字または20文字超過は拒否する
+  - 備考: 任意 free-text は送信不可。spectator は read-only として拒否される
+
 ### 3.3 PICKING
 - `PICK_SUBMIT`
   - payload: `{ request_id: string, pick_chart_key: string }`
@@ -108,6 +114,9 @@
 ### 4.2 LOBBY
 - `READY_STATUS_CHANGED`
   - payload: `{ player_id: string, ready: boolean }`
+- `QUICK_CHAT_POSTED`
+  - payload: `{ message: QuickChatMessage }`
+  - 備考: `LOBBY/PICKING` で受理された quick-chat を全参加セッションへ配信する。同期正本は `RoomStateSnapshot.quick_chat_messages` にも含める
 - `START_MATCH_REJECTED`
   - payload: `{ reason: string }`
 
@@ -192,6 +201,9 @@
     { "player_id": "string", "display_name": "string", "source": "inf_daken_counter|inf-notebook|daken_counter_v3|reflux", "song_unlocks": { "bit_unlocked": false, "djp_unlocked": false, "allow_leggendaria": false, "owned_pack_ids": [] }, "connected": true, "ready": false }
   ],
   "match_song_unlock_filter": { "include_bit": false, "include_djp": false, "include_leggendaria": false, "common_pack_ids": [] },
+  "quick_chat_messages": [
+    { "message_id": "uuid", "player_id": "string", "phrase_ids": ["a-001"], "message": "お願いします", "posted_at": "ISO8601" }
+  ],
   "picks": [
     { "player_id": "string", "pick_chart_key": "string", "accepted_at": "ISO8601" }
   ],

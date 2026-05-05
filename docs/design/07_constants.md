@@ -91,6 +91,17 @@ Ph1で固定するタイマー値、制約値、表示/運用上の定数を整�
 
 ---
 
+## 3.4 Quick Chat
+- `QUICK_CHAT_MAX_COMPOSED_LENGTH = 20`
+  - catalog phrase の表示文字列を選択順に `join("")` した後の最大長
+- `QUICK_CHAT_HISTORY_LIMIT = 30`
+  - RoomDO state / snapshot に保持する直近 quick-chat 件数
+- `QUICK_CHAT_CATEGORIES`
+  - kana-order: `あ行`, `か行`, `さ行`, `た行`, `な行`, `は行`, `ま行`, `や行`, `ら行`, `わ行`, `記号・英数字`
+  - phrase は共有 catalog の `QuickChatPhraseId` で送信し、DO が表示文字列へ解決する
+
+---
+
 ## 4. 勝敗/集計定数
 
 ## 4.1 metric

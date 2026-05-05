@@ -193,6 +193,15 @@ Ph1 の画面は以下とする。
   - source
 - ホスト表示
 - 退出ボタン
+- quick-chat recent messages（直近30件）
+- per-player quick-chat speech bubble（最新メッセージを短時間表示）
+
+## 5.3 Quick Chat
+- 対象状態: `LOBBY` / `PICKING`
+- 入力: 共有 catalog の phrase block を選択し、選択順に `join("")` して送信する
+- 制約: 送信文字列は非空かつ20文字以内。任意 free-text は扱わない
+- 表示: accepted message は room chat log と player speech bubble に表示する
+- spectator: recent messages は閲覧可、投稿は read-only として不可
 
 ---
 

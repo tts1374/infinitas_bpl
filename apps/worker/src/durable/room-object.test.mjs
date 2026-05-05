@@ -646,6 +646,7 @@ test("spectator mutation messages are rejected as read-only", async () => {
     "READY_SET",
     "START_MATCH",
     "SOURCE_STATUS_SET",
+    "QUICK_CHAT_POST",
     "PICK_SUBMIT",
     "RESULT_SUBMIT",
     "FORCE_ADVANCE",
@@ -709,4 +710,118 @@ test("ROOM_UPDATED is redacted for spectator and full for player", async () => {
   assert.ok(spectatorUpdated);
   assert.equal(hostUpdated.payload.room_state_snapshot.settings.join_code, "ABCDEFGH");
   assert.equal(spectatorUpdated.payload.room_state_snapshot.settings.join_code, null);
+});
+
+test("QUICK_CHAT_POST stores history, broadcasts posted message, and snapshots include recent messages", async () => {
+  const roomObject = await createRoomObject();
+  roomObject.roomState.readyCheckDeadline = new Date("2099-01-01T00:00:00.000Z");
+
+  const hostSocket = new TestSocket();
+  const guestSocket = new TestSocket();
+  await joinPlayer(roomObject, hostSocket, "host", "msg-1");
+  await joinPlayer(roomObject, guestSocket, "guest", "msg-2");
+  hostSocket.sent = [];
+  guestSocket.sent = [];
+
+  await roomObject.webSocketMessage(
+    hostSocket,
+    JSON.stringify({
+      type: "QUICK_CHAT_POST",
+      client_msg_id: "msg-3",
+      room_id: "room-1",
+      player_id: "host",
+      payload: {
+        request_id: "chat-1",
+        phrase_ids: ["a-001", "symbol-037"],
+      },
+    }),
+  );
+
+  const posted = guestSocket.sent.find((message) => message.type === "QUICK_CHAT_POSTED");
+  assert.ok(posted);
+  assert.equal(posted.payload.message.player_id, "host");
+  assert.deepEqual(posted.payload.message.phrase_ids, ["a-001", "symbol-037"]);
+  assert.equal(posted.payload.message.message, "お願いします！");
+
+  const updated = guestSocket.sent.find((message) => message.type === "ROOM_UPDATED");
+  assert.ok(updated);
+  assert.equal(updated.payload.room_state_snapshot.quick_chat_messages.length, 1);
+  assert.equal(updated.payload.room_state_snapshot.quick_chat_messages[0].message, "お願いします！");
+});
+
+test("QUICK_CHAT_POST duplicate request returns snapshot without duplicate history", async () => {
+  const roomObject = await createRoomObject();
+  roomObject.roomState.readyCheckDeadline = new Date("2099-01-01T00:00:00.000Z");
+
+  const hostSocket = new TestSocket();
+  await joinPlayer(roomObject, hostSocket, "host", "msg-1");
+  hostSocket.sent = [];
+
+  const payload = {
+    type: "QUICK_CHAT_POST",
+    room_id: "room-1",
+    player_id: "host",
+    payload: {
+      request_id: "chat-1",
+      phrase_ids: ["a-001"],
+    },
+  };
+
+  await roomObject.webSocketMessage(hostSocket, JSON.stringify({ ...payload, client_msg_id: "msg-2" }));
+  await roomObject.webSocketMessage(hostSocket, JSON.stringify({ ...payload, client_msg_id: "msg-3" }));
+
+  assert.equal(roomObject.roomState.toSnapshot().quick_chat_messages.length, 1);
+  const snapshots = hostSocket.sent.filter((message) => message.type === "STATE_SNAPSHOT");
+  assert.equal(snapshots.length, 1);
+  assert.equal(snapshots[0].payload.room_state_snapshot.quick_chat_messages.length, 1);
+});
+
+test("QUICK_CHAT_POST rejects invalid payload and PLAYING state", async () => {
+  const roomObject = await createRoomObject();
+  roomObject.roomState.readyCheckDeadline = new Date("2099-01-01T00:00:00.000Z");
+
+  const hostSocket = new TestSocket();
+  const guestSocket = new TestSocket();
+  await joinPlayer(roomObject, hostSocket, "host", "msg-1");
+  await joinPlayer(roomObject, guestSocket, "guest", "msg-2");
+  hostSocket.sent = [];
+
+  await roomObject.webSocketMessage(
+    hostSocket,
+    JSON.stringify({
+      type: "QUICK_CHAT_POST",
+      client_msg_id: "msg-3",
+      room_id: "room-1",
+      player_id: "host",
+      payload: {
+        request_id: "chat-invalid",
+        phrase_ids: ["unknown"],
+      },
+    }),
+  );
+
+  let error = hostSocket.sent.find((message) => message.type === "ERROR");
+  assert.ok(error);
+  assert.equal(error.payload.code, "INVALID_STATE");
+
+  roomObject.roomState.roomState = "PLAYING";
+  hostSocket.sent = [];
+
+  await roomObject.webSocketMessage(
+    hostSocket,
+    JSON.stringify({
+      type: "QUICK_CHAT_POST",
+      client_msg_id: "msg-4",
+      room_id: "room-1",
+      player_id: "host",
+      payload: {
+        request_id: "chat-playing",
+        phrase_ids: ["a-001"],
+      },
+    }),
+  );
+
+  error = hostSocket.sent.find((message) => message.type === "ERROR");
+  assert.ok(error);
+  assert.equal(error.payload.code, "INVALID_STATE");
 });

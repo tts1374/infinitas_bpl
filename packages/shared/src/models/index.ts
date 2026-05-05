@@ -3,6 +3,7 @@ export * from "./common";
 export * from "./expected-key";
 export * from "./frozen-round";
 export * from "./player";
+export * from "./quick-chat";
 export * from "./lobby-room-summary";
 export * from "./matchmaking";
 export * from "./room-listing";

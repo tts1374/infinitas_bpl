@@ -214,6 +214,82 @@ function getResultSummary(state) {
   return payload.summary;
 }
 
+test("quick chat post stores composed preset message in LOBBY snapshot", () => {
+  const state = createState();
+  const result = state.postQuickChat("host", ["a-001", "symbol-037"], new Date("2026-03-08T00:00:10.000Z"));
+
+  assert.equal(result.ok, true);
+  assert.equal(result.message?.message, "お願いします！");
+
+  const snapshotMessages = state.toSnapshot().quick_chat_messages;
+  assert.equal(snapshotMessages?.length, 1);
+  assert.equal(snapshotMessages?.[0]?.player_id, "host");
+  assert.deepEqual(snapshotMessages?.[0]?.phrase_ids, ["a-001", "symbol-037"]);
+  assert.equal(snapshotMessages?.[0]?.message, "お願いします！");
+  assert.equal(snapshotMessages?.[0]?.posted_at, "2026-03-08T00:00:10.000Z");
+});
+
+test("quick chat rejects invalid state, unknown phrase, long compose, and disconnected player", () => {
+  const state = createState();
+
+  assert.deepEqual(
+    state.postQuickChat("missing", ["a-001"], new Date("2026-03-08T00:00:10.000Z")),
+    { ok: false, reason: "PLAYER_NOT_FOUND" },
+  );
+  assert.deepEqual(
+    state.postQuickChat("host", ["unknown"], new Date("2026-03-08T00:00:10.000Z")),
+    { ok: false, reason: "INVALID_PHRASE_IDS" },
+  );
+  assert.deepEqual(
+    state.postQuickChat("host", ["symbol-005", "symbol-005", "symbol-005"], new Date("2026-03-08T00:00:10.000Z")),
+    { ok: false, reason: "MESSAGE_TOO_LONG" },
+  );
+
+  state.markPlayerDisconnected("guest", new Date("2026-03-08T00:00:11.000Z"));
+  assert.deepEqual(
+    state.postQuickChat("guest", ["a-001"], new Date("2026-03-08T00:00:12.000Z")),
+    { ok: false, reason: "PLAYER_NOT_FOUND" },
+  );
+
+  const rejoin = state.joinPlayer({
+    player_id: "guest",
+    display_name: "Guest",
+    source: "inf-notebook",
+    now: new Date("2026-03-08T00:00:13.000Z"),
+  });
+  assert.equal(rejoin.ok, true);
+  assert.equal(state.setPlayerReady("host", true).ok, true);
+  assert.equal(state.setPlayerReady("guest", true).ok, true);
+  assert.equal(state.startMatch("host", new Date("2026-03-08T00:01:00.000Z")).ok, true);
+  assert.equal(state.submitPick("host", "chart-1", new Date("2026-03-08T00:01:10.000Z")).ok, true);
+  assert.equal(state.submitPick("guest", "chart-2", new Date("2026-03-08T00:01:11.000Z")).ok, true);
+  assert.deepEqual(
+    state.postQuickChat("host", ["a-001"], new Date("2026-03-08T00:02:00.000Z")),
+    { ok: false, reason: "INVALID_STATE" },
+  );
+});
+
+test("quick chat history is bounded and restored from persistence", () => {
+  const state = createState();
+  for (let index = 0; index < 35; index += 1) {
+    const result = state.postQuickChat(
+      "host",
+      ["a-001"],
+      new Date(`2026-03-08T00:00:${String(index).padStart(2, "0")}.000Z`),
+    );
+    assert.equal(result.ok, true);
+  }
+
+  const snapshot = state.toSnapshot();
+  assert.equal(snapshot.quick_chat_messages?.length, 30);
+  assert.equal(snapshot.quick_chat_messages?.[0]?.posted_at, "2026-03-08T00:00:05.000Z");
+  assert.equal(snapshot.quick_chat_messages?.[29]?.posted_at, "2026-03-08T00:00:34.000Z");
+
+  const restored = new RoomLobbyState(createChartMaster());
+  restored.hydrate(state.toPersistenceRecord());
+  assert.deepEqual(restored.toSnapshot().quick_chat_messages, snapshot.quick_chat_messages);
+});
+
 function playCurrentRound(state, roundIndex, hostMetric, guestMetric, nowBase) {
   const snapshot = state.toSnapshot();
   assert.ok(snapshot.current_round, "current round should exist");

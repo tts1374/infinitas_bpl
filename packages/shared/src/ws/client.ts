@@ -1,6 +1,7 @@
 import type { SkipReason, SourceType } from "../enums";
 import type { JsonObject } from "../models/common";
 import type { ExpectedKey } from "../models/expected-key";
+import type { QuickChatPhraseId } from "../constants/quick-chat";
 import type { WsEmptyPayload } from "./common";
 import type { ClientEnvelope } from "./envelope";
 import type { ClientMessageType } from "./message-types";
@@ -63,6 +64,10 @@ export interface SourceStatusSetPayload extends RequestIdPayload {
   available: boolean;
 }
 
+export interface QuickChatPostPayload extends RequestIdPayload {
+  phrase_ids: QuickChatPhraseId[];
+}
+
 export interface ClientMessagePayloadMap {
   ROOM_JOIN: RoomJoinPayload;
   ROOM_LEAVE: GenerationPayload;
@@ -72,6 +77,7 @@ export interface ClientMessagePayloadMap {
   AUTO_REMATCH_STOP: RequestIdPayload;
   AUTO_REMATCH_OPT_OUT: RequestIdPayload;
   SOURCE_STATUS_SET: SourceStatusSetPayload;
+  QUICK_CHAT_POST: QuickChatPostPayload;
   PICK_SUBMIT: PickSubmitPayload;
   RESULT_SUBMIT: ResultSubmitPayload;
   SKIP_SELF: SkipPayload;
