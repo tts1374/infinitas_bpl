@@ -31,11 +31,13 @@ export function QuickChat({ available, disabledReason, messages, onSubmit }: Qui
 
   function appendPhrase(phraseId: string): void {
     setSubmitError(null);
-    if (!canAppendQuickChatPhrase(phraseIds, phraseId)) {
-      return;
-    }
+    setPhraseIds((current) => {
+      if (!canAppendQuickChatPhrase(current, phraseId)) {
+        return current;
+      }
 
-    setPhraseIds((current) => [...current, phraseId]);
+      return [...current, phraseId];
+    });
   }
 
   function removeLastPhrase(): void {
