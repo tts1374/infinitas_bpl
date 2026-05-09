@@ -26,6 +26,8 @@ Return a bounded review-response artifact and write-back plan, not a broad redes
   - touched layer
   - execution profile
   - current branch / diff state
+- Design source / wireframe reference when the review concerns UI fidelity
+- Existing audit/review findings and disposition state, if any
 - Applicable governance:
   - `AGENTS.md`
   - `WORKFLOW.md`
@@ -46,12 +48,17 @@ Return a bounded review-response artifact and write-back plan, not a broad redes
 5. For `High-Risk` work, rerun required implementer / contract audit / implementation audit on the current state.
 6. Run required validation from `QUALITY.md`.
    - If the trigger was CI / validate output, rerun the same command surface or a broader one.
-7. Prepare GitHub write-back in this order:
+7. Build a findings disposition ledger:
+   - each actionable finding / review thread
+   - disposition (`fixed`, `deferred with explicit scope`, `not applicable`, or `blocked`)
+   - evidence
+   - remaining risk
+8. Prepare GitHub write-back in this order:
    - thread reply
    - resolve addressed thread
    - re-review request after no unresolved actionable thread remains
    - confirm each GitHub write via returned URL/id or read-back
-8. Use [references/review-response-checklist.md](references/review-response-checklist.md) to keep the loop stable.
+9. Use [references/review-response-checklist.md](references/review-response-checklist.md) to keep the loop stable.
 
 Do not:
 - replace the source-of-truth artifact with review-thread-local assumptions
@@ -65,8 +72,9 @@ Always return:
 3. `Actionable thread set`
 4. `Execution profile re-judgment`
 5. `Validation and audit plan`
-6. `GitHub write-back plan or completed actions`
-7. `Final status`
+6. `Findings disposition ledger`
+7. `GitHub write-back plan or completed actions`
+8. `Final status`
 
 Use this template:
 
@@ -85,6 +93,9 @@ Execution profile re-judgment:
 Validation and audit plan:
 - <required checks>
 
+Findings disposition ledger:
+- <finding/thread / disposition / evidence / remaining risk>
+
 GitHub write-back plan or completed actions:
 - reply: <planned|done|N/A>
 - resolve: <planned|done|N/A>
@@ -98,9 +109,11 @@ Final status:
 
 - Do not expand scope just because a review comment suggests a broader cleanup.
 - Do not mark review work complete while actionable unresolved threads remain unaddressed.
+- Do not mark review work complete while `Blocker` or `Must fix` disposition is missing.
 - Do not resolve a thread without a substantive response tied to the final implementation.
 - Do not request re-review while unresolved actionable threads remain.
 - If a review requires contract change, cross-layer expansion, dependency update, or CI change, stop with `ESCALATION`.
 - If there are no actionable unresolved threads, return a no-op `COMPLETE` with evidence instead of fabricating write-back work.
 - Do not treat a narrower local validation pass as equivalent to the originating CI failure surface.
 - Do not invent extra procedural gates when actionable threads, validation, and write-back confirmation already determine the next step.
+- User-facing review response summaries should be written in Japanese unless the user explicitly requests another language. Keep thread ids, commands, and fixed status tokens unchanged.

@@ -2,6 +2,8 @@
 
 Use this template when `Plan Mode` is required.
 Create `tasks/<branch-or-pr-name>.md` before implementation.
+Write user-facing plan content in Japanese unless the user explicitly requests another language.
+Keep fixed section labels, status tokens, file paths, and command names unchanged.
 
 # <task-name>
 
@@ -52,6 +54,7 @@ Create `tasks/<branch-or-pr-name>.md` before implementation.
 ## Usage Notes
 
 * Keep the plan minimal and directly tied to the requested change.
+* Write user-facing descriptions in Japanese unless another language is explicitly requested.
 * Do not start implementation before this file exists.
 * Do not treat file existence alone as implementation authorization; honor the current request boundary.
 * If the same user request already authorizes `Phase C implementation` / `C〜D execution` and the source artifact does not declare a narrower ceiling, set `Ceiling` to `implementation ready` and `Next unlock condition` to `none` instead of synthesizing another explicit authorization step.

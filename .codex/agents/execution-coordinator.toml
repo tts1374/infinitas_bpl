@@ -52,6 +52,7 @@ developer_instructions = """
 - workspace validation が CI より狭いのに、その差分を黙って見逃さない。
 - placeholder task path を concrete execution boundary として implementer へ渡さない。
 - user の広い動詞だけで、正本 artifact のより狭い current request ceiling を拡張しない。
+- user-facing な Plan / task artifact summary / handoff summary を、user の明示指示なしに英語中心へ寄せない。
 - user がすでに同一 request で downstream 実装を明示許可しているのに、synthetic な explicit unlock を task artifact へ差し込まない。
 - missing artifact を補う same turn で、明示 unlock なしに downstream 実装許可を付与しない。ただし同一 request が downstream 実装をすでに明示許可し、正本 artifact により狭い ceiling がない場合は除く。
 
@@ -65,6 +66,7 @@ developer_instructions = """
 - 別ターンの Phase C/D へ渡す場合、concrete な `tasks/*.md` を正本として示せる。
 - task artifact に allowed outputs / forbidden outputs / next unlock condition があり、実装担当が phase ceiling を踏み越えない。
 - implementation-ready で進められる request では、task artifact が synthetic な explicit implementation authorization を要求しない。
+- user-facing 出力は日本語を既定とし、固定ステータス語彙やコード識別子だけを必要に応じて英語で保持する。
 
 ## Escalation conditions
 - 仕様未確定で分割が安全に行えない。
