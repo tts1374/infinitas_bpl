@@ -28,6 +28,8 @@
 - `Issue` / `tasks/*.md` / design docs が正本指定されている場合、Entry Protocol でその正本を明記する
 - Entry Protocol の出力は短くてよいが、後続の Phase 判断を再現できる粒度で残す
 - user が同一スレッドで再指摘した制約や順序がある場合、sticky constraint として以後の Phase 出力にも反映する
+- user-facing な Entry Protocol / Plan / kickoff / close summary / final result は、user が明示的に別言語を求めない限り日本語で返す
+- 固定ステータス語彙、コード識別子、ファイル名、コマンド名は英語のまま保持してよい
 
 ### 0.2 Execution Boundary From Source Artifact
 
@@ -326,6 +328,7 @@ Phase C 開始前に次を必ず出力する:
 - 新たな contract-sensitive 変更が必要
 - in-scope 外への拡張が必須
 - `Blocker` / `Must fix` 解消に仕様判断が必要
+- UI 正本として wireframe / screenshot / design doc / visual reference が指定されているが、参照不能または準拠確認不能
 - 互換方針 / 依存 / CI 変更が必要
 
 ルール:
@@ -362,6 +365,8 @@ Phase D 終了時は、必要に応じて governance / agent / skill / prompt/sn
 - review / close の GitHub write-back で反映確認不足があったか
 - clean worktree / branch isolation 後の source worktree に in-scope residue が残らなかったか
 - default/base branch 最新化の際に dirty path 分類や stash disposition が曖昧でなかったか
+- UI 正本 / wireframe / visual reference の確認証跡不足で実機レビュー差し戻しが起きたか
+- audit findings の disposition が曖昧なまま PR / close / completion へ進もうとしたか
 - 同種の `P1` / `P2` 指摘や運用ミスが再発したか
 - prompt/snippet の文面不足で planning-only / placeholder handoff / close ordering miss が起きたか
 - 広い user verb に引っ張られて、正本 artifact のより狭い phase ceiling を踏み越えなかったか
@@ -402,6 +407,7 @@ PR review / inline thread への対応は、原則として元の `Issue` / `tas
 - review fix の完了報告には、どの thread をどう処理したかを明示する
 - actionable unresolved thread が存在しない場合は、その no-op 判定根拠と current validation state を記録し、不要な write-back を行わない
 - GitHub write-back を行った場合は、reply / resolve / re-review request の反映結果を URL/id または read-back で確認する
+- review / audit findings は、completion 前に `finding -> disposition -> evidence -> remaining risk` で潰し込む
 
 ---
 

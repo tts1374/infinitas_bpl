@@ -58,6 +58,9 @@ Always return these sections in this order:
 8. `delegation execution record`
 9. `Replan triggers`
 
+Write user-facing kickoff output in Japanese unless the user explicitly requests another language.
+Keep fixed protocol labels, role names, file paths, and status tokens unchanged.
+
 Use this template:
 
 ```text

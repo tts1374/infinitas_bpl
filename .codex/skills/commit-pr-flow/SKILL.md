@@ -21,6 +21,7 @@ Return publish-ready evidence and status, not broad workflow re-planning.
 - Base branch (default: `v1`)
 - CI/repo validation surface when relevant (`package.json` scripts, workspace `tsconfig`, `.github/workflows/*`)
 - If this flow opens a PR, post-publish read-back of `author.login` / `author.is_bot`
+- Audit/review findings that must be disposed before PR, if any
 
 ## Workflow
 
@@ -74,6 +75,8 @@ Return publish-ready evidence and status, not broad workflow re-planning.
 9. Final consistency gate:
 - Ensure diff remains within declared scope.
 - Ensure required validation evidence is present.
+- If audit/review findings exist, include a disposition ledger for each `Blocker`, `Must fix`, and relevant `Should fix`.
+- Do not continue to PR handoff while unresolved `Blocker` or `Must fix` findings remain without explicit rescope/defer evidence.
 - Ensure completion status is explicit (`complete` or `blocked`).
 
 Do not:
@@ -86,12 +89,15 @@ Always return:
 - Scope check result
 - Validation result summary
 - Validation surface parity note
+- Findings disposition ledger when audit/review findings exist
 - Source worktree reconciliation summary
 - Commit units created (hash + message)
 - PR title and body (or PR URL if created)
 - PR author/lane evidence when a PR was created
 - Open risks, if any
 - Final status: `complete` or `blocked`
+
+User-facing summaries should be written in Japanese unless the user explicitly requests another language. Keep fixed protocol labels, command names, and code identifiers unchanged.
 
 ## Escalation Conditions
 
@@ -106,6 +112,7 @@ Always return:
 - Do not open a PR with unresolved required checks unless explicitly approved.
 - Do not mix unrelated cleanup with scoped implementation.
 - Do not claim completion while `Blocker` or unresolved `Must fix` findings remain.
+- Do not omit disposition evidence for audit/review findings that affected the commit or PR decision.
 - Do not assume workspace `typecheck` covers touched test files.
 - Do not assume a newly added test file is already part of the standard test script without checking.
 - Do not assume a published PR is `bot-created PR` without read-back of `author.login` / `author.is_bot`.

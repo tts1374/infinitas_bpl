@@ -96,6 +96,7 @@ Client 変更時:
 - root docs / agent 定義 / skill の間で `objective` / `success criteria` / `stop condition` の責務配置が矛盾していない
 - judgment を agent から skill へ不適切に移していない
 - implementer / auditor の `continue` vs `BLOCKED` / `ESCALATION` 境界が欠落していない
+- user-facing な Plan / kickoff / audit summary / final result が、user の明示指示がない限り日本語で返される規則になっている
 
 ### 3.6 Workflow Artifact / Closure Task 実行時
 必須確認:
@@ -133,6 +134,16 @@ Client 変更時:
 - `High-Risk` の post-approval merge では、approve に加えて explicit merge authorization または auto-merge 許可がある
 - post-approval merge 後は PR merged state が URL / merged flag / merge commit SHA で確認されている
 - `merge + close + cleanup` を行う場合、順序が `merge -> closure evidence -> Issue close -> local cleanup` になっている
+- audit findings がある場合、`finding -> disposition -> evidence -> remaining risk` が追跡され、未処理の `Blocker` / `Must fix` が残っていない
+
+### 3.7 UI design source / wireframe 準拠がある変更時
+
+必須確認:
+- 正本 artifact が指定する wireframe / screenshot / design doc / visual reference を確認している
+- 確認した design source の path / URL / identifier が output に残っている
+- 実装差分が design source の該当箇所と対応している
+- text / layout / visibility / placement / overflow / responsive behavior のうち、正本で指定された観点が検証されている
+- visual source を確認できない場合、準拠確認を完了扱いせず residual risk または `BLOCKED` / `ESCALATION` としている
 
 ---
 

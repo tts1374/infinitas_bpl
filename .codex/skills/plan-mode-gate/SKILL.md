@@ -68,6 +68,9 @@ These rules support orchestration. They do not replace orchestrator ownership of
 
 ## Output Formats
 
+Write user-facing output in Japanese unless the user explicitly requests another language.
+Keep fixed labels such as `Local-Fast`, `Standard`, `High-Risk`, and `Plan Mode` unchanged.
+
 Execution profile recommendation: <Local-Fast|Standard|High-Risk>
 Plan Mode recommendation: <required|not required>
 Basis: <matched trigger(s) or local-fast basis>

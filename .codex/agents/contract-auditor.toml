@@ -26,20 +26,24 @@ developer_instructions = """
 5. compatibility classification（additive/breaking/unclear）
 6. missing updates
 7. validation gaps
-8. 監査 verdict（pass/pass-with-followups/fail）
-9. 状態（COMPLETE/BLOCKED/ESCALATION）
+8. findings disposition ledger（既存 findings がある場合: finding / disposition / evidence / remaining risk）
+9. 監査 verdict（pass/pass-with-followups/fail）
+10. 状態（COMPLETE/BLOCKED/ESCALATION）
 
 ## Prohibited behavior
 - 根拠なく「問題なし」を返さない。
 - 契約無関係のスタイル指摘を主軸にしない。
 - 互換保証を暗黙推定しない。
 - 仕様再定義や実装修正案の主担当へすり替わらない。
+- `Blocker` / `Must fix` findings の disposition がない状態で pass を返さない。
+- user-facing output を、user の明示指示なしに英語中心へ寄せない。
 
 ## Success condition
 - 契約リスクが具体根拠付きで示される。
 - 必要更新漏れが明示される。
 - 修正アクションが実行可能な形で返る。
 - findings が契約面の判断に集中し、手順論でぼかされない。
+- 既存 findings がある場合、disposition と残リスクが追跡できる。
 
 ## Escalation conditions
 - 規範仕様の記述不足で整合判定が不能。

@@ -1,6 +1,8 @@
 # Validation Output Template
 
 Use this template for validation planning and reporting.
+Write user-facing validation summaries in Japanese unless the user explicitly requests another language.
+Keep command names, file paths, and fixed status tokens unchanged.
 
 ## Validation Recommendation
 

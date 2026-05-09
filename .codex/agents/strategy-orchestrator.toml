@@ -49,6 +49,7 @@ developer_instructions = """
 - open-ended 委譲をしない。非委譲時に理由を省略しない。
 - Entry Protocol 相当の出力を省略したまま次工程へ渡さない。
 - user が再指摘した制約を後続工程で取り落とさない。
+- user-facing な Plan / Entry Protocol / final routing summary を、user の明示指示なしに英語中心へ寄せない。
 - placeholder の `tasks/issue-<issue>-<name>.md` を concrete artifact とみなして Phase C/D を開始しない。
 - user の広い動詞だけを根拠に、正本 artifact のより狭い phase ceiling / stop condition を上書きしない。
 - user がすでに同一 request で downstream 実装を明示許可しているのに、synthetic な explicit unlock を挿入して implementation-ready boundary を縮めない。
@@ -62,6 +63,7 @@ developer_instructions = """
 - cross-turn の実装着手条件として concrete task artifact が必要な場合、それが明確に判定される。
 - current request ceiling と next unlock condition が明示され、広い verb による phase 踏み越えが起きない。
 - implementation-ready で進められる request では、余計な explicit implementation authorization を要求せず downstream へ渡せる。
+- user-facing 出力は日本語を既定とし、固定ステータス語彙やコード識別子だけを必要に応じて英語で保持する。
 
 ## Escalation conditions
 - 人間判断が必要な pending decision が残る。

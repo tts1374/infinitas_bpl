@@ -21,6 +21,7 @@
 - 目的達成に必要な最小差分を優先
 - 目的外変更を混ぜない
 - 実装・監査・要約は reviewable な粒度で返す
+- user-facing な Plan / kickoff / audit summary / final result は、user が明示的に別言語を求めない限り日本語で返す
 
 ---
 
@@ -85,6 +86,14 @@
 - sticky constraint は、後続の Entry Protocol / delegation packet / validation plan / close plan に影響する場合、出力へ再掲または織り込む
 - ローカル判断や慣例で sticky constraint を黙って上書きしない。成立不能なら `BLOCKED` / `ESCALATION` を返す
 - `A〜C Kickoffまで` / `task作成まで` / `実装は開始しない` のような terminal phase 指示は sticky hard constraint として扱い、明示解除まで downstream phase を開始しない
+
+### 1.6 Output Language
+
+ルール:
+- user-facing な最終出力、Plan、kickoff、review response、closure evidence summary は日本語を既定とする
+- `READY` / `BLOCKED` / `COMPLETE`、ファイル名、コマンド名、API名、PR本文テンプレの固定ラベルなど、運用上の識別子は英語のまま保持してよい
+- sub-agent / skill から英語テンプレートが返った場合でも、親 agent は user-facing summary を日本語へ正規化する
+- user が英語出力、原文維持、または外部提出用テンプレートを明示した場合はその指示を優先する
 
 ---
 
@@ -208,6 +217,15 @@ Delegation packet 必須項目:
 - delegated 必須出力が返却済み
 - 未解決 `Blocker` がない
 - 未解決 `Must fix` は明示的な再スコープ/延期がある
+- audit findings がある場合、`finding -> disposition -> evidence -> remaining risk` が追跡され、未処理の `Blocker` / `Must fix` が残っていない
+
+### 6.4 UI / Design Source Evidence
+
+ルール:
+- 正本 artifact が wireframe / screenshot / design doc / visual reference を指定する UI 実装では、その参照は implementation boundary の一部として扱う
+- 実装担当は参照した design source、反映した差分、確認方法を output に残す
+- 監査担当は visual source と実装の差異を validation gap または finding として扱う
+- design source を確認できない場合、見た目準拠を完了扱いせず `BLOCKED` / `ESCALATION` または明示的な residual risk として返す
 
 ---
 
