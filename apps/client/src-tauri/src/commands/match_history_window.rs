@@ -25,6 +25,12 @@ pub async fn show_match_history_window(
 ) -> Result<ShowMatchHistoryWindowResponse, String> {
     if let Some(window) = app.get_webview_window(MATCH_HISTORY_WINDOW_LABEL) {
         window
+            .unminimize()
+            .map_err(|error| format!("Failed to restore match history window: {error}"))?;
+        window
+            .show()
+            .map_err(|error| format!("Failed to show match history window: {error}"))?;
+        window
             .set_focus()
             .map_err(|error| format!("Failed to focus match history window: {error}"))?;
         return Ok(ShowMatchHistoryWindowResponse {
