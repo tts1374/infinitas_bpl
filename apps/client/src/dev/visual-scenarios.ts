@@ -10,6 +10,7 @@ import type {
 } from "@infinitas/shared";
 import type { RoomConnectionStatus, RoomDialogState } from "../stores/room-store";
 import type { ClientSettings } from "../stores/settings-store";
+import type { MatchHistoryDocument } from "../services/match-history-overlay";
 
 type VisualScenarioId =
   | "bpl-lobby"
@@ -86,7 +87,6 @@ const BASE_SETTINGS: Omit<ClientSettings, "playerId" | "displayName" | "source" 
     notebookDirectory: "",
     refluxDirectory: "",
   },
-  obsOutputDirectory: "",
   voiceEnabled: true,
   voiceVolume: 80,
   voiceMuted: false,
@@ -96,6 +96,46 @@ const BASE_SETTINGS: Omit<ClientSettings, "playerId" | "displayName" | "source" 
   allowLeggendaria: false,
   ownedPackIds: [],
 };
+
+export const MATCH_HISTORY_WINDOW_VISUAL_FIXTURE = {
+  schema_version: 1,
+  session_started_at: "2026-05-30T09:00:00.000Z",
+  active_mode: "BPL",
+  matches: [
+    {
+      match_id: "visual-arena-1",
+      completed_at: "2026-05-30T09:35:00.000Z",
+      mode: "ARENA",
+      self_player_id: HOST_PLAYER_ID,
+      players: [
+        { player_id: HOST_PLAYER_ID, display_name: "PLAYER_ONE" },
+        { player_id: GUEST_PLAYER_ID, display_name: "RIVAL_KUN" },
+        { player_id: ARENA_PLAYER_3_ID, display_name: "IIDX_CHAMP" },
+        { player_id: ARENA_PLAYER_4_ID, display_name: "ARENA_PRO" },
+      ],
+      summary: { arena_rank: 1, arena_points: 17 },
+      charts: [
+        { order: 1, title: "Stargaze", play_style: "SP", difficulty: "ANOTHER", self_score: 3320, self_miss_count: 8, self_point: 5 },
+        { order: 2, title: "Technophobia", play_style: "SP", difficulty: "HYPER", self_score: 3250, self_miss_count: 12, self_point: 4 },
+      ],
+    },
+    {
+      match_id: "visual-bpl-1",
+      completed_at: "2026-05-30T09:12:00.000Z",
+      mode: "BPL",
+      self_player_id: HOST_PLAYER_ID,
+      players: [
+        { player_id: HOST_PLAYER_ID, display_name: "PLAYER_ONE" },
+        { player_id: GUEST_PLAYER_ID, display_name: "RIVAL_KUN" },
+      ],
+      summary: { bpl_result: "WIN", bpl_my_score: 5, bpl_opp_score: 2 },
+      charts: [
+        { order: 1, title: "#the_relentless", play_style: "SP", difficulty: "LEGGENDARIA", self_score: 3421, self_miss_count: 5, self_point: 2 },
+        { order: 2, title: "Stargaze", play_style: "SP", difficulty: "ANOTHER", self_score: 3680, self_miss_count: 3, self_point: 3 },
+      ],
+    },
+  ],
+} satisfies MatchHistoryDocument;
 
 const VISUAL_CHARTS: ChartSearchEntry[] = [
   {

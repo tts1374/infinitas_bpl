@@ -1,57 +1,33 @@
-import type { MatchGame, MatchRecord, StatsMatchResult } from "../features/stats/models";
+import type { MatchGame, MatchRecord } from "../features/stats/models";
 import { roomStore } from "../stores/room-store";
 import { settingsStore } from "../stores/settings-store";
-import { writeJson } from "./local-storage";
+import { readJsonResult, writeJson } from "./local-storage";
 import { statsArchiveService } from "./stats-archive";
-import { isTauriRuntime, saveMatchHistoryOverlay } from "./tauri-bridge";
+import { collectManualResetProcessedMatchIds } from "./match-history-view-model";
+import {
+  createEmptyMatchHistory,
+  loadMatchHistoryDocument,
+  normalizeMatchHistoryMode,
+  type MatchHistoryChart,
+  type MatchHistoryDocument,
+  type MatchHistoryEntry,
+  type MatchHistoryMode,
+  type MatchHistoryPlayer,
+} from "./match-history-document";
 
-const MATCH_HISTORY_STORAGE_KEY = "infinitas.client.match-history.overlay.v1";
+export type {
+  ArenaSummary,
+  BplSummary,
+  MatchHistoryChart,
+  MatchHistoryDocument,
+  MatchHistoryEntry,
+  MatchHistoryMode,
+  MatchHistoryPlayer,
+  MatchHistorySummary,
+} from "./match-history-document";
+
+export const MATCH_HISTORY_STORAGE_KEY = "infinitas.client.match-history.overlay.v1";
 const MAX_MATCHES_PER_MODE = 3;
-
-type MatchHistoryMode = "ARENA" | "BPL";
-
-interface MatchHistoryPlayer {
-  player_id: string;
-  display_name: string;
-}
-
-interface MatchHistoryChart {
-  order: number;
-  title: string;
-  play_style: string;
-  difficulty: string;
-  self_score: number;
-  self_miss_count: number;
-  self_point: number;
-}
-
-interface ArenaSummary {
-  arena_rank: number;
-  arena_points: number;
-}
-
-interface BplSummary {
-  bpl_result: StatsMatchResult;
-  bpl_my_score: number;
-  bpl_opp_score: number;
-}
-
-type MatchHistorySummary = ArenaSummary | BplSummary;
-
-interface MatchHistoryEntry {
-  match_id: string;
-  completed_at: string;
-  mode: MatchHistoryMode;
-  self_player_id: string;
-  players: MatchHistoryPlayer[];
-  summary: MatchHistorySummary;
-  charts: MatchHistoryChart[];
-}
-
-interface MatchHistoryDocument {
-  session_started_at: string;
-  matches: MatchHistoryEntry[];
-}
 
 interface RoomMatchContext {
   playStyle: string;
@@ -59,34 +35,15 @@ interface RoomMatchContext {
 }
 
 let started = false;
-let currentHistory = createEmptyHistory();
-let persistSequence: Promise<void> = Promise.resolve();
+let currentHistory = createEmptyMatchHistory();
 let unsubscribeRoomStore: (() => void) | null = null;
 let unsubscribeStatsArchive: (() => void) | null = null;
-let unsubscribeSettingsStore: (() => void) | null = null;
-let lastOutputDirectory: string | null = null;
 const processedMatchIds = new Set<string>();
 const roomContextByMatchId = new Map<string, RoomMatchContext>();
-
-function createEmptyHistory(sessionStartedAt = new Date().toISOString()): MatchHistoryDocument {
-  return {
-    session_started_at: sessionStartedAt,
-    matches: [],
-  };
-}
-
-function isSupportedBattleType(value: string): value is MatchHistoryMode {
-  return value === "ARENA" || value === "BPL";
-}
 
 function toTimeMs(value: string): number | null {
   const ms = Date.parse(value);
   return Number.isNaN(ms) ? null : ms;
-}
-
-function normalizeOutputDirectory(value: string | null | undefined): string | null {
-  const trimmed = value?.trim() ?? "";
-  return trimmed.length > 0 ? trimmed : null;
 }
 
 function compareByCompletedAtDescending(left: MatchHistoryEntry, right: MatchHistoryEntry): number {
@@ -211,6 +168,15 @@ function captureRoomContextFromRoomStore(): void {
     return;
   }
 
+  const nextActiveMode = normalizeMatchHistoryMode(snapshot.settings.mode);
+  if (currentHistory.active_mode !== nextActiveMode) {
+    currentHistory = {
+      ...currentHistory,
+      active_mode: nextActiveMode,
+    };
+    persist();
+  }
+
   const matchId = snapshot.current_match_id ?? snapshot.room_id;
   roomContextByMatchId.set(matchId, {
     playStyle: snapshot.settings.play_style,
@@ -222,7 +188,8 @@ function captureRoomContextFromRoomStore(): void {
 }
 
 function buildHistoryEntry(match: MatchRecord, allMatchGames: MatchGame[]): MatchHistoryEntry | null {
-  if (!isSupportedBattleType(match.battle_type)) {
+  const historyMode = normalizeMatchHistoryMode(match.battle_type);
+  if (historyMode === null) {
     return null;
   }
 
@@ -236,7 +203,7 @@ function buildHistoryEntry(match: MatchRecord, allMatchGames: MatchGame[]): Matc
   const selfPlayerId = settingsStore.getState().saved.playerId;
   const charts = toCharts(relatedGames, context?.playStyle ?? match.play_mode);
 
-  if (match.battle_type === "ARENA") {
+  if (historyMode === "ARENA") {
     const rank = Math.max(1, Math.min(4, match.display_rank ?? match.final_rank ?? 4));
     return {
       match_id: match.match_id,
@@ -270,26 +237,13 @@ function buildHistoryEntry(match: MatchRecord, allMatchGames: MatchGame[]): Matc
 }
 
 function resetInternalState(): void {
-  currentHistory = createEmptyHistory();
+  currentHistory = createEmptyMatchHistory();
   processedMatchIds.clear();
   roomContextByMatchId.clear();
 }
 
-function queuePersist(): void {
-  persistSequence = persistSequence
-    .catch(() => undefined)
-    .then(async () => {
-      const snapshot = currentHistory;
-      const jsonText = JSON.stringify(snapshot, null, 2);
-      const outputDirectory = normalizeOutputDirectory(settingsStore.getState().saved.obsOutputDirectory);
-
-      if (isTauriRuntime()) {
-        await saveMatchHistoryOverlay({ jsonText, outputDirectory });
-        return;
-      }
-
-      writeJson(MATCH_HISTORY_STORAGE_KEY, snapshot);
-    });
+function persist(): void {
+  writeJson(MATCH_HISTORY_STORAGE_KEY, currentHistory);
 }
 
 function syncFromStatsArchive(): void {
@@ -298,7 +252,7 @@ function syncFromStatsArchive(): void {
   let changed = false;
 
   for (const match of orderedMatches) {
-    if (!isSupportedBattleType(match.battle_type) || !match.is_complete) {
+    if (normalizeMatchHistoryMode(match.battle_type) === null || !match.is_complete) {
       continue;
     }
 
@@ -325,7 +279,7 @@ function syncFromStatsArchive(): void {
   }
 
   if (changed) {
-    queuePersist();
+    persist();
   }
 }
 
@@ -338,42 +292,37 @@ export const matchHistoryOverlayService = {
     started = true;
     resetInternalState();
     captureRoomContextFromRoomStore();
-    lastOutputDirectory = normalizeOutputDirectory(settingsStore.getState().saved.obsOutputDirectory);
-    queuePersist();
+    persist();
 
     unsubscribeRoomStore = roomStore.subscribe(() => {
       captureRoomContextFromRoomStore();
     });
     unsubscribeStatsArchive = statsArchiveService.subscribe(syncFromStatsArchive);
-    unsubscribeSettingsStore = settingsStore.subscribe(() => {
-      const nextOutputDirectory = normalizeOutputDirectory(
-        settingsStore.getState().saved.obsOutputDirectory,
-      );
-      if (nextOutputDirectory === lastOutputDirectory) {
-        return;
-      }
-
-      lastOutputDirectory = nextOutputDirectory;
-      queuePersist();
-    });
     syncFromStatsArchive();
   },
   stop(): void {
-    unsubscribeSettingsStore?.();
-    unsubscribeSettingsStore = null;
     unsubscribeStatsArchive?.();
     unsubscribeStatsArchive = null;
     unsubscribeRoomStore?.();
     unsubscribeRoomStore = null;
-    lastOutputDirectory = null;
     started = false;
   },
   async resetHistory(): Promise<void> {
     resetInternalState();
     captureRoomContextFromRoomStore();
-    lastOutputDirectory = normalizeOutputDirectory(settingsStore.getState().saved.obsOutputDirectory);
-    queuePersist();
-    syncFromStatsArchive();
-    await persistSequence;
+    for (const matchId of collectManualResetProcessedMatchIds(statsArchiveService.getState().archive.matches)) {
+      processedMatchIds.add(matchId);
+    }
+    persist();
   },
 };
+
+export function readMatchHistory(): MatchHistoryDocument {
+  const result = readJsonResult<unknown>(MATCH_HISTORY_STORAGE_KEY);
+  if (result.status !== "value") {
+    return result.status === "malformed"
+      ? loadMatchHistoryDocument(null)
+      : createEmptyMatchHistory();
+  }
+  return loadMatchHistoryDocument(result.value);
+}

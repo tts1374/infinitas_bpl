@@ -98,7 +98,7 @@ function makeSession(input: {
   playMode: PlayStyle;
   playerIds: string[];
   rounds: SessionRound[];
-  mode?: "ARENA" | "BPL";
+  mode?: "ARENA" | "BPL" | "BPL4";
   winMetric?: "SCORE" | "MISSCOUNT";
 }): RoomStatsSession {
   return {
@@ -568,6 +568,44 @@ runCase("BPL detailed history shows tied rounds as 1-1 while preserving MISSCOUN
   assert.equal(detailedHistory[0]?.total_bp, 33);
   assert.equal(detailedHistory[0]?.total_ex_score, 6300);
   assert.equal(history[0]?.detail, "3-3");
+});
+
+runCase("BPL4 closed matches are complete and visible in BPL history", () => {
+  const archive = recordClosedMatch(
+    createEmptyStatsArchive(),
+    makeSession({
+      roomId: "bpl4-complete",
+      battleType: "BPL",
+      playMode: "SP",
+      playerIds: [MY_PLAYER_ID, "opponent"],
+      mode: "BPL4",
+      rounds: [
+        makeRound(0, "SP", [
+          makeResult({ playerId: MY_PLAYER_ID, metricValue: 2500, submittedAt: iso(10), exScore: 2500 }),
+          makeResult({ playerId: "opponent", metricValue: 2520, submittedAt: iso(11), exScore: 2520 }),
+        ]),
+        makeRound(1, "SP", [
+          makeResult({ playerId: MY_PLAYER_ID, metricValue: 2510, submittedAt: iso(12), exScore: 2510 }),
+          makeResult({ playerId: "opponent", metricValue: 2530, submittedAt: iso(13), exScore: 2530 }),
+        ]),
+        makeRound(2, "SP", [
+          makeResult({ playerId: MY_PLAYER_ID, metricValue: 2520, submittedAt: iso(14), exScore: 2520 }),
+          makeResult({ playerId: "opponent", metricValue: 2540, submittedAt: iso(15), exScore: 2540 }),
+        ]),
+        makeRound(3, "SP", [
+          makeResult({ playerId: MY_PLAYER_ID, metricValue: 2530, submittedAt: iso(16), exScore: 2530 }),
+          makeResult({ playerId: "opponent", metricValue: 2550, submittedAt: iso(17), exScore: 2550 }),
+        ]),
+      ],
+    }),
+  );
+
+  const history = getRecentMatchHistory(archive, "BPL", "SP");
+
+  assert.equal(archive.matches[0]?.battle_type, "BPL");
+  assert.equal(archive.matches[0]?.is_complete, true);
+  assert.equal(archive.matches[0]?.match_point_total, 0);
+  assert.equal(history[0]?.detail, "0-4");
 });
 
 runCase("legacy BPL3/BPL4 storage entries are normalized and shown in BPL stats", () => {

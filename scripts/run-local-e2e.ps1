@@ -3,6 +3,8 @@ param(
   [string]$Scenario = "reflux-reflux-full",
   [ValidateRange(1, 3)]
   [int]$MatchCount = 1,
+  [ValidateSet("ARENA", "BPL", "BPL4")]
+  [string]$Mode = "ARENA",
   [string]$RuntimeRoot = "",
   [int]$TimeoutSeconds = 240,
   [switch]$SkipWorker,
@@ -194,6 +196,16 @@ function Build-DiffCode([string]$PlayStyle, [string]$Difficulty) {
 
 function Build-Timestamp() {
   return (Get-Date).ToString("yyyyMMdd-HHmmss")
+}
+
+function Resolve-HistoryMode([string]$RoomMode) {
+  if ($RoomMode -eq "ARENA") {
+    return "ARENA"
+  }
+  if ($RoomMode -eq "BPL" -or $RoomMode -eq "BPL4") {
+    return "BPL"
+  }
+  throw "Unsupported history mode: $RoomMode"
 }
 
 function Write-RefluxFixture(
@@ -435,7 +447,7 @@ $joinCode = "E2EABCD2"
 $createRoomRequest = @{
   visibility = "PRIVATE"
   join_code = $joinCode
-  mode = "ARENA"
+  mode = $Mode
   win_metric = "SCORE"
   play_style = "SP"
   level_filter = "ANY"
@@ -453,6 +465,7 @@ $roomJoinCode = [string]$roomResponse.settings.join_code
 if ([string]::IsNullOrWhiteSpace($roomId)) {
   throw "Failed to create room for E2E."
 }
+$expectedHistoryMode = Resolve-HistoryMode -RoomMode $Mode
 
 $sourceA = if ($Scenario -eq "reflux-reflux-full") { "reflux" } else { "daken_counter_v3" }
 $sourceB = if ($Scenario -eq "reflux-reflux-full") { "reflux" } else { "inf-notebook" }
@@ -749,6 +762,28 @@ try {
     if ([string]::IsNullOrWhiteSpace($resultMatchId)) {
       $resultMatchId = [string]$resultSnapshot.room_id
     }
+
+    Wait-StateDump `
+      -StatePath $statePathA `
+      -Description "client-a match history captures $expectedHistoryMode match ($matchLabel)" `
+      -WaitSeconds $TimeoutSeconds `
+      -Predicate {
+        param($state)
+        if (-not $state.state.matchHistory -or -not $state.state.activeMatchHistory) {
+          return $false
+        }
+        $active = $state.state.activeMatchHistory
+        if ($active.mode -ne $expectedHistoryMode) {
+          return $false
+        }
+        $activeMatchIds = @($active.matches | ForEach-Object { [string]$_.match_id })
+        if (-not ($activeMatchIds -contains $resultMatchId)) {
+          return $false
+        }
+        $storedModes = @($state.state.matchHistory.matches | ForEach-Object { [string]$_.mode })
+        return $storedModes -contains $expectedHistoryMode
+      } | Out-Null
+
     $observedMatchIds += $resultMatchId
     $previousMatchId = $resultMatchId
   }
@@ -763,6 +798,8 @@ try {
     "# local-e2e result"
     ""
     "- scenario: $Scenario"
+    "- mode: $Mode"
+    "- history_mode: $expectedHistoryMode"
     "- match_count: $MatchCount"
     "- observed_match_ids: $($observedMatchIds -join ', ')"
     "- room_id: $roomId"

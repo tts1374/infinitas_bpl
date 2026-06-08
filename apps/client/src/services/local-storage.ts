@@ -1,19 +1,28 @@
 import { buildScopedStorageKey } from "../runtime/runtime-config";
 
+export type JsonReadResult<TValue> =
+  | { status: "value"; value: TValue }
+  | { status: "missing" | "malformed" };
+
 export function readJson<TValue>(key: string, fallbackValue: TValue): TValue {
+  const result = readJsonResult<TValue>(key);
+  return result.status === "value" ? result.value : fallbackValue;
+}
+
+export function readJsonResult<TValue>(key: string): JsonReadResult<TValue> {
   if (typeof window === "undefined") {
-    return fallbackValue;
+    return { status: "missing" };
   }
 
   const rawValue = window.localStorage.getItem(buildScopedStorageKey(key));
   if (rawValue === null) {
-    return fallbackValue;
+    return { status: "missing" };
   }
 
   try {
-    return JSON.parse(rawValue) as TValue;
+    return { status: "value", value: JSON.parse(rawValue) as TValue };
   } catch {
-    return fallbackValue;
+    return { status: "malformed" };
   }
 }
 

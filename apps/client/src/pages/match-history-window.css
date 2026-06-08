@@ -1,0 +1,141 @@
+.match-history-window {
+  min-height: 100vh;
+  box-sizing: border-box;
+  padding: 22px;
+  color: #f4f4f5;
+  background: #111216;
+  font-family: Inter, "Segoe UI", sans-serif;
+}
+
+.match-history-title,
+.match-history-card header,
+.match-history-card li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.match-history-title {
+  margin-bottom: 16px;
+}
+
+.match-history-title p,
+.match-history-title h1 {
+  margin: 0;
+}
+
+.match-history-title p,
+.match-history-title span,
+.match-history-card time,
+.match-history-chart small,
+.match-history-score small {
+  color: #9ca3af;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.match-history-title h1 {
+  font-size: 24px;
+  font-style: italic;
+  letter-spacing: -0.04em;
+  text-transform: uppercase;
+}
+
+.match-history-list {
+  display: grid;
+  gap: 12px;
+}
+
+.match-history-summary {
+  display: flex;
+  gap: 10px;
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  border: 1px solid rgba(34, 211, 238, 0.24);
+  border-radius: 10px;
+  color: #67e8f9;
+  background: rgba(34, 211, 238, 0.06);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.match-history-summary span {
+  margin-left: auto;
+}
+
+.match-history-card {
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 12px;
+  background: #1b1c21;
+}
+
+.match-history-card header {
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.match-history-mode {
+  display: inline-block;
+  margin-right: 10px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  color: #091014;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.match-history-mode-arena {
+  background: #22d3ee;
+}
+
+.match-history-mode-bpl {
+  background: #f472b6;
+}
+
+.match-history-players {
+  padding: 9px 14px;
+  color: #a1a1aa;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.match-history-card ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.match-history-card li {
+  padding: 9px 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.match-history-order {
+  color: #67e8f9;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.match-history-chart,
+.match-history-score {
+  display: grid;
+  gap: 2px;
+}
+
+.match-history-chart {
+  flex: 1;
+}
+
+.match-history-score {
+  text-align: right;
+}
+
+.match-history-empty {
+  margin-top: 48px;
+  color: #9ca3af;
+  text-align: center;
+}
