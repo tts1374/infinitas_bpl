@@ -354,18 +354,6 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
     }
   }
 
-  async function handleBrowseObsOutputDirectory(): Promise<void> {
-    try {
-      const selectedDirectory = await pickDirectory();
-      if (selectedDirectory !== null) {
-        settingsStore.update("obsOutputDirectory", selectedDirectory);
-        setMatchHistoryResetMessage(null);
-      }
-    } catch (error) {
-      settingsStore.setStatusMessage(formatUnknownError(error, "OBS出力フォルダ選択に失敗しました。"));
-    }
-  }
-
   function isLatestAutosaveRequest(requestId: number): boolean {
     return latestAutosaveRequestIdRef.current === requestId;
   }
@@ -767,7 +755,7 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
         <CollapsibleSettingsSection
           sectionKey="advanced"
           title="詳細設定"
-          description="楽曲解禁、音声通知、OBS連携を設定します。"
+          description="楽曲解禁、音声通知、試合履歴データを設定します。"
           icon={<Package size={18} />}
           isOpen={openSections.advanced}
           onToggle={toggleSection}
@@ -982,49 +970,12 @@ export function SettingsPage({ roomJoined, onNavigateToLobby }: SettingsPageProp
         <section className="space-y-6">
           <div className="flex items-center gap-3 border-b border-white/5 pb-4">
             <Database size={20} className="text-cyan-400" />
-            <h2 className="text-sm font-black uppercase tracking-widest text-gray-400">OBS Match History</h2>
+            <h2 className="text-sm font-black uppercase tracking-widest text-gray-400">Match History Data</h2>
           </div>
 
           <div className="max-w-md space-y-4 rounded-2xl border border-white/5 bg-[#252526] p-8">
-            <div className="space-y-2">
-              <label className="text-[10px] font-black uppercase tracking-wider text-gray-500">
-                OBS Output Directory
-              </label>
-              <div className="flex flex-col gap-3 md:flex-row">
-                <input
-                  type="text"
-                  value={draft.obsOutputDirectory}
-                  onChange={(event) => {
-                    settingsStore.update("obsOutputDirectory", event.currentTarget.value);
-                    setMatchHistoryResetMessage(null);
-                  }}
-                  placeholder="C:\\Users\\you\\Documents\\INFINITAS Arena\\obs"
-                  className="flex-1 rounded-xl border border-white/5 bg-[#151515] px-4 py-3 text-sm font-mono text-gray-300 outline-none placeholder:text-gray-600 focus:border-cyan-500"
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    void handleBrowseObsOutputDirectory();
-                  }}
-                  className="flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-[#2d2d30] px-4 py-3 text-sm font-bold text-white transition-all active:scale-95 hover:bg-[#353538]"
-                >
-                  <FolderOpen size={18} />
-                  参照
-                </button>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  settingsStore.update("obsOutputDirectory", "");
-                  setMatchHistoryResetMessage(null);
-                }}
-                className="text-xs font-bold text-gray-500 transition-colors hover:text-white"
-              >
-                既定値に戻す（空欄 = アプリ管理フォルダ）
-              </button>
-            </div>
             <p className="text-sm font-semibold leading-relaxed text-gray-300">
-              OBS向けの試合履歴ファイル（`match_history.json`）を空状態に初期化します。
+              起動中セッションの試合履歴をリセットします。試合履歴ウィンドウは左サイドバーから開けます。
             </p>
             <button
               type="button"

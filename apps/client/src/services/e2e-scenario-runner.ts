@@ -10,14 +10,22 @@ import {
 import { roomStore } from "../stores/room-store";
 import { settingsStore, isRoomEntryReady } from "../stores/settings-store";
 import { sourceStore } from "../stores/source-store";
+import { readMatchHistory } from "./match-history-overlay";
+import { selectActiveMatchHistory } from "./match-history-view-model";
+import { statsArchiveService } from "./stats-archive";
 
 type GetView = () => string;
 
 let runnerStarted = false;
 let roomConnectRequested = false;
+let automationStepInFlight = false;
+let automationStepQueued = false;
 let pickRequestInFlight = false;
 let lastStateSignature: string | null = null;
 let lastFailureSignature: string | null = null;
+let readyRequestedKey: string | null = null;
+let startMatchRequestedKey: string | null = null;
+let pickRequestedKey: string | null = null;
 const completedMatchIds = new Set<string>();
 let returnToLobbyRequestedForMatchId: string | null = null;
 const stopSubscriptions: (() => void)[] = [];
@@ -77,10 +85,26 @@ function buildStateSignature(snapshot: RoomStateSnapshot | null): string {
   ].join("|");
 }
 
+function buildMatchActionKey(snapshot: RoomStateSnapshot, activePlayerId: string, action: string): string {
+  const matchId = snapshot.current_match_id ?? snapshot.room_id;
+  return [
+    snapshot.room_id,
+    String(snapshot.generation ?? "na"),
+    matchId,
+    activePlayerId,
+    action,
+  ].join(":");
+}
+
+function getRequiredPickCountForPlayer(snapshot: RoomStateSnapshot): number {
+  return snapshot.settings.mode === "BPL4" ? 2 : 1;
+}
+
 function buildStateDumpPayload(activeView: string) {
   const roomState = roomStore.getState();
   const sourceState = sourceStore.getState();
   const settingsState = settingsStore.getState();
+  const matchHistory = readMatchHistory();
 
   return {
     activeView,
@@ -97,6 +121,8 @@ function buildStateDumpPayload(activeView: string) {
     activeUnresolvedDialog: sourceState.activeUnresolvedDialog,
     datasource: settingsState.saved.source,
     sourcePaths: settingsState.saved.sourcePaths,
+    matchHistory,
+    activeMatchHistory: selectActiveMatchHistory(matchHistory),
     e2e: runtimeConfig.e2e,
   };
 }
@@ -170,18 +196,33 @@ async function maybeAutoReadyAndStart(): Promise<void> {
   const roomState = roomStore.getState();
   const snapshot = roomState.snapshot;
   if (snapshot === null || snapshot.room_state !== "LOBBY") {
+    readyRequestedKey = null;
+    startMatchRequestedKey = null;
     return;
   }
 
   const activePlayerId = getActivePlayerId();
   const me = snapshot.players.find((player) => player.player_id === activePlayerId);
   if (me && !me.ready) {
-    roomStore.setReady(true);
+    const readyKey = buildMatchActionKey(snapshot, activePlayerId, "ready");
+    if (readyRequestedKey === readyKey) {
+      return;
+    }
+    if (roomStore.setReady(true)) {
+      readyRequestedKey = readyKey;
+    }
     return;
   }
+  readyRequestedKey = null;
 
   if (activePlayerId === snapshot.host_player_id && canAutoStartMatch(snapshot, activePlayerId)) {
-    roomStore.startMatch();
+    const startKey = buildMatchActionKey(snapshot, activePlayerId, "start");
+    if (startMatchRequestedKey === startKey) {
+      return;
+    }
+    if (roomStore.startMatch()) {
+      startMatchRequestedKey = startKey;
+    }
   }
 }
 
@@ -197,15 +238,26 @@ async function maybeAutoPick(): Promise<void> {
   const roomState = roomStore.getState();
   const snapshot = roomState.snapshot;
   if (snapshot === null || snapshot.room_state !== "PICKING" || pickRequestInFlight) {
+    if (snapshot?.room_state !== "PICKING") {
+      pickRequestedKey = null;
+    }
     return;
   }
 
   const activePlayerId = getActivePlayerId();
-  if (snapshot.picks.some((pick) => pick.player_id === activePlayerId)) {
+  const ownPickCount = snapshot.picks.filter((pick) => pick.player_id === activePlayerId).length;
+  if (ownPickCount >= getRequiredPickCountForPlayer(snapshot)) {
+    pickRequestedKey = null;
+    return;
+  }
+
+  const pickKey = buildMatchActionKey(snapshot, activePlayerId, `pick:${ownPickCount}`);
+  if (pickRequestedKey === pickKey) {
     return;
   }
 
   pickRequestInFlight = true;
+  pickRequestedKey = pickKey;
   try {
     const settings = settingsStore.getState().saved;
     const response = await listRoomCharts(
@@ -219,6 +271,7 @@ async function maybeAutoPick(): Promise<void> {
       response.charts[0];
 
     if (!nextChart) {
+      pickRequestedKey = null;
       await logE2EEvent("auto_pick_failed", {
         roomId: snapshot.room_id,
         reason: "no chart candidates from room chart search",
@@ -226,8 +279,11 @@ async function maybeAutoPick(): Promise<void> {
       return;
     }
 
-    roomStore.submitPick(nextChart.chart_key);
+    if (!roomStore.submitPick(nextChart.chart_key)) {
+      pickRequestedKey = null;
+    }
   } catch (error) {
+    pickRequestedKey = null;
     await logE2EEvent("auto_pick_failed", {
       roomId: snapshot.room_id,
       reason: error instanceof Error ? error.message : "unknown error",
@@ -299,20 +355,38 @@ async function maybeAutoReturnToLobbyForRematch(): Promise<void> {
 }
 
 async function runAutomationStep(getView: GetView): Promise<void> {
-  await ensureRoomConnected();
-  await maybeAutoReadyAndStart();
-  await maybeAutoPick();
-  await maybeAutoReturnToLobbyForRematch();
-  await updateStateDump(getView(), "automation_step");
-  await maybeCaptureFailure(getView());
+  if (automationStepInFlight) {
+    automationStepQueued = true;
+    return;
+  }
+
+  automationStepInFlight = true;
+  try {
+    do {
+      automationStepQueued = false;
+      await ensureRoomConnected();
+      await maybeAutoReadyAndStart();
+      await maybeAutoPick();
+      await maybeAutoReturnToLobbyForRematch();
+      await updateStateDump(getView(), "automation_step");
+      await maybeCaptureFailure(getView());
+    } while (automationStepQueued);
+  } finally {
+    automationStepInFlight = false;
+  }
 }
 
 function clearRunnerState(): void {
   runnerStarted = false;
   roomConnectRequested = false;
+  automationStepInFlight = false;
+  automationStepQueued = false;
   pickRequestInFlight = false;
   lastStateSignature = null;
   lastFailureSignature = null;
+  readyRequestedKey = null;
+  startMatchRequestedKey = null;
+  pickRequestedKey = null;
   completedMatchIds.clear();
   returnToLobbyRequestedForMatchId = null;
   while (stopSubscriptions.length > 0) {
@@ -350,6 +424,11 @@ export function startE2EScenarioRunner(getView: GetView): () => void {
   stopSubscriptions.push(
     sourceStore.subscribe(() => {
       void updateStateDump(getView(), "source_state_changed");
+    }),
+  );
+  stopSubscriptions.push(
+    statsArchiveService.subscribe(() => {
+      void updateStateDump(getView(), "stats_archive_changed");
     }),
   );
 

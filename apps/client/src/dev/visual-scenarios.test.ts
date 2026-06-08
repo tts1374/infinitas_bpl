@@ -2,9 +2,19 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   VISUAL_SCENARIO_IDS,
+  MATCH_HISTORY_WINDOW_VISUAL_FIXTURE,
   findVisualScenarioChartByChartKey,
   getVisualScenario,
 } from "./visual-scenarios";
+
+test("match history window fixture covers ARENA and BPL cards", () => {
+  assert.deepEqual(
+    MATCH_HISTORY_WINDOW_VISUAL_FIXTURE.matches.map((match) => match.mode),
+    ["ARENA", "BPL"],
+  );
+  assert.equal(MATCH_HISTORY_WINDOW_VISUAL_FIXTURE.matches[0]?.charts.length, 2);
+  assert.equal(MATCH_HISTORY_WINDOW_VISUAL_FIXTURE.matches[1]?.summary.bpl_result, "WIN");
+});
 
 test("cut-in visual scenarios are listed", () => {
   assert.equal(VISUAL_SCENARIO_IDS.includes("bpl-cut-in"), true);

@@ -36,6 +36,9 @@ import {
   type StatsSourceMeta,
 } from "./models";
 
+const BPL_ROUNDS = 3;
+const BPL4_ROUNDS = 4;
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
 }
@@ -993,10 +996,11 @@ function deriveBplMatchRecord(
   const opponent = snapshot.players.find((player) => player.player_id !== myPlayerId) ?? null;
   const selfTotal = matchGames.reduce((sum, game) => sum + game.round_point, 0);
   const opponentTotal = matchGames.length - selfTotal;
+  const expectedRounds = session.settings.mode === "BPL4" ? BPL4_ROUNDS : BPL_ROUNDS;
   const isComplete =
     snapshot.close_reason === "ALL_ROUNDS_COMPLETED" &&
-    snapshot.frozen_rounds.length === 3 &&
-    matchGames.length === 3;
+    snapshot.frozen_rounds.length === expectedRounds &&
+    matchGames.length === expectedRounds;
   const matchResult =
     selfTotal > opponentTotal ? "WIN" : selfTotal < opponentTotal ? "LOSE" : "DRAW";
   const invalidReason =

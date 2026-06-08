@@ -17,7 +17,7 @@ import { startE2EScenarioRunner } from "../services/e2e-scenario-runner";
 import { runtimeConfig } from "../runtime/runtime-config";
 import { statsArchiveService } from "../services/stats-archive";
 import { logClientShareAnalytics } from "../services/share-analytics";
-import { getCurrentDeepLinkUrls, listenToDeepLinkUrls } from "../services/tauri-bridge";
+import { getCurrentDeepLinkUrls, listenToDeepLinkUrls, showMatchHistoryWindow } from "../services/tauri-bridge";
 import { voiceAnnouncerService } from "../services/voice-announcer";
 import { lobbyStore } from "../stores/lobby-store";
 import { roomStore, useRoomStore } from "../stores/room-store";
@@ -68,6 +68,7 @@ export function App() {
   const [pendingDeepLinkRoomId, setPendingDeepLinkRoomId] = useState<string | null>(null);
   const [pendingRecoveryJoin, setPendingRecoveryJoin] = useState<{ roomId: string; joinCode: string } | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isOpeningMatchHistory, setIsOpeningMatchHistory] = useState(false);
   const [mockScenario] = useState(() =>
     runtimeConfig.mockScenarioId ? getVisualScenario(runtimeConfig.mockScenarioId) : null,
   );
@@ -410,6 +411,17 @@ export function App() {
     sourceStore.resolveActiveUnresolvedDialog(action);
   }
 
+  async function handleOpenMatchHistory(): Promise<void> {
+    setIsOpeningMatchHistory(true);
+    try {
+      await showMatchHistoryWindow();
+    } catch {
+      setToastMessage("試合履歴ウィンドウを開けませんでした。");
+    } finally {
+      setIsOpeningMatchHistory(false);
+    }
+  }
+
   async function handleCapture(): Promise<void> {
     const captureRoot = document.getElementById("visual-capture-root");
     if (!(captureRoot instanceof HTMLElement)) {
@@ -446,7 +458,17 @@ export function App() {
 
   return (
     <main className="flex h-screen w-screen overflow-hidden bg-[#1e1e1e]">
-      {activeView !== "room" && activeView !== "automatch" ? <AppSidebar activeView={activeView} hasRoom={roomSnapshot !== null} onNavigate={navigate} /> : null}
+      {activeView !== "room" && activeView !== "automatch" ? (
+        <AppSidebar
+          activeView={activeView}
+          hasRoom={roomSnapshot !== null}
+          isOpeningMatchHistory={isOpeningMatchHistory}
+          onNavigate={navigate}
+          onOpenMatchHistory={() => {
+            void handleOpenMatchHistory();
+          }}
+        />
+      ) : null}
 
       <section className={activeView === "room" || activeView === "automatch" ? "relative min-w-0 flex-1 overflow-hidden" : "custom-scrollbar relative min-w-0 flex-1 overflow-y-auto p-8"}>
         {activeView === "lobby" ? (

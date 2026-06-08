@@ -2,6 +2,6 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main-capability",
   "description": "Capability for the main window",
-  "windows": ["main"],
+  "windows": ["main", "match-history"],
   "permissions": ["core:default", "tts:default", "updater:default", "deep-link:default", "opener:default"]
 }
