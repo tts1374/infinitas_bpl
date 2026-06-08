@@ -1,4 +1,4 @@
-import { AppWindow, Download, Eye, LoaderCircle, RefreshCw, TriangleAlert } from "lucide-react";
+import { AppWindow, Download, LoaderCircle, RefreshCw, TriangleAlert } from "lucide-react";
 import type { FC } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { attemptOpenDeepLink, buildJoinDeepLink } from "../lib/deeplink";
@@ -59,11 +59,6 @@ export const JoinPage: FC = () => {
   const [summary, setSummary] = useState<JoinRoomSummary>(fallbackSummary);
   const [isLoading, setIsLoading] = useState<boolean>(Boolean(roomRef));
   const [deepLinkState, setDeepLinkState] = useState<DeepLinkUiState>("idle");
-  const spectateUrl = useMemo(
-    () => `${WEB_RUNTIME.basePath}spectate/?r=${encodeURIComponent(roomRef)}`,
-    [roomRef],
-  );
-
   const statusMeta = statusMetaMap[summary.status];
 
   const openInApp = useCallback(async (trigger: "auto" | "manual"): Promise<void> => {
@@ -164,7 +159,7 @@ export const JoinPage: FC = () => {
         <header className="rounded-3xl border border-white/10 bg-[#15151A] p-8 shadow-[0_20px_40px_rgba(0,0,0,0.35)]">
           <p className="mb-3 text-sm uppercase tracking-widest text-cyan-300">INFINITAS Arena Join</p>
           <h1 className="mb-4 text-3xl font-black md:text-4xl">参加ページ</h1>
-          <p className="text-sm leading-relaxed text-gray-300 md:text-base">ルーム状態を確認して、アプリ参加またはブラウザ観戦へ進みます。</p>
+          <p className="text-sm leading-relaxed text-gray-300 md:text-base">ルーム状態を確認して、アプリ参加へ進みます。観戦はアプリ内の観戦モードを使用してください。</p>
         </header>
 
         <section className="rounded-3xl border border-cyan-500/20 bg-[#101018] p-8 shadow-[0_0_35px_rgba(6,182,212,0.12)]">
@@ -230,13 +225,6 @@ export const JoinPage: FC = () => {
               再試行
             </button>
 
-            <a
-              href={spectateUrl}
-              className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-6 py-3 font-semibold text-emerald-100 transition-colors hover:bg-emerald-500/20"
-            >
-              <Eye size={16} />
-              ブラウザ観戦
-            </a>
           </div>
 
           <p className="mt-4 text-sm text-gray-300">{deepLinkMessage}</p>
@@ -259,7 +247,7 @@ export const JoinPage: FC = () => {
           <ol className="space-y-3 text-sm leading-relaxed text-gray-300">
             <li>1. 「アプリで開く」で参加します。</li>
             <li>2. アプリ未導入なら「ダウンロード」からインストールします。</li>
-            <li>3. 観戦したい場合は「ブラウザ観戦」を選びます。</li>
+            <li>3. 観戦したい場合は、アプリ内の観戦モードで Room ID を入力します。</li>
           </ol>
         </section>
 
