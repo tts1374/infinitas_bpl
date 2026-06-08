@@ -8,6 +8,7 @@ import { SourceUnresolvedDialog } from "../components/SourceUnresolvedDialog";
 import { LobbyPage } from "../pages/LobbyPage";
 import { RoomPage } from "../pages/RoomPage";
 import { SettingsPage } from "../pages/SettingsPage";
+import { SpectatorPage } from "../pages/SpectatorPage";
 import { StatsPage } from "../pages/StatsPage";
 import { AutoMatchPage } from "../pages/AutoMatchPage";
 import { localResultArchiveService } from "../services/result-archive";
@@ -494,6 +495,7 @@ export function App() {
             }}
           />
         ) : null}
+        {activeView === "spectate" ? <SpectatorPage /> : null}
         {activeView === "room" ? <RoomPage /> : null}
         {activeView === "automatch" ? (
           <AutoMatchPage

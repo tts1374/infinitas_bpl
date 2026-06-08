@@ -7,7 +7,7 @@
     "dev": "vite --host 0.0.0.0 --port 1420",
     "build": "vite build",
     "build:test": "vite build --mode test",
-    "test": "tsx --test src/dev/visual-scenarios.test.ts src/features/room/picking-countdown-display.test.tsx src/features/room/picking-countdown.test.ts src/features/room/presentation-shared.test.ts src/features/room/quick-chat.test.ts src/features/room/round-phase.test.ts src/pages/auto-match-waiting-count-polling.test.ts src/services/match-history-overlay.test.ts src/services/worker-api-client.test.ts",
+    "test": "tsx --test src/dev/visual-scenarios.test.ts src/features/room/picking-countdown-display.test.tsx src/features/room/picking-countdown.test.ts src/features/room/presentation-shared.test.ts src/features/room/quick-chat.test.ts src/features/room/round-phase.test.ts src/pages/auto-match-waiting-count-polling.test.ts src/services/match-history-overlay.test.ts src/services/spectator-client.test.ts src/services/worker-api-client.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
