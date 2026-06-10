@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { BarChart2, Eye, Gamepad2, History, Home, Loader2, Settings } from "lucide-react";
+import { BarChart2, Gamepad2, History, Home, Loader2, Settings } from "lucide-react";
 
 export type AppView = "lobby" | "settings" | "room" | "stats" | "automatch" | "spectate";
 
@@ -34,13 +34,6 @@ export function AppSidebar({
           onClick={() => onNavigate("stats")}
         >
           <BarChart2 size={24} />
-        </SidebarButton>
-        <SidebarButton
-          active={activeView === "spectate"}
-          label="Spectate"
-          onClick={() => onNavigate("spectate")}
-        >
-          <Eye size={24} />
         </SidebarButton>
         <SidebarButton
           active={false}

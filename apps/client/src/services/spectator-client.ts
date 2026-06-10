@@ -46,6 +46,19 @@ export function buildSpectatorJoinMessage(input: {
   };
 }
 
+export function buildSpectatorStateGetMessage(input: {
+  roomId: string;
+  spectatorId: string;
+}): ClientMessage<"STATE_GET"> {
+  return {
+    type: "STATE_GET",
+    client_msg_id: crypto.randomUUID(),
+    room_id: input.roomId,
+    player_id: input.spectatorId,
+    payload: {},
+  };
+}
+
 export function applySpectatorRoundConfirmation(
   snapshot: RoomStateSnapshot,
   payload: ServerMessagePayloadMap["PLAYER_ROUND_CONFIRMED"],

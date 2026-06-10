@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildSpectatorJoinMessage, buildSpectatorWebSocketUrl, upsertFinalResultHistory } from "./spectator-client";
+import {
+  buildSpectatorJoinMessage,
+  buildSpectatorStateGetMessage,
+  buildSpectatorWebSocketUrl,
+  upsertFinalResultHistory,
+} from "./spectator-client";
 import type { ResultReadyPayload } from "@infinitas/shared";
 
 const originalRandomUUID = globalThis.crypto.randomUUID;
@@ -47,6 +52,23 @@ test("buildSpectatorJoinMessage omits empty join code", () => {
   });
 
   assert.equal("join_code" in message.payload, false);
+});
+
+test("buildSpectatorStateGetMessage sends an empty state refresh payload", () => {
+  Object.defineProperty(globalThis.crypto, "randomUUID", {
+    configurable: true,
+    value: () => "00000000-0000-4000-8000-000000000002",
+  });
+
+  const message = buildSpectatorStateGetMessage({
+    roomId: "room-1",
+    spectatorId: "spectator-1",
+  });
+
+  assert.equal(message.type, "STATE_GET");
+  assert.equal(message.room_id, "room-1");
+  assert.equal(message.player_id, "spectator-1");
+  assert.deepEqual(message.payload, {});
 });
 
 test("buildSpectatorWebSocketUrl maps http and https API URLs to ws URLs", () => {
