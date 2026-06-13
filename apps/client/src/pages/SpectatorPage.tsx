@@ -9,12 +9,17 @@ import {
 import { Eye, Loader2, LogOut, Radio, RefreshCcw, ShieldAlert, Trophy } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  applySpectatorSnapshotTransition,
   applySpectatorRoundConfirmation,
   buildSpectatorJoinMessage,
   buildSpectatorStateGetMessage,
   buildSpectatorWebSocketUrl,
   type FinalResultHistoryItem,
+  getSpectatorConfirmationLabel,
+  getSpectatorRoundDisplay,
+  rankCurrentPlayers,
   rankFinalPlayers,
+  resetSpectatorSnapshotState,
   type SpectatorConnectionState,
   upsertFinalResultHistory,
 } from "../services/spectator-client";
@@ -114,41 +119,6 @@ function latestResultTitle(result: ResultReadyPayload | null): string {
   return result.summary.winner_player_ids.length > 0 ? "勝敗確定" : "結果確定";
 }
 
-function rankCurrentPlayers(snapshot: RoomStateSnapshot) {
-  const confirmedByPlayer = new Map(
-    (snapshot.current_round?.confirmed ?? []).map((entry) => [entry.player_id, entry]),
-  );
-  const descending = snapshot.settings.win_metric === "SCORE";
-  const sorted = snapshot.players
-    .map((player) => ({
-      player,
-      confirmed: confirmedByPlayer.get(player.player_id) ?? null,
-    }))
-    .sort((left, right) => {
-      const leftMetric = left.confirmed?.metric_value;
-      const rightMetric = right.confirmed?.metric_value;
-      if (leftMetric === null || leftMetric === undefined) {
-        return rightMetric === null || rightMetric === undefined ? 0 : 1;
-      }
-      if (rightMetric === null || rightMetric === undefined) {
-        return -1;
-      }
-      return descending ? rightMetric - leftMetric : leftMetric - rightMetric;
-    });
-
-  let previousMetric: number | null = null;
-  let previousRank = 0;
-  return sorted.map((entry, index) => {
-    const metric = entry.confirmed?.metric_value ?? null;
-    const rank = metric === null ? null : metric === previousMetric ? previousRank : index + 1;
-    if (metric !== null) {
-      previousMetric = metric;
-      previousRank = rank ?? index + 1;
-    }
-    return { ...entry, rank };
-  });
-}
-
 function finalPlayerSummary(player: ResultReadyPlayer): string {
   if ("total_points" in player) {
     return `合計 ${player.total_points} pt / EX SCORE ${player.total_ex_score ?? "-"}`;
@@ -162,15 +132,29 @@ export function SpectatorPage({ roomId, initialJoinCode, onReturnToLobby }: Spec
   const [connectionState, setConnectionState] = useState<SpectatorConnectionState>("idle");
   const [connectionMessage, setConnectionMessage] = useState("観戦接続を準備しています。");
   const [snapshot, setSnapshot] = useState<RoomStateSnapshot | null>(null);
+  const [retainedSnapshot, setRetainedSnapshot] = useState<RoomStateSnapshot | null>(null);
   const [finalResults, setFinalResults] = useState<FinalResultHistoryItem[]>([]);
   const socketRef = useRef<WebSocket | null>(null);
   const snapshotRef = useRef<RoomStateSnapshot | null>(null);
+  const retainedSnapshotRef = useRef<RoomStateSnapshot | null>(null);
   const joinCodeRef = useRef(initialJoinCode ?? "");
   const spectatorId = useMemo(() => `spectator-${crypto.randomUUID()}`, []);
   const isConnecting = connectionState === "connecting";
   const isJoined = connectionState === "joined";
-  const currentRound = snapshot?.current_round ?? null;
-  const rankedPlayers = useMemo(() => (snapshot === null ? [] : rankCurrentPlayers(snapshot)), [snapshot]);
+  const displaySnapshot = retainedSnapshot ?? snapshot;
+  const currentRound = displaySnapshot?.current_round ?? null;
+  const currentRoundDisplay = useMemo(
+    () => (displaySnapshot === null ? null : getSpectatorRoundDisplay(displaySnapshot)),
+    [displaySnapshot],
+  );
+  const rankedPlayers = useMemo(
+    () => (displaySnapshot === null || snapshot === null ? [] : rankCurrentPlayers(displaySnapshot, snapshot)),
+    [displaySnapshot, snapshot],
+  );
+  const isShowingPreviousRoundResult =
+    retainedSnapshot !== null &&
+    snapshot !== null &&
+    retainedSnapshot.current_round?.round_index !== snapshot.current_round?.round_index;
   const latestResult = finalResults[0]?.payload ?? null;
 
   const closeSocket = useCallback((code: number, reason: string): void => {
@@ -182,14 +166,26 @@ export function SpectatorPage({ roomId, initialJoinCode, onReturnToLobby }: Spec
   }, []);
 
   const applySnapshot = useCallback((nextSnapshot: RoomStateSnapshot): void => {
-    snapshotRef.current = nextSnapshot;
-    setSnapshot(nextSnapshot);
+    const nextState = applySpectatorSnapshotTransition(
+      {
+        snapshot: snapshotRef.current,
+        retainedSnapshot: retainedSnapshotRef.current,
+      },
+      nextSnapshot,
+    );
+    retainedSnapshotRef.current = nextState.retainedSnapshot;
+    setRetainedSnapshot(nextState.retainedSnapshot);
+    snapshotRef.current = nextState.snapshot;
+    setSnapshot(nextState.snapshot);
   }, []);
 
   const connect = useCallback((): void => {
     closeSocket(1000, "Reconnect requested.");
-    snapshotRef.current = null;
-    setSnapshot(null);
+    const resetState = resetSpectatorSnapshotState();
+    snapshotRef.current = resetState.snapshot;
+    retainedSnapshotRef.current = resetState.retainedSnapshot;
+    setSnapshot(resetState.snapshot);
+    setRetainedSnapshot(resetState.retainedSnapshot);
     setConnectionState("connecting");
     setConnectionMessage("観戦接続中...");
 
@@ -433,6 +429,9 @@ export function SpectatorPage({ roomId, initialJoinCode, onReturnToLobby }: Spec
 
             <div className="mb-6 border-l-4 border-cyan-400 bg-black/20 p-5">
               <p className="mb-2 text-[10px] font-black tracking-[0.25em] text-cyan-300">現在のラウンド</p>
+              {isShowingPreviousRoundResult ? (
+                <p className="mb-2 text-xs font-bold text-gray-500">直前ラウンド結果を保持中（次ラウンドの提出開始まで）</p>
+              ) : null}
               {currentRound === null ? (
                 <p className="text-sm font-bold text-gray-400">現在進行中のラウンドはありません。</p>
               ) : (
@@ -442,9 +441,12 @@ export function SpectatorPage({ roomId, initialJoinCode, onReturnToLobby }: Spec
                     <span className="rounded border border-red-400/30 bg-red-500/10 px-2 py-0.5 text-[10px] font-black text-red-300">
                       {currentRound.expected_key.difficulty}
                     </span>
+                    <span className="text-[10px] font-bold text-gray-400">
+                      {currentRoundDisplay?.level === null || currentRoundDisplay === null ? "-" : `☆${currentRoundDisplay.level}`}
+                    </span>
                     <span className="font-mono text-xs text-gray-500">第 {currentRound.round_index + 1} ラウンド</span>
                   </div>
-                  <p className="text-2xl font-black tracking-tight">{currentRound.expected_key.title_search_key}</p>
+                  <p className="text-2xl font-black tracking-tight">{currentRoundDisplay?.title ?? currentRound.expected_key.title_search_key}</p>
                 </div>
               )}
             </div>
@@ -458,10 +460,14 @@ export function SpectatorPage({ roomId, initialJoinCode, onReturnToLobby }: Spec
                     <p className="truncate text-sm font-black text-white">{player.display_name}</p>
                     <p className="text-[10px] font-bold text-gray-600">{player.connected ? "接続中" : "切断中"}</p>
                   </div>
-                  <span className="text-xs font-bold text-gray-400">{confirmed === null ? "結果待ち" : "確定済み"}</span>
+                  <span className="text-xs font-bold text-gray-400">
+                    {getSpectatorConfirmationLabel(confirmed)}
+                  </span>
                   <div className="text-right">
-                    <p className="text-[10px] font-black text-gray-500">{snapshot.settings.win_metric === "MISSCOUNT" ? "BP" : "EX SCORE"}</p>
-                    <p className="font-mono text-lg font-black text-cyan-200">{confirmed?.metric_value ?? "-"}</p>
+                    <p className="text-[10px] font-black text-gray-500">{displaySnapshot?.settings.win_metric === "MISSCOUNT" ? "BP" : "EX SCORE"}</p>
+                    <p className="font-mono text-lg font-black text-cyan-200">
+                      {confirmed?.status === "PLAYED" ? confirmed.metric_value : "-"}
+                    </p>
                   </div>
                 </div>
               ))}

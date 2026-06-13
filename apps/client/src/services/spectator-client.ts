@@ -22,6 +22,22 @@ export interface RankedFinalPlayer {
   rank: number;
 }
 
+export interface RankedCurrentPlayer {
+  player: RoomStateSnapshot["players"][number];
+  confirmed: CurrentRoundConfirmedPlayer | null;
+  rank: number | null;
+}
+
+export interface SpectatorRoundDisplay {
+  title: string;
+  level: number | null;
+}
+
+export interface SpectatorSnapshotState {
+  snapshot: RoomStateSnapshot | null;
+  retainedSnapshot: RoomStateSnapshot | null;
+}
+
 const APP_VERSION = typeof clientPackageJson.version === "string" ? clientPackageJson.version : "unknown";
 
 export function buildSpectatorWebSocketUrl(apiBaseUrl: string, roomId: string): string {
@@ -99,6 +115,139 @@ export function applySpectatorRoundConfirmation(
       confirmed: nextConfirmed,
     },
   };
+}
+
+export function resolveRetainedSpectatorSnapshot(
+  previousSnapshot: RoomStateSnapshot | null,
+  retainedSnapshot: RoomStateSnapshot | null,
+  nextSnapshot: RoomStateSnapshot,
+): RoomStateSnapshot | null {
+  const previousMatchId = previousSnapshot?.current_match_id ?? null;
+  const nextMatchId = nextSnapshot.current_match_id ?? null;
+  if (previousMatchId !== null && nextMatchId !== null && previousMatchId !== nextMatchId) {
+    return null;
+  }
+
+  const previousRoundIndex = previousSnapshot?.current_round?.round_index ?? null;
+  const nextRoundIndex = nextSnapshot.current_round?.round_index ?? null;
+  const previousHadConfirmed = (previousSnapshot?.current_round?.confirmed.length ?? 0) > 0;
+  const roundAdvanced =
+    previousRoundIndex !== null &&
+    nextRoundIndex !== null &&
+    nextRoundIndex > previousRoundIndex;
+  const movedToResult =
+    previousRoundIndex !== null &&
+    nextRoundIndex === null &&
+    nextSnapshot.room_state === "RESULT";
+  const nextRetained =
+    (roundAdvanced || movedToResult) && previousHadConfirmed && previousSnapshot !== null
+      ? previousSnapshot
+      : retainedSnapshot;
+
+  if (nextRetained === null) {
+    return null;
+  }
+
+  const retainedRoundIndex = nextRetained.current_round?.round_index ?? null;
+  const liveHasProgress = (nextSnapshot.current_round?.confirmed.length ?? 0) > 0;
+  if (retainedRoundIndex !== nextRoundIndex && liveHasProgress) {
+    return null;
+  }
+  if (nextSnapshot.room_state === "LOBBY" && nextSnapshot.current_round === null) {
+    return null;
+  }
+
+  return nextRetained;
+}
+
+export function applySpectatorSnapshotTransition(
+  state: SpectatorSnapshotState,
+  nextSnapshot: RoomStateSnapshot,
+): SpectatorSnapshotState {
+  return {
+    snapshot: nextSnapshot,
+    retainedSnapshot: resolveRetainedSpectatorSnapshot(
+      state.snapshot,
+      state.retainedSnapshot,
+      nextSnapshot,
+    ),
+  };
+}
+
+export function resetSpectatorSnapshotState(): SpectatorSnapshotState {
+  return {
+    snapshot: null,
+    retainedSnapshot: null,
+  };
+}
+
+export function getSpectatorRoundDisplay(snapshot: RoomStateSnapshot): SpectatorRoundDisplay | null {
+  const currentRound = snapshot.current_round;
+  if (currentRound === null) {
+    return null;
+  }
+
+  const frozenRound = snapshot.frozen_rounds.find((round) => round.round_index === currentRound.round_index);
+  return {
+    title: frozenRound?.display.title.trim().length
+      ? frozenRound.display.title
+      : currentRound.expected_key.title_search_key,
+    level: frozenRound?.display.level ?? null,
+  };
+}
+
+export function getSpectatorConfirmationLabel(
+  confirmed: CurrentRoundConfirmedPlayer | null,
+): "結果待ち" | "確定済み" | "スキップ" | "タイムアウト" {
+  switch (confirmed?.status) {
+    case "PLAYED":
+      return "確定済み";
+    case "SKIPPED":
+      return "スキップ";
+    case "TIMEOUT":
+      return "タイムアウト";
+    default:
+      return "結果待ち";
+  }
+}
+
+export function rankCurrentPlayers(
+  snapshot: RoomStateSnapshot,
+  liveSnapshot: RoomStateSnapshot = snapshot,
+): RankedCurrentPlayer[] {
+  const confirmedByPlayer = new Map(
+    (snapshot.current_round?.confirmed ?? []).map((entry) => [entry.player_id, entry]),
+  );
+  const livePlayerById = new Map(liveSnapshot.players.map((player) => [player.player_id, player]));
+  const descending = snapshot.settings.win_metric === "SCORE";
+  const rows = snapshot.players.map((player) => ({
+    player: livePlayerById.get(player.player_id) ?? player,
+    confirmed: confirmedByPlayer.get(player.player_id) ?? null,
+    rank: null,
+  }));
+  const playedRows = rows
+    .filter((entry) => entry.confirmed?.status === "PLAYED")
+    .sort((left, right) => {
+      const leftMetric = left.confirmed?.metric_value ?? 0;
+      const rightMetric = right.confirmed?.metric_value ?? 0;
+      return descending ? rightMetric - leftMetric : leftMetric - rightMetric;
+    });
+
+  let previousMetric: number | null = null;
+  let previousRank = 0;
+  const rankedPlayedRows = playedRows.map((entry, index) => {
+    const metric = entry.confirmed?.metric_value ?? 0;
+    const rank = metric === previousMetric ? previousRank : index + 1;
+    previousMetric = metric;
+    previousRank = rank;
+    return { ...entry, rank };
+  });
+  const rankedByPlayer = new Map(rankedPlayedRows.map((entry) => [entry.player.player_id, entry]));
+
+  return [
+    ...rankedPlayedRows,
+    ...rows.filter((entry) => !rankedByPlayer.has(entry.player.player_id)),
+  ];
 }
 
 export function upsertFinalResultHistory(
