@@ -4,9 +4,10 @@ import {
   buildSpectatorJoinMessage,
   buildSpectatorStateGetMessage,
   buildSpectatorWebSocketUrl,
+  rankFinalPlayers,
   upsertFinalResultHistory,
 } from "./spectator-client";
-import type { ResultReadyPayload } from "@infinitas/shared";
+import type { ResultReadyPayload, ResultReadyPlayer } from "@infinitas/shared";
 
 const originalRandomUUID = globalThis.crypto.randomUUID;
 
@@ -102,6 +103,101 @@ test("upsertFinalResultHistory deduplicates by match id", () => {
   assert.deepEqual(history.map((item) => item.payload.summary.match_id), ["match-1", "match-2"]);
   assert.equal(history[0]?.receivedAtIso, "2026-06-01T00:02:00.000Z");
 });
+
+test("rankFinalPlayers gives tied BPL round wins the same competition rank", () => {
+  const players = [
+    createBplPlayer("third", 1),
+    createBplPlayer("first-a", 2),
+    createBplPlayer("first-b", 2),
+  ] satisfies ResultReadyPlayer[];
+
+  assert.deepEqual(
+    rankFinalPlayers(players).map(({ player, rank }) => [player.player_id, rank]),
+    [
+      ["first-a", 1],
+      ["first-b", 1],
+      ["third", 3],
+    ],
+  );
+});
+
+test("rankFinalPlayers preserves ARENA tie-break order and shared ranks", () => {
+  const players = [
+    createArenaPlayer("fourth", 2, 2000, "2026-06-01T00:00:00.000Z"),
+    createArenaPlayer("third", 4, 1000, "2026-06-01T00:03:00.000Z"),
+    createArenaPlayer("first-a", 4, 1000, "2026-06-01T00:02:00.000Z"),
+    createArenaPlayer("first-b", 4, 1000, "2026-06-01T00:02:00.000Z"),
+  ] satisfies ResultReadyPlayer[];
+
+  assert.deepEqual(
+    rankFinalPlayers(players).map(({ player, rank }) => [player.player_id, rank]),
+    [
+      ["first-a", 1],
+      ["first-b", 1],
+      ["third", 3],
+      ["fourth", 4],
+    ],
+  );
+});
+
+test("rankFinalPlayers skips ARENA EX SCORE tie-break when any tied player lacks it", () => {
+  const players = [
+    createArenaPlayer("first-a", 4, 2000, "2026-06-01T00:02:00.000Z"),
+    createArenaPlayer("first-b", 4, null, "2026-06-01T00:02:00.000Z"),
+    createArenaPlayer("third", 2, 3000, "2026-06-01T00:01:00.000Z"),
+  ] satisfies ResultReadyPlayer[];
+
+  assert.deepEqual(
+    rankFinalPlayers(players).map(({ player, rank }) => [player.player_id, rank]),
+    [
+      ["first-a", 1],
+      ["first-b", 1],
+      ["third", 3],
+    ],
+  );
+});
+
+test("rankFinalPlayers skips ARENA timestamp tie-break when any remaining tied player lacks it", () => {
+  const players = [
+    createArenaPlayer("first-a", 4, 2000, "2026-06-01T00:02:00.000Z"),
+    createArenaPlayer("first-b", 4, 2000, null),
+    createArenaPlayer("third", 2, 3000, "2026-06-01T00:01:00.000Z"),
+  ] satisfies ResultReadyPlayer[];
+
+  assert.deepEqual(
+    rankFinalPlayers(players).map(({ player, rank }) => [player.player_id, rank]),
+    [
+      ["first-a", 1],
+      ["first-b", 1],
+      ["third", 3],
+    ],
+  );
+});
+
+function createBplPlayer(playerId: string, roundWins: number): ResultReadyPlayer {
+  return {
+    player_id: playerId,
+    display_name: playerId,
+    round_wins: roundWins,
+    rounds: [],
+  };
+}
+
+function createArenaPlayer(
+  playerId: string,
+  totalPoints: number,
+  totalExScore: number | null,
+  lastConfirmedAt: string | null,
+): ResultReadyPlayer {
+  return {
+    player_id: playerId,
+    display_name: playerId,
+    total_points: totalPoints,
+    total_ex_score: totalExScore,
+    last_confirmed_at: lastConfirmedAt,
+    rounds: [],
+  };
+}
 
 function createResult(matchId: string): ResultReadyPayload {
   return {

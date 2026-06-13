@@ -14,6 +14,7 @@ import {
   buildSpectatorStateGetMessage,
   buildSpectatorWebSocketUrl,
   type FinalResultHistoryItem,
+  rankFinalPlayers,
   type SpectatorConnectionState,
   upsertFinalResultHistory,
 } from "../services/spectator-client";
@@ -146,20 +147,6 @@ function rankCurrentPlayers(snapshot: RoomStateSnapshot) {
     }
     return { ...entry, rank };
   });
-}
-
-function rankFinalPlayers(players: ResultReadyPlayer[]) {
-  const sorted = [...players].sort((left, right) => {
-    if ("total_points" in left && "total_points" in right) {
-      return right.total_points - left.total_points || (right.total_ex_score ?? 0) - (left.total_ex_score ?? 0);
-    }
-    if ("round_wins" in left && "round_wins" in right) {
-      return right.round_wins - left.round_wins;
-    }
-    return 0;
-  });
-
-  return sorted.map((player, index) => ({ player, rank: index + 1 }));
 }
 
 function finalPlayerSummary(player: ResultReadyPlayer): string {
