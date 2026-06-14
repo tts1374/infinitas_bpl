@@ -29,7 +29,7 @@ Ph1 の画面は以下とする。
    - RESULT
 4. 統計画面
 5. エラーダイアログ / 通知
-6. Web観戦ページ（read-only）
+6. アプリ観戦モード（read-only）
 7. 自動マッチング画面（Auto Match）
 
 ---
@@ -409,14 +409,14 @@ Ph1 の画面は以下とする。
 
 ---
 
-## 11. Web観戦ページ（read-only）
+## 11. アプリ観戦モード（read-only）
 
 ## 11.1 目的
-- ブラウザから read-only で対戦進行を監視する
+- アプリ内から read-only で対戦進行を監視する
 - スコア進行・状態遷移を閲覧し、ルーム操作権限は持たない
 
 ## 11.2 主な表示項目
-- room_id（URLクエリ `r`）
+- room_id
 - join_code 入力欄（PRIVATE 観戦時）
 - 接続状態（connecting / joined / closed / error）
 - 現在状態（room_state, mode, win_metric）

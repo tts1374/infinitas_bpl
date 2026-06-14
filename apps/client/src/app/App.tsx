@@ -8,6 +8,7 @@ import { SourceUnresolvedDialog } from "../components/SourceUnresolvedDialog";
 import { LobbyPage } from "../pages/LobbyPage";
 import { RoomPage } from "../pages/RoomPage";
 import { SettingsPage } from "../pages/SettingsPage";
+import { SpectatorPage } from "../pages/SpectatorPage";
 import { StatsPage } from "../pages/StatsPage";
 import { AutoMatchPage } from "../pages/AutoMatchPage";
 import { localResultArchiveService } from "../services/result-archive";
@@ -22,7 +23,7 @@ import { voiceAnnouncerService } from "../services/voice-announcer";
 import { lobbyStore } from "../stores/lobby-store";
 import { roomStore, useRoomStore } from "../stores/room-store";
 import { sourceStore, useSourceStore } from "../stores/source-store";
-import { isRoomEntryReady, settingsStore, useSettingsStore } from "../stores/settings-store";
+import { settingsStore, useSettingsStore } from "../stores/settings-store";
 
 function parseJoinRoomRefFromDeepLink(rawUrl: string): string | null {
   try {
@@ -67,14 +68,13 @@ export function App() {
   const pendingDeepLinkRoomIdRef = useRef<string | null>(null);
   const [pendingDeepLinkRoomId, setPendingDeepLinkRoomId] = useState<string | null>(null);
   const [pendingRecoveryJoin, setPendingRecoveryJoin] = useState<{ roomId: string; joinCode: string } | null>(null);
+  const [spectatorRequest, setSpectatorRequest] = useState<{ roomId: string; joinCode: string | null } | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isOpeningMatchHistory, setIsOpeningMatchHistory] = useState(false);
   const [mockScenario] = useState(() =>
     runtimeConfig.mockScenarioId ? getVisualScenario(runtimeConfig.mockScenarioId) : null,
   );
   const handledAutoMatchCloseRef = useRef<string | null>(null);
-  const roomEntryReady = isRoomEntryReady(savedSettings);
-  const shouldShowSetupDialog = activeView === "lobby" && roomSnapshot === null && !roomEntryReady;
   const shouldSendHostHeartbeat =
     roomConnectionStatus === "CONNECTED" &&
     roomSnapshot !== null &&
@@ -458,7 +458,7 @@ export function App() {
 
   return (
     <main className="flex h-screen w-screen overflow-hidden bg-[#1e1e1e]">
-      {activeView !== "room" && activeView !== "automatch" ? (
+      {activeView !== "room" && activeView !== "automatch" && activeView !== "spectate" ? (
         <AppSidebar
           activeView={activeView}
           hasRoom={roomSnapshot !== null}
@@ -484,12 +484,26 @@ export function App() {
             onNavigateToAutoMatch={() => {
               navigate("automatch");
             }}
+            onSpectateRoom={(request) => {
+              setSpectatorRequest(request);
+              navigate("spectate");
+            }}
           />
         ) : null}
         {activeView === "settings" ? (
           <SettingsPage
             roomJoined={roomSnapshot !== null}
             onNavigateToLobby={() => {
+              navigate("lobby");
+            }}
+          />
+        ) : null}
+        {activeView === "spectate" && spectatorRequest !== null ? (
+          <SpectatorPage
+            roomId={spectatorRequest.roomId}
+            initialJoinCode={spectatorRequest.joinCode}
+            onReturnToLobby={() => {
+              setSpectatorRequest(null);
               navigate("lobby");
             }}
           />
@@ -525,30 +539,6 @@ export function App() {
           onReturnToLobby={backToLobbyFromDialog}
           {...(canRecreateFromDialog ? { onRecreateRoom: recreateRoomFromDialog } : {})}
         />
-      ) : null}
-      {shouldShowSetupDialog ? (
-        <div className="fixed inset-0 z-[2800] flex items-center justify-center bg-black/85 p-4 backdrop-blur-md">
-          <div className="w-full max-w-[460px] overflow-hidden rounded-3xl border border-amber-500/20 bg-[#1a1a1c] shadow-[0_30px_90px_rgba(0,0,0,0.9)]">
-            <div className="p-8 text-center">
-              <p className="mb-3 text-[10px] font-black uppercase tracking-[0.35em] text-amber-300">Setup Required</p>
-              <h2 className="text-2xl font-black tracking-tight text-white">まずは設定を行いましょう</h2>
-              <p className="mt-3 text-sm font-semibold leading-relaxed text-gray-300">
-                DJ NAME と DATA SOURCE を設定すると、
-                <br />
-                ルーム作成と参加が可能になります。
-              </p>
-            </div>
-            <div className="px-8 pb-8">
-              <button
-                type="button"
-                onClick={() => navigate("settings")}
-                className="w-full rounded-2xl bg-amber-400 py-4 text-sm font-black uppercase tracking-[0.2em] text-black transition-all hover:bg-amber-300"
-              >
-                OK
-              </button>
-            </div>
-          </div>
-        </div>
       ) : null}
       {toastMessage ? (
         <div className="pointer-events-none fixed bottom-6 left-1/2 z-[2900] w-full max-w-[min(560px,calc(100%-2rem))] -translate-x-1/2 px-4">
