@@ -59,8 +59,8 @@ Return merge-gate evidence and downstream status, not a substitute for explicit 
    - Empty or silent write responses are not enough.
 
 6. Run downstream steps only if requested:
-   - `merge + close`: run [$issue-close-evidence-flow](C:/work/infinitas_arena/infinitas_arena/.codex/skills/issue-close-evidence-flow/SKILL.md)
-   - `merge + close + cleanup`: after close, run [$worktree-branch-cleanup-guard](C:/Users/tts13/.codex/skills/worktree-branch-cleanup-guard/SKILL.md)
+   - `merge + close`: run `$issue-close-evidence-flow`
+   - `merge + close + cleanup`: after close, run `$worktree-branch-cleanup-guard`
 
 7. Report final status:
    - `COMPLETE` only if every requested downstream step finished and was verified.

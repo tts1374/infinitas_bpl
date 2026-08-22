@@ -39,7 +39,7 @@ Return a close-ready evidence artifact or a concrete missing-evidence block, not
    - Phase D output
    - `tasks/issue-*.md`
 4. If follow-up is only inferable and not explicitly linked, stop with `BLOCKED`.
-5. Load [docs/issue_close_evidence_template.md](C:/work/infinitas_arena/infinitas_arena/docs/issue_close_evidence_template.md).
+5. Load the repository-root `docs/issue_close_evidence_template.md`.
 6. Fill the closure-evidence section.
 7. If the Issue is a milestone-management Issue, add the milestone audit table too.
 8. If executing the close, prefer the structured connector/write path when available.

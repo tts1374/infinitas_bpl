@@ -1,13 +1,13 @@
 ---
 name: plan-mode-gate
-description: "Reference skill for execution-profile and Plan Mode decision support. Used by strategy_orchestrator or execution_coordinator to classify `Local-Fast / Standard / High-Risk`, determine whether Plan Mode is required, and emit a Spawn Gate hint before implementation. This skill does not replace stage/routing decisions and does not by itself authorize implementation."
+description: "Reference skill for execution-profile and Plan Mode decision support. Used by strategy-orchestrator or execution-coordinator to classify `Local-Fast / Standard / High-Risk`, determine whether Plan Mode is required, and emit a Spawn Gate hint before implementation. This skill does not replace stage/routing decisions and does not by itself authorize implementation."
 ---
 
 # Plan Mode Gate
 
 ## Overview
 
-Use this skill only as a reference aid for `strategy_orchestrator` or `execution_coordinator` when deciding execution profile and whether work should run in Plan Mode.
+Use this skill only as a reference aid for `strategy-orchestrator` or `execution-coordinator` when deciding execution profile and whether work should run in Plan Mode.
 Return an outcome-first decision artifact, not a downstream execution plan.
 
 This skill does not:

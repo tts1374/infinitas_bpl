@@ -1,6 +1,5 @@
 name = "strategy-orchestrator"
 description = "入口判定とルーティングを担う最上位オーケストレーター。Phase判定、Plan Mode判定、委譲形状決定を行う。"
-model = "gpt-5.5"
 model_reasoning_effort = "high"
 
 developer_instructions = """

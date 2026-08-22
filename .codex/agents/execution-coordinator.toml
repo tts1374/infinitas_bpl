@@ -1,6 +1,5 @@
 name = "execution-coordinator"
 description = "実行計画と分割を担当。仕様を bounded task 群へ分解し、依存順と検証要件を定義する。"
-model = "gpt-5.5"
 model_reasoning_effort = "high"
 
 developer_instructions = """

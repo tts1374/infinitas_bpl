@@ -43,7 +43,7 @@ Use it to restate execution boundaries and kickoff evidence, not to prescribe im
 6. Emit `delegation execution record` entries for each role that matters now.
 7. If a concrete task artifact is required and missing, return `BLOCKED` instead of falling back to A-lite.
 8. If a mandatory spawn path is missing, return `BLOCKED` instead of silently continuing.
-9. Use [references/kickoff-checklist.md](references/kickoff-checklist.md) and [docs/c_kickoff_comment_template.md](C:/work/infinitas_arena/infinitas_arena/docs/c_kickoff_comment_template.md) to keep output shape stable.
+9. Use [references/kickoff-checklist.md](references/kickoff-checklist.md) and the repository-root `docs/c_kickoff_comment_template.md` to keep output shape stable.
 
 ## Output Contract
 

@@ -1,6 +1,5 @@
 name = "contract-auditor"
 description = "契約整合監査担当。spec/doc/shared/client/worker 間の契約ドリフトと互換性リスクを監査する。"
-model = "gpt-5.5"
 model_reasoning_effort = "high"
 
 developer_instructions = """

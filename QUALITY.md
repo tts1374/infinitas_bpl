@@ -91,7 +91,9 @@ Client 変更時:
 必須確認:
 - `npm run check:agents` 成功
 - `npm run check:design-contracts` 成功
+- `.codex/config.toml` の default model / spawned-agent default model が repository-approved model と一致する
 - 廃止 agent 名の残存参照がない
+- skill 内の agent 参照が canonical kebab-case 名と一致し、machine-specific absolute path がない
 - 状態語彙/severity 語彙の統一定義が維持される
 - root docs / agent 定義 / skill の間で `objective` / `success criteria` / `stop condition` の責務配置が矛盾していない
 - judgment を agent から skill へ不適切に移していない

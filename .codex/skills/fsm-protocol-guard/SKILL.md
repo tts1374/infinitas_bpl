@@ -1,13 +1,13 @@
 ---
 name: fsm-protocol-guard
-description: "Reference skill for high-risk Room FSM and WebSocket protocol review support. Used by strategy_orchestrator, contract_design_reviewer, contract_auditor, or implementation_auditor to identify high-risk FSM/protocol work, impacted invariants, and required validation. This skill does not replace stage/routing/audit decisions and does not by itself authorize implementation or completion."
+description: "Reference skill for high-risk Room FSM and WebSocket protocol review support. Used by strategy-orchestrator, contract-auditor, or implementation-auditor to identify high-risk FSM/protocol work, impacted invariants, and required validation. This skill does not replace stage/routing/audit decisions and does not by itself authorize implementation or completion."
 ---
 
 # FSM Protocol Guard
 
 ## Overview
 
-Use this skill only as a reference aid for `strategy_orchestrator`, `contract_design_reviewer`, `contract_auditor`, or `implementation_auditor` when a task may touch high-risk room flow behavior.
+Use this skill only as a reference aid for `strategy-orchestrator`, `contract-auditor`, or `implementation-auditor` when a task may touch high-risk room flow behavior.
 Return risk evidence and invariant impact only; do not expand into execution ownership or implementation instructions.
 
 This skill does not:

@@ -1,6 +1,5 @@
 name = "implementation-auditor"
 description = "実装品質監査担当。振る舞い不整合、回帰リスク、検証不足、責務境界違反を監査する。"
-model = "gpt-5.5"
 model_reasoning_effort = "high"
 
 developer_instructions = """

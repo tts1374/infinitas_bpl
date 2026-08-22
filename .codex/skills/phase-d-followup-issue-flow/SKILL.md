@@ -31,7 +31,7 @@ Return issue-ready artifacts and prioritization evidence, not a generic retrospe
    - governance/process/prompt improvements
    - branch/worktree hygiene improvements
 3. Decide which items deserve their own follow-up Issue versus a bundle.
-4. For promoted items, emit an `Issue-ready artifact` using [docs/issue_ready_followup_template.md](C:/work/infinitas_arena/infinitas_arena/docs/issue_ready_followup_template.md).
+4. For promoted items, emit an `Issue-ready artifact` using the repository-root `docs/issue_ready_followup_template.md`.
 5. Add:
    - recommended execution profile
    - Plan Mode recommendation

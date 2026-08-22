@@ -273,5 +273,7 @@ Delegation packet 必須項目:
 ## 8. Agent Definition Source of Truth
 
 - 正本は `.codex/agents/*.toml`
+- repository default model と spawned-agent default model の正本は `.codex/config.toml` とする
+- `.codex/agents/*.toml` は role 固有の reasoning effort を保持し、model override は実測で必要性が確認された role に限る
 - Agent 定義更新時は `npm run check:agents` を必須実行
 - `.toml` の意味差分がある場合、必要に応じて `AGENTS.md` / `WORKFLOW.md` / `QUALITY.md` も同時更新
